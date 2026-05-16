@@ -1,5 +1,6 @@
 export { authHeaders } from "./headers.js";
 export { normalizeUrl } from "./url.js";
+export { BBApiError, isBBApiError } from "./errors.js";
 export { introspectApiKey, extractOrgIdFromIntrospect } from "./introspect.js";
 export type { IntrospectResponse } from "./introspect.js";
 export { fetchBotList } from "./bots.js";

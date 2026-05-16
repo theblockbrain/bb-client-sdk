@@ -1,4 +1,5 @@
 import { normalizeUrl } from "./url.js";
+import { BBApiError } from "./errors.js";
 
 export interface IntrospectResponse {
   active: boolean;
@@ -15,8 +16,9 @@ export async function introspectApiKey(
   baseUrl: string,
   token: string,
 ): Promise<IntrospectResponse> {
+  const endpoint = "/auth/introspect_api_key";
   const url = normalizeUrl(baseUrl);
-  const res = await fetch(`${url}/auth/introspect_api_key`, {
+  const res = await fetch(`${url}${endpoint}`, {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -24,10 +26,14 @@ export async function introspectApiKey(
     },
   });
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    let body: unknown;
+    try { body = await res.json(); } catch { /* response may not be JSON */ }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
 
   const data = (await res.json()) as IntrospectResponse;
-  if (data.active !== true) throw new Error("API key is inactive");
+  if (data.active !== true) throw new BBApiError("API key is inactive", 401, { endpoint });
 
   return data;
 }

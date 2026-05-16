@@ -53,6 +53,30 @@ npm run build     # outputs dist/
 npm run typecheck # strict TS, 0 errors
 ```
 
+## Error handling
+
+All SDK API calls throw `BBApiError` on non-2xx HTTP responses:
+
+```ts
+import { fetchBotList, BBApiError } from "@theblockbrain/bb-client-sdk/api";
+
+try {
+  const bots = await fetchBotList(ctx);
+} catch (err) {
+  if (err instanceof BBApiError) {
+    if (err.statusCode === 401) { /* re-auth */ }
+    if (err.statusCode === 503) { /* not configured */ }
+    console.error(err.endpoint, err.responseBody);
+  } else {
+    throw err;
+  }
+}
+```
+
+**Migration from pre-v0.3.0:** Code that parsed `err.message` to extract the HTTP status
+(`err.message.match(/API (\d+)/)`) should switch to `err.statusCode` directly.
+`BBApiError extends Error`, so existing `instanceof Error` checks continue to work.
+
 ## Release
 
 Tag `vX.Y.Z` on main. Apps pin `#main` for latest or `#vX.Y.Z` for stability.

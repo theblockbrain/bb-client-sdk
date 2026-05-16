@@ -1,5 +1,6 @@
 import { authHeaders } from "./headers.js";
 import { normalizeUrl } from "./url.js";
+import { BBApiError } from "./errors.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 
 interface MessageResponse {
@@ -21,8 +22,9 @@ export async function sendMessage(
   content: string,
   options: SendMessageOptions = {},
 ): Promise<string> {
+  const endpoint = "/cortex/completions/v2/user-input";
   const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}/cortex/completions/v2/user-input`, {
+  const res = await fetch(`${url}${endpoint}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -37,7 +39,11 @@ export async function sendMessage(
     }),
   });
 
-  if (!res.ok) throw new Error(`API ${res.status}`);
+  if (!res.ok) {
+    let body: unknown;
+    try { body = await res.json(); } catch { /* response may not be JSON */ }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
 
   const data = (await res.json()) as MessageResponse;
   if (!data?.body?.content) throw new Error("No response received from bot.");

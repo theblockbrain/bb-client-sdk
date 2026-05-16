@@ -15,19 +15,48 @@ function normalizeUrl(url) {
   return url.replace(/\/+$/, "");
 }
 
+// src/api/errors.ts
+var BBApiError = class _BBApiError extends Error {
+  statusCode;
+  endpoint;
+  responseBody;
+  constructor(message, statusCode, options) {
+    super(message);
+    this.name = "BBApiError";
+    this.statusCode = statusCode;
+    this.endpoint = options?.endpoint;
+    this.responseBody = options?.responseBody;
+    if (options?.cause !== void 0) {
+      this.cause = options.cause;
+    }
+    Object.setPrototypeOf(this, _BBApiError.prototype);
+  }
+};
+function isBBApiError(err) {
+  return err instanceof BBApiError;
+}
+
 // src/api/introspect.ts
 async function introspectApiKey(baseUrl, token) {
+  const endpoint = "/auth/introspect_api_key";
   const url = normalizeUrl(baseUrl);
-  const res = await fetch(`${url}/auth/introspect_api_key`, {
+  const res = await fetch(`${url}${endpoint}`, {
     method: "GET",
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${token}`
     }
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
   const data = await res.json();
-  if (data.active !== true) throw new Error("API key is inactive");
+  if (data.active !== true) throw new BBApiError("API key is inactive", 401, { endpoint });
   return data;
 }
 function extractOrgIdFromIntrospect(data) {
@@ -37,12 +66,20 @@ function extractOrgIdFromIntrospect(data) {
 
 // src/api/bots.ts
 async function fetchBotList(ctx) {
+  const endpoint = "/cortex/active-bot/list";
   const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}/cortex/active-bot/list?page=1&size=100`, {
+  const res = await fetch(`${url}${endpoint}?page=1&size=100`, {
     method: "GET",
     headers: authHeaders(ctx.token, ctx.orgId)
   });
-  if (!res.ok) throw new Error(`API returned ${res.status}`);
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
   const data = await res.json();
   let bots = [];
   if (data.body?.data && Array.isArray(data.body.data)) {
@@ -62,8 +99,9 @@ async function fetchBotList(ctx) {
 
 // src/api/conversations.ts
 async function createConversation(ctx, botId, convoName = "BlockBrain Conversation") {
+  const endpoint = `/cortex/active-bot/${botId}/convo`;
   const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}/cortex/active-bot/${botId}/convo`, {
+  const res = await fetch(`${url}${endpoint}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -71,15 +109,23 @@ async function createConversation(ctx, botId, convoName = "BlockBrain Conversati
     },
     body: JSON.stringify({ convoName })
   });
-  if (!res.ok) throw new Error(`API ${res.status}`);
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
   const data = await res.json();
   return { convoId: data.body.dataRoomId };
 }
 
 // src/api/messages.ts
 async function sendMessage(ctx, convoId, content, options = {}) {
+  const endpoint = "/cortex/completions/v2/user-input";
   const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}/cortex/completions/v2/user-input`, {
+  const res = await fetch(`${url}${endpoint}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -93,7 +139,14 @@ async function sendMessage(ctx, convoId, content, options = {}) {
       enableStreaming: options.enableStreaming ?? false
     })
   });
-  if (!res.ok) throw new Error(`API ${res.status}`);
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
   const data = await res.json();
   if (!data?.body?.content) throw new Error("No response received from bot.");
   return data.body.content;
@@ -101,18 +154,26 @@ async function sendMessage(ctx, convoId, content, options = {}) {
 
 // src/api/transcribe.ts
 async function transcribeAudio(ctx, audio, filename = "recording.webm", model = "azure-whisper") {
+  const endpoint = "/sp2text/generate";
   const url = normalizeUrl(ctx.baseUrl);
   const form = new FormData();
   form.append("file", audio, filename);
   form.append("model", model);
   const headers = authHeaders(ctx.token, ctx.orgId);
   delete headers["Accept"];
-  const res = await fetch(`${url}/sp2text/generate`, {
+  const res = await fetch(`${url}${endpoint}`, {
     method: "POST",
     headers,
     body: form
   });
-  if (!res.ok) throw new Error(`API ${res.status}`);
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
   const data = await res.json();
   const text = data?.body?.text ?? data?.body?.content ?? data?.text ?? "";
   if (!text) throw new Error("Empty transcription returned.");
@@ -142,6 +203,8 @@ async function discoverFrontendUrls(baseUrl, token, orgId) {
 export {
   authHeaders,
   normalizeUrl,
+  BBApiError,
+  isBBApiError,
   introspectApiKey,
   extractOrgIdFromIntrospect,
   fetchBotList,
@@ -150,4 +213,4 @@ export {
   transcribeAudio,
   discoverFrontendUrls
 };
-//# sourceMappingURL=chunk-G677BNTY.js.map
+//# sourceMappingURL=chunk-TDQKW2OR.js.map

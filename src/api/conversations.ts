@@ -1,5 +1,6 @@
 import { authHeaders } from "./headers.js";
 import { normalizeUrl } from "./url.js";
+import { BBApiError } from "./errors.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 
 interface ConversationResponse {
@@ -12,8 +13,9 @@ export async function createConversation(
   botId: string,
   convoName = "BlockBrain Conversation",
 ): Promise<{ convoId: string }> {
+  const endpoint = `/cortex/active-bot/${botId}/convo`;
   const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}/cortex/active-bot/${botId}/convo`, {
+  const res = await fetch(`${url}${endpoint}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -22,7 +24,11 @@ export async function createConversation(
     body: JSON.stringify({ convoName }),
   });
 
-  if (!res.ok) throw new Error(`API ${res.status}`);
+  if (!res.ok) {
+    let body: unknown;
+    try { body = await res.json(); } catch { /* response may not be JSON */ }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
 
   const data = (await res.json()) as ConversationResponse;
   return { convoId: data.body.dataRoomId };

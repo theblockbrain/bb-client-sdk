@@ -1,5 +1,6 @@
 import { authHeaders } from "./headers.js";
 import { normalizeUrl } from "./url.js";
+import { BBApiError } from "./errors.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 
 export interface Bot {
@@ -22,13 +23,18 @@ interface BotListResponse {
 
 /** Fetch the list of active bots for the authenticated context. */
 export async function fetchBotList(ctx: AuthContext): Promise<Bot[]> {
+  const endpoint = "/cortex/active-bot/list";
   const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}/cortex/active-bot/list?page=1&size=100`, {
+  const res = await fetch(`${url}${endpoint}?page=1&size=100`, {
     method: "GET",
     headers: authHeaders(ctx.token, ctx.orgId),
   });
 
-  if (!res.ok) throw new Error(`API returned ${res.status}`);
+  if (!res.ok) {
+    let body: unknown;
+    try { body = await res.json(); } catch { /* response may not be JSON */ }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
 
   const data = (await res.json()) as BotListResponse;
 

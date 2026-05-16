@@ -9,6 +9,23 @@ declare function authHeaders(token: string, orgId?: string | null): Record<strin
 /** Strip trailing slashes to avoid double-slash in URL paths. */
 declare function normalizeUrl(url: string): string;
 
+/**
+ * Error thrown by SDK API calls on non-2xx HTTP responses or response-parsing failures.
+ * Use `instanceof BBApiError` and check `.statusCode` to handle specific cases.
+ */
+declare class BBApiError extends Error {
+    readonly statusCode: number;
+    readonly endpoint?: string;
+    readonly responseBody?: unknown;
+    constructor(message: string, statusCode: number, options?: {
+        endpoint?: string;
+        responseBody?: unknown;
+        cause?: unknown;
+    });
+}
+/** Type guard for BBApiError. */
+declare function isBBApiError(err: unknown): err is BBApiError;
+
 interface IntrospectResponse {
     active: boolean;
     /** Zitadel resource-owner / org ID, required for multi-tenant endpoints like /sp2text. */
@@ -67,4 +84,4 @@ declare function transcribeAudio(ctx: AuthContext, audio: Blob, filename?: strin
  */
 declare function discoverFrontendUrls(baseUrl: string, token: string, orgId?: string | null): Promise<string[] | null>;
 
-export { type Bot, type IntrospectResponse, type SendMessageOptions, authHeaders, createConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchBotList, introspectApiKey, normalizeUrl, sendMessage, transcribeAudio };
+export { BBApiError, type Bot, type IntrospectResponse, type SendMessageOptions, authHeaders, createConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchBotList, introspectApiKey, isBBApiError, normalizeUrl, sendMessage, transcribeAudio };
