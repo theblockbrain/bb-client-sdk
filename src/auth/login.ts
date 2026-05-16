@@ -1,0 +1,95 @@
+import type { IdentityAdapter } from "../adapters/identity.js";
+import {
+  AUTH_CLIENT_ID,
+  AUTH_SCOPES,
+  AUTHORIZE_ENDPOINT,
+  TOKEN_ENDPOINT,
+} from "../config.js";
+import { generateVerifier, generateChallenge, encodePKCEState, decodePKCEState } from "./pkce.js";
+import { extractProfile } from "./jwt.js";
+import type { Profile } from "./jwt.js";
+import { exchangeCode, computeExpiration } from "./tokens.js";
+import type { TokenResult } from "./tokens.js";
+
+export interface LoginResult extends TokenResult {
+  /** Unix timestamp (ms) when access_token expires. */
+  expiresAt: number;
+  profile: Profile;
+  orgId: string | null;
+}
+
+export interface LoginOptions {
+  clientId?: string;
+  scopes?: readonly string[];
+  authorizeEndpoint?: string;
+  tokenEndpoint?: string;
+}
+
+/**
+ * Run the full PKCE login flow using the provided IdentityAdapter.
+ *
+ * 1. Generate PKCE verifier + challenge.
+ * 2. Build Zitadel authorize URL.
+ * 3. Delegate browser flow to `identity.launchOAuthFlow(url)` — returns redirect URL with ?code=.
+ * 4. Extract code + verify state.
+ * 5. Exchange code for tokens.
+ * 6. Extract profile + orgId from id_token (access_token as fallback).
+ */
+export async function login(
+  identity: IdentityAdapter,
+  options: LoginOptions = {},
+): Promise<LoginResult> {
+  const {
+    clientId = AUTH_CLIENT_ID,
+    scopes = AUTH_SCOPES,
+    authorizeEndpoint = AUTHORIZE_ENDPOINT,
+    tokenEndpoint = TOKEN_ENDPOINT,
+  } = options;
+
+  const redirectUri = identity.getRedirectUri();
+
+  const verifier = generateVerifier();
+  const challenge = await generateChallenge(verifier);
+  const state = encodePKCEState({ verifier });
+
+  const authUrl = new URL(authorizeEndpoint);
+  authUrl.searchParams.set("client_id", clientId);
+  authUrl.searchParams.set("redirect_uri", redirectUri);
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("scope", [...scopes].join(" "));
+  authUrl.searchParams.set("code_challenge", challenge);
+  authUrl.searchParams.set("code_challenge_method", "S256");
+  authUrl.searchParams.set("state", state);
+
+  const resultUrl = await identity.launchOAuthFlow(authUrl.toString());
+
+  if (!resultUrl) throw new Error("No redirect URL returned from auth flow.");
+
+  const params = new URL(resultUrl).searchParams;
+  const error = params.get("error");
+  if (error) {
+    throw new Error(`Auth error: ${error} — ${params.get("error_description") ?? ""}`);
+  }
+
+  const code = params.get("code");
+  if (!code) throw new Error("No authorization code in redirect.");
+
+  const returnedState = params.get("state");
+  if (!returnedState) throw new Error("Missing state in redirect — possible CSRF.");
+
+  // Verify state round-trips correctly (decode to compare verifier identity)
+  const decoded = decodePKCEState(returnedState);
+  if (decoded.verifier !== verifier) throw new Error("State mismatch — possible CSRF.");
+
+  const tokens = await exchangeCode(code, verifier, redirectUri, clientId, tokenEndpoint);
+
+  const profile = extractProfile(tokens.id_token, tokens.access_token);
+  const expiresAt = computeExpiration(tokens.expires_in);
+
+  return {
+    ...tokens,
+    expiresAt,
+    profile,
+    orgId: profile.orgId,
+  };
+}

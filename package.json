@@ -1,0 +1,30 @@
+{
+  "name": "@theblockbrain/bb-client-sdk",
+  "version": "0.1.0",
+  "description": "Shared frontend SDK for BlockBrain apps",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" },
+    "./auth": { "import": "./dist/auth/index.js", "types": "./dist/auth/index.d.ts" },
+    "./api": { "import": "./dist/api/index.js", "types": "./dist/api/index.d.ts" },
+    "./settings": { "import": "./dist/settings/index.js", "types": "./dist/settings/index.d.ts" },
+    "./utils": { "import": "./dist/utils/index.js", "types": "./dist/utils/index.d.ts" },
+    "./adapters": { "import": "./dist/adapters/index.js", "types": "./dist/adapters/index.d.ts" },
+    "./config": { "import": "./dist/config.js", "types": "./dist/config.d.ts" }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist"
+  },
+  "engines": { "node": ">=22" },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "tsup": "^8.3.0",
+    "@types/node": "^22.0.0"
+  }
+}
