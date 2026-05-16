@@ -1,0 +1,54 @@
+interface Settings {
+    bbUrl: string;
+    bbToken: string;
+    bbOrgId: string;
+    bbBotId: string;
+    bbBotName: string;
+    useSystemPrompt: boolean;
+    authMode: "api-key" | "oauth";
+}
+declare const DEFAULTS: Settings;
+
+interface AuthContext {
+    baseUrl: string;
+    /** Bearer token — either OAuth access_token or API key */
+    token: string;
+    /** Zitadel org ID — sent as x-zitadel-org-id on all calls */
+    orgId: string;
+    mode: "oauth" | "api-key";
+}
+interface OAuthTokens {
+    accessToken: string;
+    /** Unix timestamp (ms) when access_token expires. */
+    expirationMs: number;
+}
+/**
+ * Infer the correct authMode for a settings object.
+ *
+ * Rules (in order):
+ * 1. If the stored value is an explicit, valid mode → honour it.
+ * 2. If no stored value BUT a non-empty API token exists → "api-key"
+ *    (preserves existing users from an unexpected tab switch).
+ * 3. Otherwise → "oauth" (new-user default).
+ */
+declare function inferAuthMode(loaded: Partial<Settings>): "api-key" | "oauth";
+/**
+ * Compute the active auth context from settings + OAuth token state.
+ *
+ * OAuth is preferred when tokens are present, orgId is known, and the token is not expired.
+ * Falls back to API-Key mode when a bbToken exists.
+ * Returns null when neither method is available.
+ *
+ * For OAuth mode: baseUrl is hardcoded to OAUTH_BACKEND_URL — OAuth tokens are issued by
+ * auth.theblockbrain.ai and are only valid against this audience. settings.bbUrl is
+ * intentionally ignored in OAuth mode.
+ *
+ * @param config.oauthBaseUrl Override for OAUTH_BACKEND_URL (e.g. in tests).
+ */
+declare function getAuthContext(settings: Settings, tokens: OAuthTokens | null, config?: {
+    oauthBaseUrl?: string;
+}): AuthContext | null;
+/** True when the user has at least one viable auth method available. */
+declare function hasUsableAuth(settings: Settings, tokens: OAuthTokens | null): boolean;
+
+export { type AuthContext, DEFAULTS, type OAuthTokens, type Settings, getAuthContext, hasUsableAuth, inferAuthMode };
