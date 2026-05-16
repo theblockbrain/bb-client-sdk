@@ -6,7 +6,19 @@ export type { IntrospectResponse } from "./introspect.js";
 export { fetchBotList } from "./bots.js";
 export type { Bot } from "./bots.js";
 export { createConversation } from "./conversations.js";
-export { sendMessage } from "./messages.js";
-export type { SendMessageOptions } from "./messages.js";
+export { sendMessage, getMessageList } from "./messages.js";
+export type { SendMessageOptions, MessageItem, MessageListBody, GetMessageListOptions } from "./messages.js";
 export { transcribeAudio } from "./transcribe.js";
 export { discoverFrontendUrls } from "./tenant.js";
+export {
+  getAvailableWebSearchProviders,
+  setConversationWebSearch,
+  getConversationWebSearch,
+} from "./websearch.js";
+export type {
+  WebSearchProvider,
+  WebSearchType,
+  WebSearchConfig,
+  WebSearchProviderStatus,
+  ConversationWebSearchSettings,
+} from "./websearch.js";

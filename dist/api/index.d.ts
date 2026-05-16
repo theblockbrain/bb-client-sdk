@@ -62,6 +62,28 @@ interface SendMessageOptions {
  * Returns the response content string.
  */
 declare function sendMessage(ctx: AuthContext, convoId: string, content: string, options?: SendMessageOptions): Promise<string>;
+interface MessageItem {
+    content: string;
+    role: string;
+    [k: string]: unknown;
+}
+interface MessageListBody {
+    data: MessageItem[];
+    total?: number;
+    page?: number;
+}
+interface GetMessageListOptions {
+    keyword?: string;
+    page?: number;
+    size?: number;
+}
+/**
+ * Fetch paginated message history for a conversation.
+ * POST /cortex/message/list
+ *
+ * Defaults: keyword="", page=1, size=20.
+ */
+declare function getMessageList(ctx: AuthContext, convoId: string, options?: GetMessageListOptions): Promise<MessageListBody>;
 
 /**
  * Transcribe an audio blob via the BlockBrain sp2text endpoint.
@@ -84,4 +106,40 @@ declare function transcribeAudio(ctx: AuthContext, audio: Blob, filename?: strin
  */
 declare function discoverFrontendUrls(baseUrl: string, token: string, orgId?: string | null): Promise<string[] | null>;
 
-export { BBApiError, type Bot, type IntrospectResponse, type SendMessageOptions, authHeaders, createConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchBotList, introspectApiKey, isBBApiError, normalizeUrl, sendMessage, transcribeAudio };
+type WebSearchProvider = "linkup_normal_web_search" | "linkup_pro_web_search" | "linkup_pro_r_web_search" | "tavily_normal_web_search" | "tavily_pro_web_search" | "tavily_pro_r_web_search" | "perplexity_normal_web_search" | "perplexity_pro_web_search" | "perplexity_pro_r_web_search";
+type WebSearchType = "normal_web_search" | "pro_web_search" | "pro_r_web_search";
+interface WebSearchConfig {
+    webSearchProvider: WebSearchProvider;
+    /** Only relevant for Linkup providers. */
+    isLinkupDeepSearch?: boolean;
+}
+interface WebSearchProviderStatus {
+    webSearchProvider: WebSearchProvider;
+    tenantId: string;
+    isEnable: boolean;
+    isEnableByMaster: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+interface ConversationWebSearchSettings {
+    enableWebSearch?: boolean;
+    webSearchType?: WebSearchType;
+    webSearchConfig?: WebSearchConfig;
+}
+/**
+ * Get available web search providers for the authenticated tenant.
+ * GET /cortex/web-search/provider
+ */
+declare function getAvailableWebSearchProviders(ctx: AuthContext): Promise<WebSearchProviderStatus[]>;
+/**
+ * Update web search settings for a conversation.
+ * PATCH /cortex/conversation/{convoId}
+ */
+declare function setConversationWebSearch(ctx: AuthContext, convoId: string, settings: ConversationWebSearchSettings): Promise<void>;
+/**
+ * Read current web search settings for a conversation.
+ * GET /cortex/conversation/{convoId}
+ */
+declare function getConversationWebSearch(ctx: AuthContext, convoId: string): Promise<ConversationWebSearchSettings>;
+
+export { BBApiError, type Bot, type ConversationWebSearchSettings, type GetMessageListOptions, type IntrospectResponse, type MessageItem, type MessageListBody, type SendMessageOptions, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchBotList, getAvailableWebSearchProviders, getConversationWebSearch, getMessageList, introspectApiKey, isBBApiError, normalizeUrl, sendMessage, setConversationWebSearch, transcribeAudio };

@@ -77,6 +77,55 @@ try {
 (`err.message.match(/API (\d+)/)`) should switch to `err.statusCode` directly.
 `BBApiError extends Error`, so existing `instanceof Error` checks continue to work.
 
+## Web search
+
+Toggle web search on a conversation:
+
+```ts
+import {
+  getAvailableWebSearchProviders,
+  setConversationWebSearch,
+  getConversationWebSearch,
+} from "@theblockbrain/bb-client-sdk/api";
+
+// Which providers are enabled for this tenant?
+const providers = await getAvailableWebSearchProviders(ctx);
+
+// Enable web search on a conversation
+await setConversationWebSearch(ctx, convoId, {
+  enableWebSearch: true,
+  webSearchType: "normal_web_search",
+  webSearchConfig: { webSearchProvider: "tavily_normal_web_search" },
+});
+
+// Read current settings
+const settings = await getConversationWebSearch(ctx, convoId);
+```
+
+## Message history
+
+```ts
+import { getMessageList } from "@theblockbrain/bb-client-sdk/api";
+
+const { data, total } = await getMessageList(ctx, convoId, { page: 1, size: 50 });
+// data: MessageItem[] — each has .role + .content
+```
+
+## extractJson
+
+Parse JSON from LLM output — handles markdown fences, embedded JSON in prose, and
+unescaped quotes inside string values:
+
+```ts
+import { extractJson } from "@theblockbrain/bb-client-sdk/utils";
+
+extractJson('```json\n{"a":1}\n```')              // { a: 1 }
+extractJson('Result: {"name":"foo \\"bar\\""}')    // { name: 'foo "bar"' }
+extractJson("garbage")                             // null — never throws
+```
+
+Returns `T | null`. Callers must handle `null` — never throws.
+
 ## Release
 
 Tag `vX.Y.Z` on main. Apps pin `#main` for latest or `#vX.Y.Z` for stability.

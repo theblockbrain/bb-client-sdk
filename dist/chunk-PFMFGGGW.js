@@ -151,6 +151,33 @@ async function sendMessage(ctx, convoId, content, options = {}) {
   if (!data?.body?.content) throw new Error("No response received from bot.");
   return data.body.content;
 }
+async function getMessageList(ctx, convoId, options = {}) {
+  const endpoint = "/cortex/message/list";
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(ctx.token, ctx.orgId)
+    },
+    body: JSON.stringify({
+      convoId,
+      keyword: options.keyword ?? "",
+      page: options.page ?? 1,
+      size: options.size ?? 20
+    })
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+  const data = await res.json();
+  return data.body;
+}
 
 // src/api/transcribe.ts
 async function transcribeAudio(ctx, audio, filename = "recording.webm", model = "azure-whisper") {
@@ -200,6 +227,68 @@ async function discoverFrontendUrls(baseUrl, token, orgId) {
   }
 }
 
+// src/api/websearch.ts
+async function getAvailableWebSearchProviders(ctx) {
+  const endpoint = "/cortex/web-search/provider";
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "GET",
+    headers: authHeaders(ctx.token, ctx.orgId)
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+  return await res.json();
+}
+async function setConversationWebSearch(ctx, convoId, settings) {
+  const endpoint = `/cortex/conversation/${convoId}`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(ctx.token, ctx.orgId)
+    },
+    body: JSON.stringify(settings)
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+}
+async function getConversationWebSearch(ctx, convoId) {
+  const endpoint = `/cortex/conversation/${convoId}`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "GET",
+    headers: authHeaders(ctx.token, ctx.orgId)
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+  const data = await res.json();
+  const payload = data.body ?? data;
+  return {
+    enableWebSearch: payload.enableWebSearch,
+    webSearchType: payload.webSearchType,
+    webSearchConfig: payload.webSearchConfig
+  };
+}
+
 export {
   authHeaders,
   normalizeUrl,
@@ -210,7 +299,11 @@ export {
   fetchBotList,
   createConversation,
   sendMessage,
+  getMessageList,
   transcribeAudio,
-  discoverFrontendUrls
+  discoverFrontendUrls,
+  getAvailableWebSearchProviders,
+  setConversationWebSearch,
+  getConversationWebSearch
 };
-//# sourceMappingURL=chunk-TDQKW2OR.js.map
+//# sourceMappingURL=chunk-PFMFGGGW.js.map

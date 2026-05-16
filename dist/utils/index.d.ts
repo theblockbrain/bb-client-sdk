@@ -22,4 +22,26 @@ declare function createLock(): {
     withLock<T>(fn: () => Promise<T>): Promise<T>;
 };
 
-export { createLock, extractCode, siteKey };
+/**
+ * Robustly extract a JSON value from an LLM response.
+ * Handles markdown code fences, partial responses, and unescaped quotes
+ * inside string values (a common LLM failure mode).
+ *
+ * Returns the parsed value, or null if no valid JSON could be recovered.
+ * Does NOT throw — callers should handle null explicitly.
+ */
+declare function extractJson<T = unknown>(text: string): T | null;
+/**
+ * Best-effort repair of unescaped quote characters within JSON string values.
+ *
+ * Walks character-by-character tracking string context, and escapes any quote
+ * that is not followed by a structural JSON character (`,` `}` `]` `:`).
+ * Handles backslash escape sequences correctly so already-escaped quotes are
+ * not double-escaped.
+ *
+ * Not 100% for pathological inputs — covers the most common LLM-emitted
+ * JSON-quote-escape failures.
+ */
+declare function repairUnescapedQuotes(str: string): string;
+
+export { createLock, extractCode, extractJson, repairUnescapedQuotes, siteKey };

@@ -1,22 +1,20 @@
 import {
-  buildEmailPrompt,
-  buildNewEmailPrompt,
-  buildPagePrompt,
-  parseResponse,
-  parseSubjectAndBody
-} from "./chunk-EFKOQZLN.js";
-import {
   createLock,
   extractCode,
+  extractJson,
+  repairUnescapedQuotes,
   siteKey
-} from "./chunk-467GZRWL.js";
+} from "./chunk-TC3463HT.js";
+import {
+  DEFAULTS,
+  getAuthContext,
+  hasUsableAuth,
+  inferAuthMode
+} from "./chunk-4JGCADCL.js";
 import {
   AVAILABLE_ACTIONS,
   runActions
 } from "./chunk-TUTKA2JH.js";
-import {
-  ACTION_SYSTEM_PROMPT
-} from "./chunk-C25NYCKP.js";
 import {
   BBApiError,
   authHeaders,
@@ -24,12 +22,16 @@ import {
   discoverFrontendUrls,
   extractOrgIdFromIntrospect,
   fetchBotList,
+  getAvailableWebSearchProviders,
+  getConversationWebSearch,
+  getMessageList,
   introspectApiKey,
   isBBApiError,
   normalizeUrl,
   sendMessage,
+  setConversationWebSearch,
   transcribeAudio
-} from "./chunk-TDQKW2OR.js";
+} from "./chunk-PFMFGGGW.js";
 import {
   createRefreshGuard,
   decodeJwtPayload,
@@ -41,12 +43,6 @@ import {
   generateVerifier,
   login
 } from "./chunk-7UTBFNGN.js";
-import {
-  DEFAULTS,
-  getAuthContext,
-  hasUsableAuth,
-  inferAuthMode
-} from "./chunk-4JGCADCL.js";
 import {
   computeExpiration,
   exchangeCode,
@@ -61,6 +57,16 @@ import {
   OAUTH_BACKEND_URL,
   TOKEN_ENDPOINT
 } from "./chunk-OPBRY7NV.js";
+import {
+  buildEmailPrompt,
+  buildNewEmailPrompt,
+  buildPagePrompt,
+  parseResponse,
+  parseSubjectAndBody
+} from "./chunk-EFKOQZLN.js";
+import {
+  ACTION_SYSTEM_PROMPT
+} from "./chunk-C25NYCKP.js";
 import {
   applyTheme,
   configureLogo,
@@ -98,6 +104,7 @@ export {
   encodePKCEState,
   exchangeCode,
   extractCode,
+  extractJson,
   extractOrgIdFromClaims,
   extractOrgIdFromIntrospect,
   extractProfile,
@@ -105,6 +112,9 @@ export {
   generateChallenge,
   generateVerifier,
   getAuthContext,
+  getAvailableWebSearchProviders,
+  getConversationWebSearch,
+  getMessageList,
   hasUsableAuth,
   inferAuthMode,
   introspectApiKey,
@@ -117,8 +127,10 @@ export {
   refreshTokens,
   renderMarkdown,
   renderMarkdownInto,
+  repairUnescapedQuotes,
   runActions,
   sendMessage,
+  setConversationWebSearch,
   siteKey,
   themeIcon,
   timeAgo,
