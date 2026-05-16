@@ -1,6 +1,6 @@
 {
   "name": "@theblockbrain/bb-client-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared frontend SDK for BlockBrain apps",
   "type": "module",
   "main": "./dist/index.js",
@@ -12,9 +12,15 @@
     "./settings": { "import": "./dist/settings/index.js", "types": "./dist/settings/index.d.ts" },
     "./utils": { "import": "./dist/utils/index.js", "types": "./dist/utils/index.d.ts" },
     "./adapters": { "import": "./dist/adapters/index.js", "types": "./dist/adapters/index.d.ts" },
-    "./config": { "import": "./dist/config.js", "types": "./dist/config.d.ts" }
+    "./config": { "import": "./dist/config.js", "types": "./dist/config.d.ts" },
+    "./prompt": { "import": "./dist/prompt/index.js", "types": "./dist/prompt/index.d.ts" },
+    "./actions": { "import": "./dist/actions/index.js", "types": "./dist/actions/index.d.ts" },
+    "./ui": { "import": "./dist/ui/index.js", "types": "./dist/ui/index.d.ts" }
   },
   "files": ["dist", "README.md"],
+  "dependencies": {
+    "marked": "^14.0.0"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
