@@ -8,7 +8,14 @@ export interface AuthContext {
   baseUrl: string;
   /** Bearer token — either OAuth access_token or API key */
   token: string;
-  /** Zitadel org ID — sent as x-zitadel-org-id on all calls */
+  /**
+   * User's HOME org ID — sent as x-zitadel-org-id header on all OAuth calls.
+   * This is the org the JWT was issued for (where the user has roles).
+   *
+   * For cross-tenant admin operations, pass a separate `targetOrgId` to the
+   * individual API functions — that becomes the ?orgId= query param (the tenant
+   * being operated on). Do NOT put the target tenant's orgId here.
+   */
   orgId: string;
   mode: AuthMode;
 }

@@ -200,18 +200,26 @@ type AgentsResponse = Record<string, Agent>;
 /**
  * Fetch all agents for the org (includes inactive and unavailable).
  * GET /agents?includeInactive=true&includeUnavailable=true&orgId=...
+ *
+ * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
+ *   For cross-tenant admin calls, pass the target's orgId while ctx.orgId
+ *   remains the user's home org (used for x-zitadel-org-id header auth).
  */
-declare function fetchAgents(ctx: AuthContext): Promise<AgentsResponse>;
+declare function fetchAgents(ctx: AuthContext, targetOrgId?: string): Promise<AgentsResponse>;
 /**
  * Set the active flag for a single agent.
  * PATCH /agents/set-active?orgId=...
+ *
+ * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
  */
-declare function setAgentActive(ctx: AuthContext, agentId: string, active: boolean): Promise<ApiResponse>;
+declare function setAgentActive(ctx: AuthContext, agentId: string, active: boolean, targetOrgId?: string): Promise<ApiResponse>;
 /**
  * Set the availability flag for a single agent.
  * PATCH /agents/set-availability?orgId=...
+ *
+ * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
  */
-declare function setAgentAvailability(ctx: AuthContext, agentId: string, available: boolean): Promise<ApiResponse>;
+declare function setAgentAvailability(ctx: AuthContext, agentId: string, available: boolean, targetOrgId?: string): Promise<ApiResponse>;
 
 interface Capability {
     id: string;
@@ -224,18 +232,26 @@ type CapabilitiesResponse = Record<string, Capability>;
 /**
  * Fetch all capabilities for the org (includes inactive and unavailable).
  * GET /capabilities?includeInactive=true&includeUnavailable=true&orgId=...
+ *
+ * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
+ *   For cross-tenant admin calls, pass the target's orgId while ctx.orgId
+ *   remains the user's home org (used for x-zitadel-org-id header auth).
  */
-declare function fetchCapabilities(ctx: AuthContext): Promise<CapabilitiesResponse>;
+declare function fetchCapabilities(ctx: AuthContext, targetOrgId?: string): Promise<CapabilitiesResponse>;
 /**
  * Set the active flag for a single capability.
  * PATCH /capabilities/set-active?orgId=...
+ *
+ * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
  */
-declare function setCapabilityActive(ctx: AuthContext, capabilityId: string, active: boolean): Promise<ApiResponse>;
+declare function setCapabilityActive(ctx: AuthContext, capabilityId: string, active: boolean, targetOrgId?: string): Promise<ApiResponse>;
 /**
  * Set the availability flag for a single capability.
  * PATCH /capabilities/set-availability?orgId=...
+ *
+ * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
  */
-declare function setCapabilityAvailability(ctx: AuthContext, capabilityId: string, available: boolean): Promise<ApiResponse>;
+declare function setCapabilityAvailability(ctx: AuthContext, capabilityId: string, available: boolean, targetOrgId?: string): Promise<ApiResponse>;
 
 interface TenantConfig {
     customAgentsEnabled: boolean;
@@ -244,12 +260,18 @@ interface TenantConfig {
  * Fetch tenant config for the org.
  * GET /tenants?orgId=...
  * Returns { id, name, config: { customAgentsEnabled, ... } | null }
+ *
+ * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
+ *   For cross-tenant admin calls, pass the target's orgId while ctx.orgId
+ *   remains the user's home org (used for x-zitadel-org-id header auth).
  */
-declare function getTenantConfig(ctx: AuthContext): Promise<TenantConfig>;
+declare function getTenantConfig(ctx: AuthContext, targetOrgId?: string): Promise<TenantConfig>;
 /**
  * Toggle the customAgentsEnabled flag for a tenant.
  * PATCH /tenants/config?orgId=...
+ *
+ * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
  */
-declare function setCustomAgentsEnabled(ctx: AuthContext, enabled: boolean): Promise<void>;
+declare function setCustomAgentsEnabled(ctx: AuthContext, enabled: boolean, targetOrgId?: string): Promise<void>;
 
 export { type Agent, type AgentsResponse, type ApiResponse, BBApiError, type Bot, type CapabilitiesResponse, type Capability, type ConversationWebSearchSettings, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type SendMessageOptions, type TenantConfig, type TenantDetail, type TenantSummary, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchAgents, fetchBotList, fetchCapabilities, getAvailableWebSearchProviders, getConversationWebSearch, getMessageList, getTenantById, getTenantConfig, introspectApiKey, isBBApiError, listTenants, normalizeUrl, sendMessage, setAgentActive, setAgentAvailability, setCapabilityActive, setCapabilityAvailability, setConversationWebSearch, setCustomAgentsEnabled, transcribeAudio };

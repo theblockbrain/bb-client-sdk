@@ -372,15 +372,15 @@ async function throwIfNotOk(res, endpoint) {
 }
 
 // src/api/agents.ts
-function buildUrl(ctx, path, extra = {}) {
+function buildUrl(ctx, path, targetOrgId, extra = {}) {
   const base = normalizeUrl(ctx.baseUrl);
   const params = new URLSearchParams(extra);
-  params.set("orgId", ctx.orgId);
+  params.set("orgId", targetOrgId ?? ctx.orgId);
   return `${base}/${path}?${params.toString()}`;
 }
-async function fetchAgents(ctx) {
+async function fetchAgents(ctx, targetOrgId) {
   const endpoint = "agents";
-  const url = buildUrl(ctx, endpoint, {
+  const url = buildUrl(ctx, endpoint, targetOrgId, {
     includeInactive: "true",
     includeUnavailable: "true"
   });
@@ -391,9 +391,9 @@ async function fetchAgents(ctx) {
   await throwIfNotOk(res, endpoint);
   return res.json();
 }
-async function setAgentActive(ctx, agentId, active) {
+async function setAgentActive(ctx, agentId, active, targetOrgId) {
   const endpoint = "agents/set-active";
-  const url = buildUrl(ctx, endpoint, {});
+  const url = buildUrl(ctx, endpoint, targetOrgId);
   const res = await fetch(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
@@ -402,28 +402,29 @@ async function setAgentActive(ctx, agentId, active) {
   await throwIfNotOk(res, endpoint);
   return res.json();
 }
-async function setAgentAvailability(ctx, agentId, available) {
+async function setAgentAvailability(ctx, agentId, available, targetOrgId) {
   const endpoint = "agents/set-availability";
-  const url = buildUrl(ctx, endpoint, {});
+  const url = buildUrl(ctx, endpoint, targetOrgId);
+  const effectiveOrgId = targetOrgId ?? ctx.orgId;
   const res = await fetch(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
-    body: JSON.stringify({ agentId, available, orgId: ctx.orgId })
+    body: JSON.stringify({ agentId, available, orgId: effectiveOrgId })
   });
   await throwIfNotOk(res, endpoint);
   return res.json();
 }
 
 // src/api/capabilities.ts
-function buildUrl2(ctx, path, extra = {}) {
+function buildUrl2(ctx, path, targetOrgId, extra = {}) {
   const base = normalizeUrl(ctx.baseUrl);
   const params = new URLSearchParams(extra);
-  params.set("orgId", ctx.orgId);
+  params.set("orgId", targetOrgId ?? ctx.orgId);
   return `${base}/${path}?${params.toString()}`;
 }
-async function fetchCapabilities(ctx) {
+async function fetchCapabilities(ctx, targetOrgId) {
   const endpoint = "capabilities";
-  const url = buildUrl2(ctx, endpoint, { includeInactive: "true", includeUnavailable: "true" });
+  const url = buildUrl2(ctx, endpoint, targetOrgId, { includeInactive: "true", includeUnavailable: "true" });
   const res = await fetch(url, {
     method: "GET",
     headers: bbApiAuthHeaders(ctx)
@@ -431,9 +432,9 @@ async function fetchCapabilities(ctx) {
   await throwIfNotOk(res, endpoint);
   return res.json();
 }
-async function setCapabilityActive(ctx, capabilityId, active) {
+async function setCapabilityActive(ctx, capabilityId, active, targetOrgId) {
   const endpoint = "capabilities/set-active";
-  const url = buildUrl2(ctx, endpoint);
+  const url = buildUrl2(ctx, endpoint, targetOrgId);
   const res = await fetch(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
@@ -442,23 +443,24 @@ async function setCapabilityActive(ctx, capabilityId, active) {
   await throwIfNotOk(res, endpoint);
   return res.json();
 }
-async function setCapabilityAvailability(ctx, capabilityId, available) {
+async function setCapabilityAvailability(ctx, capabilityId, available, targetOrgId) {
   const endpoint = "capabilities/set-availability";
-  const url = buildUrl2(ctx, endpoint);
+  const url = buildUrl2(ctx, endpoint, targetOrgId);
+  const effectiveOrgId = targetOrgId ?? ctx.orgId;
   const res = await fetch(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
-    body: JSON.stringify({ capabilityId, available, orgId: ctx.orgId })
+    body: JSON.stringify({ capabilityId, available, orgId: effectiveOrgId })
   });
   await throwIfNotOk(res, endpoint);
   return res.json();
 }
 
 // src/api/tenant-config.ts
-async function getTenantConfig(ctx) {
+async function getTenantConfig(ctx, targetOrgId) {
   const endpoint = "tenants";
   const base = normalizeUrl(ctx.baseUrl);
-  const params = new URLSearchParams({ orgId: ctx.orgId });
+  const params = new URLSearchParams({ orgId: targetOrgId ?? ctx.orgId });
   const url = `${base}/${endpoint}?${params.toString()}`;
   const res = await fetch(url, {
     method: "GET",
@@ -468,10 +470,10 @@ async function getTenantConfig(ctx) {
   const data = await res.json();
   return { customAgentsEnabled: data.config?.customAgentsEnabled ?? false };
 }
-async function setCustomAgentsEnabled(ctx, enabled) {
+async function setCustomAgentsEnabled(ctx, enabled, targetOrgId) {
   const endpoint = "tenants/config";
   const base = normalizeUrl(ctx.baseUrl);
-  const params = new URLSearchParams({ orgId: ctx.orgId });
+  const params = new URLSearchParams({ orgId: targetOrgId ?? ctx.orgId });
   const url = `${base}/${endpoint}?${params.toString()}`;
   const res = await fetch(url, {
     method: "PATCH",
@@ -508,4 +510,4 @@ export {
   getTenantConfig,
   setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-5IGQTGJU.js.map
+//# sourceMappingURL=chunk-4OCLLCEG.js.map

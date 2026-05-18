@@ -16,11 +16,15 @@ export interface TenantConfig {
  * Fetch tenant config for the org.
  * GET /tenants?orgId=...
  * Returns { id, name, config: { customAgentsEnabled, ... } | null }
+ *
+ * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
+ *   For cross-tenant admin calls, pass the target's orgId while ctx.orgId
+ *   remains the user's home org (used for x-zitadel-org-id header auth).
  */
-export async function getTenantConfig(ctx: AuthContext): Promise<TenantConfig> {
+export async function getTenantConfig(ctx: AuthContext, targetOrgId?: string): Promise<TenantConfig> {
   const endpoint = "tenants";
   const base = normalizeUrl(ctx.baseUrl);
-  const params = new URLSearchParams({ orgId: ctx.orgId });
+  const params = new URLSearchParams({ orgId: targetOrgId ?? ctx.orgId });
   const url = `${base}/${endpoint}?${params.toString()}`;
 
   const res = await fetch(url, {
@@ -36,11 +40,13 @@ export async function getTenantConfig(ctx: AuthContext): Promise<TenantConfig> {
 /**
  * Toggle the customAgentsEnabled flag for a tenant.
  * PATCH /tenants/config?orgId=...
+ *
+ * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
  */
-export async function setCustomAgentsEnabled(ctx: AuthContext, enabled: boolean): Promise<void> {
+export async function setCustomAgentsEnabled(ctx: AuthContext, enabled: boolean, targetOrgId?: string): Promise<void> {
   const endpoint = "tenants/config";
   const base = normalizeUrl(ctx.baseUrl);
-  const params = new URLSearchParams({ orgId: ctx.orgId });
+  const params = new URLSearchParams({ orgId: targetOrgId ?? ctx.orgId });
   const url = `${base}/${endpoint}?${params.toString()}`;
 
   const res = await fetch(url, {

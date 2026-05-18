@@ -1,16 +1,12 @@
 import {
-  createLock,
-  extractCode,
-  extractJson,
-  repairUnescapedQuotes,
-  siteKey
-} from "./chunk-TC3463HT.js";
-import {
-  DEFAULTS,
-  getAuthContext,
-  hasUsableAuth,
-  inferAuthMode
-} from "./chunk-3AJEIC6U.js";
+  applyTheme,
+  configureLogo,
+  cycleTheme,
+  renderMarkdown,
+  renderMarkdownInto,
+  themeIcon,
+  timeAgo
+} from "./chunk-M4XCLY7P.js";
 import {
   AVAILABLE_ACTIONS,
   runActions
@@ -28,20 +24,6 @@ import {
   generateVerifier,
   login
 } from "./chunk-535SU5A4.js";
-import {
-  computeExpiration,
-  exchangeCode,
-  isTokenExpired,
-  refreshTokens
-} from "./chunk-EBZFVPXU.js";
-import {
-  AUTHORIZE_ENDPOINT,
-  AUTH_AUTHORITY,
-  AUTH_CLIENT_ID,
-  AUTH_SCOPES,
-  OAUTH_BACKEND_URL,
-  TOKEN_ENDPOINT
-} from "./chunk-OPBRY7NV.js";
 import {
   BBApiError,
   authHeaders,
@@ -68,7 +50,34 @@ import {
   setConversationWebSearch,
   setCustomAgentsEnabled,
   transcribeAudio
-} from "./chunk-5IGQTGJU.js";
+} from "./chunk-4OCLLCEG.js";
+import {
+  DEFAULTS,
+  getAuthContext,
+  hasUsableAuth,
+  inferAuthMode
+} from "./chunk-ZFCTUXAD.js";
+import {
+  computeExpiration,
+  exchangeCode,
+  isTokenExpired,
+  refreshTokens
+} from "./chunk-EBZFVPXU.js";
+import {
+  AUTHORIZE_ENDPOINT,
+  AUTH_AUTHORITY,
+  AUTH_CLIENT_ID,
+  AUTH_SCOPES,
+  OAUTH_BACKEND_URL,
+  TOKEN_ENDPOINT
+} from "./chunk-OPBRY7NV.js";
+import {
+  createLock,
+  extractCode,
+  extractJson,
+  repairUnescapedQuotes,
+  siteKey
+} from "./chunk-TC3463HT.js";
 import {
   buildEmailPrompt,
   buildNewEmailPrompt,
@@ -79,15 +88,6 @@ import {
 import {
   ACTION_SYSTEM_PROMPT
 } from "./chunk-C25NYCKP.js";
-import {
-  applyTheme,
-  configureLogo,
-  cycleTheme,
-  renderMarkdown,
-  renderMarkdownInto,
-  themeIcon,
-  timeAgo
-} from "./chunk-M4XCLY7P.js";
 export {
   ACTION_SYSTEM_PROMPT,
   AUTHORIZE_ENDPOINT,
