@@ -42,6 +42,9 @@ export function decodeJwtPayload(token: string): Record<string, unknown> | null 
  *   3. `urn:zitadel:iam:org:project:roles`     — object whose first role value has the
  *      orgId as its first key (project roles requested)
  *
+ * Note: `blockbrain:grants[0]` looks like `<id>:<role>` but the leading id is a
+ * Blockbrain project-id, NOT a Zitadel org-id — do not use it as a fallback here.
+ *
  * Returns the first non-empty value found, or null.
  */
 export function extractOrgIdFromClaims(claims: Record<string, unknown>): string | null {

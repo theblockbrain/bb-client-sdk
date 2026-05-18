@@ -1,4 +1,5 @@
 import { OAUTH_BACKEND_URL } from "../config.js";
+import type { AuthMode } from "./auth-mode.js";
 
 export interface Settings {
   bbUrl: string;
@@ -7,7 +8,7 @@ export interface Settings {
   bbBotId: string;
   bbBotName: string;
   useSystemPrompt: boolean;
-  authMode: "api-key" | "oauth";
+  authMode: AuthMode;
 }
 
 export const DEFAULTS: Settings = {

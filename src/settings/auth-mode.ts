@@ -2,13 +2,15 @@ import { OAUTH_BACKEND_URL } from "../config.js";
 import { isTokenExpired } from "../auth/tokens.js";
 import type { Settings } from "./schema.js";
 
+export type AuthMode = "oauth" | "api-key";
+
 export interface AuthContext {
   baseUrl: string;
   /** Bearer token — either OAuth access_token or API key */
   token: string;
   /** Zitadel org ID — sent as x-zitadel-org-id on all calls */
   orgId: string;
-  mode: "oauth" | "api-key";
+  mode: AuthMode;
 }
 
 export interface OAuthTokens {
@@ -26,7 +28,7 @@ export interface OAuthTokens {
  *    (preserves existing users from an unexpected tab switch).
  * 3. Otherwise → "oauth" (new-user default).
  */
-export function inferAuthMode(loaded: Partial<Settings>): "api-key" | "oauth" {
+export function inferAuthMode(loaded: Partial<Settings>): AuthMode {
   if (loaded.authMode === "api-key" || loaded.authMode === "oauth") {
     return loaded.authMode;
   }

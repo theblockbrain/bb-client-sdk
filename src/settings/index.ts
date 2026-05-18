@@ -5,4 +5,4 @@ export {
   getAuthContext,
   hasUsableAuth,
 } from "./auth-mode.js";
-export type { AuthContext, OAuthTokens } from "./auth-mode.js";
+export type { AuthMode, AuthContext, OAuthTokens } from "./auth-mode.js";
