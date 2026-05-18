@@ -40,15 +40,16 @@ declare function decodeJwtPayload(token: string): Record<string, unknown> | null
 /**
  * Try to extract an orgId from decoded JWT claims.
  *
- * Zitadel may place the org id in any of four locations depending on
+ * Zitadel may place the org id in any of three locations depending on
  * which scopes were requested and how the project is configured:
  *
  *   1. `urn:zitadel:iam:org:id`                — direct string (org-scoped login)
  *   2. `urn:zitadel:iam:user:resourceowner:id` — direct string ("User Info in ID Token" enabled)
  *   3. `urn:zitadel:iam:org:project:roles`     — object whose first role value has the
  *      orgId as its first key (project roles requested)
- *   4. `blockbrain:grants`                     — array of `<orgId>:<role>` strings
- *      (Blockbrain custom claim, mapped from project roles)
+ *
+ * Note: `blockbrain:grants[0]` looks like `<id>:<role>` but the leading id is a
+ * Blockbrain project-id, NOT a Zitadel org-id — do not use it as a fallback here.
  *
  * Returns the first non-empty value found, or null.
  */

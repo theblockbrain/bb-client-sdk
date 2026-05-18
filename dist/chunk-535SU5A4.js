@@ -65,14 +65,6 @@ function extractOrgIdFromClaims(claims) {
       if (firstOrgKey) return firstOrgKey;
     }
   }
-  const grants = claims["blockbrain:grants"];
-  if (Array.isArray(grants) && grants.length > 0) {
-    const first = grants[0];
-    if (typeof first === "string") {
-      const orgPart = first.split(":")[0];
-      if (orgPart.length > 0) return orgPart;
-    }
-  }
   return null;
 }
 function extractProfile(idToken, accessToken) {
@@ -252,4 +244,4 @@ export {
   beginBrowserLogin,
   completeBrowserLogin
 };
-//# sourceMappingURL=chunk-NTQPHUMJ.js.map
+//# sourceMappingURL=chunk-535SU5A4.js.map

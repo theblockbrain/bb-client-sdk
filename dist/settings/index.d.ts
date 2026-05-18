@@ -5,17 +5,18 @@ interface Settings {
     bbBotId: string;
     bbBotName: string;
     useSystemPrompt: boolean;
-    authMode: "api-key" | "oauth";
+    authMode: AuthMode;
 }
 declare const DEFAULTS: Settings;
 
+type AuthMode = "oauth" | "api-key";
 interface AuthContext {
     baseUrl: string;
     /** Bearer token — either OAuth access_token or API key */
     token: string;
     /** Zitadel org ID — sent as x-zitadel-org-id on all calls */
     orgId: string;
-    mode: "oauth" | "api-key";
+    mode: AuthMode;
 }
 interface OAuthTokens {
     accessToken: string;
@@ -31,7 +32,7 @@ interface OAuthTokens {
  *    (preserves existing users from an unexpected tab switch).
  * 3. Otherwise → "oauth" (new-user default).
  */
-declare function inferAuthMode(loaded: Partial<Settings>): "api-key" | "oauth";
+declare function inferAuthMode(loaded: Partial<Settings>): AuthMode;
 /**
  * Compute the active auth context from settings + OAuth token state.
  *
@@ -51,4 +52,4 @@ declare function getAuthContext(settings: Settings, tokens: OAuthTokens | null, 
 /** True when the user has at least one viable auth method available. */
 declare function hasUsableAuth(settings: Settings, tokens: OAuthTokens | null): boolean;
 
-export { type AuthContext, DEFAULTS, type OAuthTokens, type Settings, getAuthContext, hasUsableAuth, inferAuthMode };
+export { type AuthContext, type AuthMode, DEFAULTS, type OAuthTokens, type Settings, getAuthContext, hasUsableAuth, inferAuthMode };

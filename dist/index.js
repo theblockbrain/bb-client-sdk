@@ -1,17 +1,20 @@
 import {
-  buildEmailPrompt,
-  buildNewEmailPrompt,
-  buildPagePrompt,
-  parseResponse,
-  parseSubjectAndBody
-} from "./chunk-EFKOQZLN.js";
+  createLock,
+  extractCode,
+  extractJson,
+  repairUnescapedQuotes,
+  siteKey
+} from "./chunk-TC3463HT.js";
+import {
+  DEFAULTS,
+  getAuthContext,
+  hasUsableAuth,
+  inferAuthMode
+} from "./chunk-3AJEIC6U.js";
 import {
   AVAILABLE_ACTIONS,
   runActions
 } from "./chunk-TUTKA2JH.js";
-import {
-  ACTION_SYSTEM_PROMPT
-} from "./chunk-C25NYCKP.js";
 import {
   beginBrowserLogin,
   completeBrowserLogin,
@@ -24,7 +27,21 @@ import {
   generateChallenge,
   generateVerifier,
   login
-} from "./chunk-NTQPHUMJ.js";
+} from "./chunk-535SU5A4.js";
+import {
+  computeExpiration,
+  exchangeCode,
+  isTokenExpired,
+  refreshTokens
+} from "./chunk-EBZFVPXU.js";
+import {
+  AUTHORIZE_ENDPOINT,
+  AUTH_AUTHORITY,
+  AUTH_CLIENT_ID,
+  AUTH_SCOPES,
+  OAUTH_BACKEND_URL,
+  TOKEN_ENDPOINT
+} from "./chunk-OPBRY7NV.js";
 import {
   BBApiError,
   authHeaders,
@@ -53,32 +70,15 @@ import {
   transcribeAudio
 } from "./chunk-5IGQTGJU.js";
 import {
-  DEFAULTS,
-  getAuthContext,
-  hasUsableAuth,
-  inferAuthMode
-} from "./chunk-4JGCADCL.js";
+  buildEmailPrompt,
+  buildNewEmailPrompt,
+  buildPagePrompt,
+  parseResponse,
+  parseSubjectAndBody
+} from "./chunk-EFKOQZLN.js";
 import {
-  computeExpiration,
-  exchangeCode,
-  isTokenExpired,
-  refreshTokens
-} from "./chunk-EBZFVPXU.js";
-import {
-  AUTHORIZE_ENDPOINT,
-  AUTH_AUTHORITY,
-  AUTH_CLIENT_ID,
-  AUTH_SCOPES,
-  OAUTH_BACKEND_URL,
-  TOKEN_ENDPOINT
-} from "./chunk-OPBRY7NV.js";
-import {
-  createLock,
-  extractCode,
-  extractJson,
-  repairUnescapedQuotes,
-  siteKey
-} from "./chunk-TC3463HT.js";
+  ACTION_SYSTEM_PROMPT
+} from "./chunk-C25NYCKP.js";
 import {
   applyTheme,
   configureLogo,
