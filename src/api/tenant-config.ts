@@ -1,6 +1,5 @@
 import { normalizeUrl } from "./url.js";
-import { BBApiError } from "./errors.js";
-import { bbApiAuthHeaders } from "./_auth-headers.js";
+import { bbApiAuthHeaders, throwIfNotOk } from "./_auth-headers.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -10,14 +9,6 @@ export interface TenantConfig {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function throwIfNotOk(res: Response, endpoint: string): Promise<void> {
-  if (!res.ok) {
-    let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
-  }
-}
 
 // ── API functions ─────────────────────────────────────────────────────────────
 

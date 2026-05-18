@@ -1,6 +1,5 @@
 import { normalizeUrl } from "./url.js";
-import { BBApiError } from "./errors.js";
-import { bbApiAuthHeaders } from "./_auth-headers.js";
+import { bbApiAuthHeaders, throwIfNotOk } from "./_auth-headers.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -23,28 +22,11 @@ export type AgentsResponse = Record<string, Agent>;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function agentsUrl(ctx: AuthContext, path: string): string {
+function buildUrl(ctx: AuthContext, path: string, extra: Record<string, string> = {}): string {
   const base = normalizeUrl(ctx.baseUrl);
-  const url = new URL(`${base}/${path}`, "http://placeholder");
-  url.searchParams.set("orgId", ctx.orgId);
-  // Preserve any existing path query params (e.g. includeInactive)
-  return `${base}/${path}${url.search}`;
-}
-
-function agentsUrlWithExtra(ctx: AuthContext, path: string, extra: Record<string, string>): string {
-  const base = normalizeUrl(ctx.baseUrl);
-  // Build params manually to control ordering
   const params = new URLSearchParams(extra);
   params.set("orgId", ctx.orgId);
   return `${base}/${path}?${params.toString()}`;
-}
-
-async function throwIfNotOk(res: Response, endpoint: string): Promise<void> {
-  if (!res.ok) {
-    let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
-  }
 }
 
 // ── API functions ─────────────────────────────────────────────────────────────
@@ -55,7 +37,7 @@ async function throwIfNotOk(res: Response, endpoint: string): Promise<void> {
  */
 export async function fetchAgents(ctx: AuthContext): Promise<AgentsResponse> {
   const endpoint = "agents";
-  const url = agentsUrlWithExtra(ctx, endpoint, {
+  const url = buildUrl(ctx, endpoint, {
     includeInactive: "true",
     includeUnavailable: "true",
   });
@@ -77,7 +59,7 @@ export async function setAgentActive(
   active: boolean,
 ): Promise<ApiResponse> {
   const endpoint = "agents/set-active";
-  const url = agentsUrlWithExtra(ctx, endpoint, {});
+  const url = buildUrl(ctx, endpoint, {});
   const res = await fetch(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
@@ -97,7 +79,7 @@ export async function setAgentAvailability(
   available: boolean,
 ): Promise<ApiResponse> {
   const endpoint = "agents/set-availability";
-  const url = agentsUrlWithExtra(ctx, endpoint, {});
+  const url = buildUrl(ctx, endpoint, {});
   const res = await fetch(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },

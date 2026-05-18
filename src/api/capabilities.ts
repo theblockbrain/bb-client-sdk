@@ -1,6 +1,5 @@
 import { normalizeUrl } from "./url.js";
-import { BBApiError } from "./errors.js";
-import { bbApiAuthHeaders } from "./_auth-headers.js";
+import { bbApiAuthHeaders, throwIfNotOk } from "./_auth-headers.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 import type { ApiResponse } from "./agents.js";
 
@@ -18,19 +17,11 @@ export type CapabilitiesResponse = Record<string, Capability>;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function capsUrl(ctx: AuthContext, path: string, extra: Record<string, string> = {}): string {
+function buildUrl(ctx: AuthContext, path: string, extra: Record<string, string> = {}): string {
   const base = normalizeUrl(ctx.baseUrl);
   const params = new URLSearchParams(extra);
   params.set("orgId", ctx.orgId);
   return `${base}/${path}?${params.toString()}`;
-}
-
-async function throwIfNotOk(res: Response, endpoint: string): Promise<void> {
-  if (!res.ok) {
-    let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
-  }
 }
 
 // ── API functions ─────────────────────────────────────────────────────────────
@@ -41,7 +32,7 @@ async function throwIfNotOk(res: Response, endpoint: string): Promise<void> {
  */
 export async function fetchCapabilities(ctx: AuthContext): Promise<CapabilitiesResponse> {
   const endpoint = "capabilities";
-  const url = capsUrl(ctx, endpoint, { includeInactive: "true", includeUnavailable: "true" });
+  const url = buildUrl(ctx, endpoint, { includeInactive: "true", includeUnavailable: "true" });
   const res = await fetch(url, {
     method: "GET",
     headers: bbApiAuthHeaders(ctx),
@@ -60,7 +51,7 @@ export async function setCapabilityActive(
   active: boolean,
 ): Promise<ApiResponse> {
   const endpoint = "capabilities/set-active";
-  const url = capsUrl(ctx, endpoint);
+  const url = buildUrl(ctx, endpoint);
   const res = await fetch(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
@@ -80,7 +71,7 @@ export async function setCapabilityAvailability(
   available: boolean,
 ): Promise<ApiResponse> {
   const endpoint = "capabilities/set-availability";
-  const url = capsUrl(ctx, endpoint);
+  const url = buildUrl(ctx, endpoint);
   const res = await fetch(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },

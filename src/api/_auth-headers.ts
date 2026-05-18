@@ -1,3 +1,4 @@
+import { BBApiError } from "./errors.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 
 /**
@@ -16,4 +17,13 @@ export function bbApiAuthHeaders(ctx: AuthContext): Record<string, string> {
     headers["x-zitadel-org-id"] = ctx.orgId;
   }
   return headers;
+}
+
+/** Throw BBApiError on non-2xx responses. */
+export async function throwIfNotOk(res: Response, endpoint: string): Promise<void> {
+  if (!res.ok) {
+    let body: unknown;
+    try { body = await res.json(); } catch { /* response may not be JSON */ }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
 }
