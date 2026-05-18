@@ -9,7 +9,8 @@ export { createConversation } from "./conversations.js";
 export { sendMessage, getMessageList } from "./messages.js";
 export type { SendMessageOptions, MessageItem, MessageListBody, GetMessageListOptions } from "./messages.js";
 export { transcribeAudio } from "./transcribe.js";
-export { discoverFrontendUrls } from "./tenant.js";
+export { discoverFrontendUrls, listTenants, getTenantById } from "./tenant.js";
+export type { TenantSummary, TenantDetail, ListTenantsResponse, ListTenantsOptions } from "./tenant.js";
 export {
   getAvailableWebSearchProviders,
   setConversationWebSearch,

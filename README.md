@@ -77,6 +77,21 @@ try {
 (`err.message.match(/API (\d+)/)`) should switch to `err.statusCode` directly.
 `BBApiError extends Error`, so existing `instanceof Error` checks continue to work.
 
+## Tenant listing (admin-only)
+
+Requires a master-org token. `listTenants` returns summaries — no `zitadelOrgId`.
+Call `getTenantById` when you need the org-id for tenant-scoped API calls.
+
+```ts
+import { listTenants, getTenantById } from "@theblockbrain/bb-client-sdk/api";
+
+const { data, totalCount } = await listTenants(ctx, { name: "datev", page: 1, size: 50 });
+
+// Fetch zitadelOrgId for a specific tenant
+const detail = await getTenantById(ctx, data[0].id);
+// detail.zitadelOrgId — pass as orgId for tenant-scoped ctx
+```
+
 ## Web search
 
 Toggle web search on a conversation:

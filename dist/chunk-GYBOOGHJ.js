@@ -226,6 +226,66 @@ async function discoverFrontendUrls(baseUrl, token, orgId) {
     return null;
   }
 }
+async function listTenants(ctx, options) {
+  const endpoint = "/tenant";
+  const params = new URLSearchParams({
+    name: options?.name ?? "",
+    page: String(options?.page ?? 1),
+    size: String(options?.size ?? 20)
+  });
+  const res = await fetch(`${normalizeUrl(ctx.baseUrl)}${endpoint}?${params}`, {
+    method: "GET",
+    headers: authHeaders(ctx.token, ctx.orgId)
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`Tenant list failed: ${res.status}`, res.status, { endpoint, responseBody: body });
+  }
+  const json = await res.json();
+  const payload = json.body ?? json;
+  return {
+    totalCount: payload.totalCount,
+    currentPage: payload.currentPage,
+    data: payload.data.map((t) => ({
+      id: t._id ?? t.id ?? "",
+      tenantName: t.tenantName,
+      database: t.database,
+      activePlan: t.activePlan,
+      domain: t.domain,
+      acceptSuffix: t.acceptSuffix ?? []
+    }))
+  };
+}
+async function getTenantById(ctx, tenantId) {
+  const endpoint = `/tenant/${tenantId}`;
+  const res = await fetch(`${normalizeUrl(ctx.baseUrl)}${endpoint}`, {
+    method: "GET",
+    headers: authHeaders(ctx.token, ctx.orgId)
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`Tenant detail failed: ${res.status}`, res.status, { endpoint, responseBody: body });
+  }
+  const json = await res.json();
+  const t = json.body ?? json;
+  return {
+    id: t._id ?? t.id ?? "",
+    tenantName: t.tenantName ?? "",
+    database: t.database,
+    activePlan: t.activePlan,
+    domain: t.domain,
+    acceptSuffix: t.acceptSuffix ?? [],
+    zitadelOrgId: t.zitadelOrgId
+  };
+}
 
 // src/api/websearch.ts
 async function getAvailableWebSearchProviders(ctx) {
@@ -302,8 +362,10 @@ export {
   getMessageList,
   transcribeAudio,
   discoverFrontendUrls,
+  listTenants,
+  getTenantById,
   getAvailableWebSearchProviders,
   setConversationWebSearch,
   getConversationWebSearch
 };
-//# sourceMappingURL=chunk-PFMFGGGW.js.map
+//# sourceMappingURL=chunk-GYBOOGHJ.js.map

@@ -1,13 +1,4 @@
 import {
-  applyTheme,
-  configureLogo,
-  cycleTheme,
-  renderMarkdown,
-  renderMarkdownInto,
-  themeIcon,
-  timeAgo
-} from "./chunk-M4XCLY7P.js";
-import {
   createLock,
   extractCode,
   extractJson,
@@ -15,18 +6,11 @@ import {
   siteKey
 } from "./chunk-TC3463HT.js";
 import {
-  beginBrowserLogin,
-  completeBrowserLogin,
-  createRefreshGuard,
-  decodeJwtPayload,
-  decodePKCEState,
-  encodePKCEState,
-  extractOrgIdFromClaims,
-  extractProfile,
-  generateChallenge,
-  generateVerifier,
-  login
-} from "./chunk-GRAFVFGC.js";
+  DEFAULTS,
+  getAuthContext,
+  hasUsableAuth,
+  inferAuthMode
+} from "./chunk-4JGCADCL.js";
 import {
   AVAILABLE_ACTIONS,
   runActions
@@ -41,29 +25,28 @@ import {
   getAvailableWebSearchProviders,
   getConversationWebSearch,
   getMessageList,
+  getTenantById,
   introspectApiKey,
   isBBApiError,
+  listTenants,
   normalizeUrl,
   sendMessage,
   setConversationWebSearch,
   transcribeAudio
-} from "./chunk-PFMFGGGW.js";
+} from "./chunk-GYBOOGHJ.js";
 import {
-  buildEmailPrompt,
-  buildNewEmailPrompt,
-  buildPagePrompt,
-  parseResponse,
-  parseSubjectAndBody
-} from "./chunk-EFKOQZLN.js";
-import {
-  ACTION_SYSTEM_PROMPT
-} from "./chunk-C25NYCKP.js";
-import {
-  DEFAULTS,
-  getAuthContext,
-  hasUsableAuth,
-  inferAuthMode
-} from "./chunk-4JGCADCL.js";
+  beginBrowserLogin,
+  completeBrowserLogin,
+  createRefreshGuard,
+  decodeJwtPayload,
+  decodePKCEState,
+  encodePKCEState,
+  extractOrgIdFromClaims,
+  extractProfile,
+  generateChallenge,
+  generateVerifier,
+  login
+} from "./chunk-GRAFVFGC.js";
 import {
   computeExpiration,
   exchangeCode,
@@ -78,6 +61,25 @@ import {
   OAUTH_BACKEND_URL,
   TOKEN_ENDPOINT
 } from "./chunk-OPBRY7NV.js";
+import {
+  buildEmailPrompt,
+  buildNewEmailPrompt,
+  buildPagePrompt,
+  parseResponse,
+  parseSubjectAndBody
+} from "./chunk-EFKOQZLN.js";
+import {
+  ACTION_SYSTEM_PROMPT
+} from "./chunk-C25NYCKP.js";
+import {
+  applyTheme,
+  configureLogo,
+  cycleTheme,
+  renderMarkdown,
+  renderMarkdownInto,
+  themeIcon,
+  timeAgo
+} from "./chunk-M4XCLY7P.js";
 export {
   ACTION_SYSTEM_PROMPT,
   AUTHORIZE_ENDPOINT,
@@ -119,11 +121,13 @@ export {
   getAvailableWebSearchProviders,
   getConversationWebSearch,
   getMessageList,
+  getTenantById,
   hasUsableAuth,
   inferAuthMode,
   introspectApiKey,
   isBBApiError,
   isTokenExpired,
+  listTenants,
   login,
   normalizeUrl,
   parseResponse,
