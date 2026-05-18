@@ -150,6 +150,87 @@ function createRefreshGuard(refreshFn) {
   };
 }
 
+// src/auth/browser-redirect.ts
+var STATE_KEY = "bb_pkce_state";
+async function beginBrowserLogin(opts) {
+  const clientId = opts.clientId ?? AUTH_CLIENT_ID;
+  const scopes = opts.scopes ?? AUTH_SCOPES;
+  const authorizeEndpoint = opts.authorizeEndpoint ?? AUTHORIZE_ENDPOINT;
+  const verifier = generateVerifier();
+  const challenge = await generateChallenge(verifier);
+  const state = encodePKCEState({ verifier });
+  sessionStorage.setItem(STATE_KEY, state);
+  const url = new URL(authorizeEndpoint);
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("redirect_uri", opts.redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", [...scopes].join(" "));
+  url.searchParams.set("code_challenge", challenge);
+  url.searchParams.set("code_challenge_method", "S256");
+  url.searchParams.set("state", state);
+  window.location.href = url.toString();
+  return new Promise(() => {
+  });
+}
+async function completeBrowserLogin(opts) {
+  const clientId = opts.clientId ?? AUTH_CLIENT_ID;
+  const tokenEndpoint = opts.tokenEndpoint ?? TOKEN_ENDPOINT;
+  const params = new URLSearchParams(window.location.search);
+  const oauthError = params.get("error");
+  if (oauthError) {
+    sessionStorage.removeItem(STATE_KEY);
+    const desc = params.get("error_description");
+    throw new Error(
+      `OAuth error: ${oauthError}${desc ? ` \u2014 ${desc}` : ""}`
+    );
+  }
+  const code = params.get("code");
+  if (!code) {
+    return {
+      isCallback: false,
+      access_token: "",
+      id_token: "",
+      expires_in: 0,
+      expiresAt: 0,
+      profile: { sub: "", orgId: null },
+      orgId: null
+    };
+  }
+  const returnedState = params.get("state");
+  if (!returnedState) {
+    sessionStorage.removeItem(STATE_KEY);
+    throw new Error("Missing OAuth state in callback \u2014 possible CSRF.");
+  }
+  const storedState = sessionStorage.getItem(STATE_KEY);
+  if (!storedState) {
+    throw new Error(
+      "No stored PKCE state \u2014 user may have refreshed mid-auth."
+    );
+  }
+  if (storedState !== returnedState) {
+    sessionStorage.removeItem(STATE_KEY);
+    throw new Error("OAuth state mismatch \u2014 possible CSRF.");
+  }
+  const { verifier } = decodePKCEState(returnedState);
+  try {
+    const tokens = await exchangeCode(
+      code,
+      verifier,
+      opts.redirectUri,
+      clientId,
+      tokenEndpoint
+    );
+    const profile = extractProfile(tokens.id_token, tokens.access_token);
+    const expiresAt = computeExpiration(tokens.expires_in);
+    sessionStorage.removeItem(STATE_KEY);
+    window.history.replaceState({}, document.title, window.location.pathname);
+    return { isCallback: true, ...tokens, expiresAt, profile, orgId: profile.orgId };
+  } catch (err) {
+    sessionStorage.removeItem(STATE_KEY);
+    throw err;
+  }
+}
+
 export {
   generateVerifier,
   generateChallenge,
@@ -159,6 +240,8 @@ export {
   extractOrgIdFromClaims,
   extractProfile,
   login,
-  createRefreshGuard
+  createRefreshGuard,
+  beginBrowserLogin,
+  completeBrowserLogin
 };
-//# sourceMappingURL=chunk-7UTBFNGN.js.map
+//# sourceMappingURL=chunk-GRAFVFGC.js.map

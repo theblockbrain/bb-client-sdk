@@ -125,4 +125,42 @@ declare function createRefreshGuard<T>(refreshFn: () => Promise<T>): {
     isInflight(): boolean;
 };
 
-export { type LoginOptions, type LoginResult, type Profile, type TokenResult, computeExpiration, createRefreshGuard, decodeJwtPayload, decodePKCEState, encodePKCEState, exchangeCode, extractOrgIdFromClaims, extractProfile, generateChallenge, generateVerifier, isTokenExpired, login, refreshTokens };
+interface BrowserRedirectOptions {
+    /** OAuth client_id — defaults to AUTH_CLIENT_ID */
+    clientId?: string;
+    /** Default: AUTH_SCOPES from config */
+    scopes?: readonly string[];
+    /** Default: AUTHORIZE_ENDPOINT from config */
+    authorizeEndpoint?: string;
+    /** Default: TOKEN_ENDPOINT from config */
+    tokenEndpoint?: string;
+    /** Redirect-URI registered in the Zitadel app */
+    redirectUri: string;
+}
+interface BrowserLoginResult extends LoginResult {
+    /** True when called on the callback page with ?code=, false on a normal page load */
+    isCallback: boolean;
+}
+/**
+ * Starts a full-page-redirect OAuth login (PKCE, S256).
+ *
+ * Stores PKCE state in sessionStorage and navigates window.location to the
+ * Zitadel authorize URL. Never returns — the page is unloaded.
+ */
+declare function beginBrowserLogin(opts: BrowserRedirectOptions): Promise<never>;
+/**
+ * Detects whether the current page load is an OAuth callback and, if so,
+ * completes the PKCE flow.
+ *
+ * Call once at app initialisation (e.g. a top-level useEffect or main.ts).
+ *
+ * - No ?code= in URL → returns { isCallback: false, ...empty }
+ * - ?error= in URL → throws with the OAuth error message
+ * - State mismatch → throws (CSRF guard)
+ * - Valid code + state → exchanges code, cleans URL, returns { isCallback: true, ... }
+ *
+ * The caller is responsible for persisting the returned tokens.
+ */
+declare function completeBrowserLogin(opts: BrowserRedirectOptions): Promise<BrowserLoginResult>;
+
+export { type BrowserLoginResult, type BrowserRedirectOptions, type LoginOptions, type LoginResult, type Profile, type TokenResult, beginBrowserLogin, completeBrowserLogin, computeExpiration, createRefreshGuard, decodeJwtPayload, decodePKCEState, encodePKCEState, exchangeCode, extractOrgIdFromClaims, extractProfile, generateChallenge, generateVerifier, isTokenExpired, login, refreshTokens };

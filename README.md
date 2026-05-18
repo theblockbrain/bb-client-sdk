@@ -126,6 +126,31 @@ extractJson("garbage")                             // null — never throws
 
 Returns `T | null`. Callers must handle `null` — never throws.
 
+## Browser SPA login (full-page redirect)
+
+For plain browser SPAs (Vite, CRA, etc.) without a popup container:
+
+```ts
+import { beginBrowserLogin, completeBrowserLogin } from "@theblockbrain/bb-client-sdk/auth";
+
+// On app init:
+const result = await completeBrowserLogin({
+  clientId: "<your zitadel client id>",
+  authorizeEndpoint: "https://auth.dev.theblockbrain.ai/oauth/v2/authorize",
+  tokenEndpoint: "https://auth.dev.theblockbrain.ai/oauth/v2/token",
+  redirectUri: `${window.location.origin}/`,
+});
+
+if (result.isCallback) {
+  // Just logged in — store tokens
+  sessionStorage.setItem("access_token", result.access_token);
+}
+
+// On login button click:
+await beginBrowserLogin({ clientId, authorizeEndpoint, tokenEndpoint, redirectUri });
+// Never returns — page navigates to Zitadel
+```
+
 ## Release
 
 Tag `vX.Y.Z` on main. Apps pin `#main` for latest or `#vX.Y.Z` for stability.

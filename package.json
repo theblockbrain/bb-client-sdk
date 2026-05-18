@@ -1,6 +1,6 @@
 {
   "name": "@theblockbrain/bb-client-sdk",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Shared frontend SDK for BlockBrain apps",
   "type": "module",
   "main": "./dist/index.js",

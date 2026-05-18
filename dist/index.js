@@ -6,25 +6,18 @@ import {
   renderMarkdownInto,
   themeIcon,
   timeAgo
-} from "./chunk-M4XCLY7P.js";
+} from "./chunk-RSMKYJBO.js";
 import {
-  buildEmailPrompt,
-  buildNewEmailPrompt,
-  buildPagePrompt,
-  parseResponse,
-  parseSubjectAndBody
-} from "./chunk-EFKOQZLN.js";
+  createLock,
+  extractCode,
+  extractJson,
+  repairUnescapedQuotes,
+  siteKey
+} from "./chunk-TC3463HT.js";
 import {
-  createRefreshGuard,
-  decodeJwtPayload,
-  decodePKCEState,
-  encodePKCEState,
-  extractOrgIdFromClaims,
-  extractProfile,
-  generateChallenge,
-  generateVerifier,
-  login
-} from "./chunk-7UTBFNGN.js";
+  AVAILABLE_ACTIONS,
+  runActions
+} from "./chunk-TUTKA2JH.js";
 import {
   BBApiError,
   authHeaders,
@@ -43,19 +36,28 @@ import {
   transcribeAudio
 } from "./chunk-PFMFGGGW.js";
 import {
-  AVAILABLE_ACTIONS,
-  runActions
-} from "./chunk-TUTKA2JH.js";
+  beginBrowserLogin,
+  completeBrowserLogin,
+  createRefreshGuard,
+  decodeJwtPayload,
+  decodePKCEState,
+  encodePKCEState,
+  extractOrgIdFromClaims,
+  extractProfile,
+  generateChallenge,
+  generateVerifier,
+  login
+} from "./chunk-GRAFVFGC.js";
+import {
+  buildEmailPrompt,
+  buildNewEmailPrompt,
+  buildPagePrompt,
+  parseResponse,
+  parseSubjectAndBody
+} from "./chunk-EFKOQZLN.js";
 import {
   ACTION_SYSTEM_PROMPT
 } from "./chunk-C25NYCKP.js";
-import {
-  createLock,
-  extractCode,
-  extractJson,
-  repairUnescapedQuotes,
-  siteKey
-} from "./chunk-TC3463HT.js";
 import {
   DEFAULTS,
   getAuthContext,
@@ -89,9 +91,11 @@ export {
   TOKEN_ENDPOINT,
   applyTheme,
   authHeaders,
+  beginBrowserLogin,
   buildEmailPrompt,
   buildNewEmailPrompt,
   buildPagePrompt,
+  completeBrowserLogin,
   computeExpiration,
   configureLogo,
   createConversation,

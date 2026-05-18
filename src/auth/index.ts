@@ -24,3 +24,12 @@ export { login } from "./login.js";
 export type { LoginResult, LoginOptions } from "./login.js";
 
 export { createRefreshGuard } from "./refresh-singleton.js";
+
+export {
+  beginBrowserLogin,
+  completeBrowserLogin,
+} from "./browser-redirect.js";
+export type {
+  BrowserRedirectOptions,
+  BrowserLoginResult,
+} from "./browser-redirect.js";
