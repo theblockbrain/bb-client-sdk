@@ -23,3 +23,10 @@ export type {
   WebSearchProviderStatus,
   ConversationWebSearchSettings,
 } from "./websearch.js";
+// ── Feature-switches / admin config ──────────────────────────────────────────
+export { fetchAgents, setAgentActive, setAgentAvailability } from "./agents.js";
+export type { Agent, AgentsResponse, ApiResponse } from "./agents.js";
+export { fetchCapabilities, setCapabilityActive, setCapabilityAvailability } from "./capabilities.js";
+export type { Capability, CapabilitiesResponse } from "./capabilities.js";
+export { getTenantConfig, setCustomAgentsEnabled } from "./tenant-config.js";
+export type { TenantConfig } from "./tenant-config.js";

@@ -1,4 +1,11 @@
 import {
+  buildEmailPrompt,
+  buildNewEmailPrompt,
+  buildPagePrompt,
+  parseResponse,
+  parseSubjectAndBody
+} from "./chunk-EFKOQZLN.js";
+import {
   createLock,
   extractCode,
   extractJson,
@@ -6,34 +13,32 @@ import {
   siteKey
 } from "./chunk-TC3463HT.js";
 import {
-  DEFAULTS,
-  getAuthContext,
-  hasUsableAuth,
-  inferAuthMode
-} from "./chunk-4JGCADCL.js";
-import {
-  AVAILABLE_ACTIONS,
-  runActions
-} from "./chunk-TUTKA2JH.js";
-import {
   BBApiError,
   authHeaders,
   createConversation,
   discoverFrontendUrls,
   extractOrgIdFromIntrospect,
+  fetchAgents,
   fetchBotList,
+  fetchCapabilities,
   getAvailableWebSearchProviders,
   getConversationWebSearch,
   getMessageList,
   getTenantById,
+  getTenantConfig,
   introspectApiKey,
   isBBApiError,
   listTenants,
   normalizeUrl,
   sendMessage,
+  setAgentActive,
+  setAgentAvailability,
+  setCapabilityActive,
+  setCapabilityAvailability,
   setConversationWebSearch,
+  setCustomAgentsEnabled,
   transcribeAudio
-} from "./chunk-GYBOOGHJ.js";
+} from "./chunk-GGN3F2YF.js";
 import {
   beginBrowserLogin,
   completeBrowserLogin,
@@ -46,7 +51,13 @@ import {
   generateChallenge,
   generateVerifier,
   login
-} from "./chunk-GRAFVFGC.js";
+} from "./chunk-NTQPHUMJ.js";
+import {
+  DEFAULTS,
+  getAuthContext,
+  hasUsableAuth,
+  inferAuthMode
+} from "./chunk-4JGCADCL.js";
 import {
   computeExpiration,
   exchangeCode,
@@ -62,12 +73,9 @@ import {
   TOKEN_ENDPOINT
 } from "./chunk-OPBRY7NV.js";
 import {
-  buildEmailPrompt,
-  buildNewEmailPrompt,
-  buildPagePrompt,
-  parseResponse,
-  parseSubjectAndBody
-} from "./chunk-EFKOQZLN.js";
+  AVAILABLE_ACTIONS,
+  runActions
+} from "./chunk-TUTKA2JH.js";
 import {
   ACTION_SYSTEM_PROMPT
 } from "./chunk-C25NYCKP.js";
@@ -114,7 +122,9 @@ export {
   extractOrgIdFromClaims,
   extractOrgIdFromIntrospect,
   extractProfile,
+  fetchAgents,
   fetchBotList,
+  fetchCapabilities,
   generateChallenge,
   generateVerifier,
   getAuthContext,
@@ -122,6 +132,7 @@ export {
   getConversationWebSearch,
   getMessageList,
   getTenantById,
+  getTenantConfig,
   hasUsableAuth,
   inferAuthMode,
   introspectApiKey,
@@ -138,7 +149,12 @@ export {
   repairUnescapedQuotes,
   runActions,
   sendMessage,
+  setAgentActive,
+  setAgentAvailability,
+  setCapabilityActive,
+  setCapabilityAvailability,
   setConversationWebSearch,
+  setCustomAgentsEnabled,
   siteKey,
   themeIcon,
   timeAgo,

@@ -184,4 +184,72 @@ declare function setConversationWebSearch(ctx: AuthContext, convoId: string, set
  */
 declare function getConversationWebSearch(ctx: AuthContext, convoId: string): Promise<ConversationWebSearchSettings>;
 
-export { BBApiError, type Bot, type ConversationWebSearchSettings, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type SendMessageOptions, type TenantDetail, type TenantSummary, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchBotList, getAvailableWebSearchProviders, getConversationWebSearch, getMessageList, getTenantById, introspectApiKey, isBBApiError, listTenants, normalizeUrl, sendMessage, setConversationWebSearch, transcribeAudio };
+interface Agent {
+    id: string;
+    name: string;
+    active: boolean;
+    available: boolean;
+    capabilityIds?: string[];
+}
+interface ApiResponse {
+    ok: boolean;
+    error?: string;
+}
+/** API response shape: Record<agentId, Agent> */
+type AgentsResponse = Record<string, Agent>;
+/**
+ * Fetch all agents for the org (includes inactive and unavailable).
+ * GET /agents?includeInactive=true&includeUnavailable=true&orgId=...
+ */
+declare function fetchAgents(ctx: AuthContext): Promise<AgentsResponse>;
+/**
+ * Set the active flag for a single agent.
+ * PATCH /agents/set-active?orgId=...
+ */
+declare function setAgentActive(ctx: AuthContext, agentId: string, active: boolean): Promise<ApiResponse>;
+/**
+ * Set the availability flag for a single agent.
+ * PATCH /agents/set-availability?orgId=...
+ */
+declare function setAgentAvailability(ctx: AuthContext, agentId: string, available: boolean): Promise<ApiResponse>;
+
+interface Capability {
+    id: string;
+    name: string;
+    active: boolean;
+    available: boolean;
+}
+/** API response shape: Record<capabilityId, Capability> */
+type CapabilitiesResponse = Record<string, Capability>;
+/**
+ * Fetch all capabilities for the org (includes inactive and unavailable).
+ * GET /capabilities?includeInactive=true&includeUnavailable=true&orgId=...
+ */
+declare function fetchCapabilities(ctx: AuthContext): Promise<CapabilitiesResponse>;
+/**
+ * Set the active flag for a single capability.
+ * PATCH /capabilities/set-active?orgId=...
+ */
+declare function setCapabilityActive(ctx: AuthContext, capabilityId: string, active: boolean): Promise<ApiResponse>;
+/**
+ * Set the availability flag for a single capability.
+ * PATCH /capabilities/set-availability?orgId=...
+ */
+declare function setCapabilityAvailability(ctx: AuthContext, capabilityId: string, available: boolean): Promise<ApiResponse>;
+
+interface TenantConfig {
+    customAgentsEnabled: boolean;
+}
+/**
+ * Fetch tenant config for the org.
+ * GET /tenants?orgId=...
+ * Returns { id, name, config: { customAgentsEnabled, ... } | null }
+ */
+declare function getTenantConfig(ctx: AuthContext): Promise<TenantConfig>;
+/**
+ * Toggle the customAgentsEnabled flag for a tenant.
+ * PATCH /tenants/config?orgId=...
+ */
+declare function setCustomAgentsEnabled(ctx: AuthContext, enabled: boolean): Promise<void>;
+
+export { type Agent, type AgentsResponse, type ApiResponse, BBApiError, type Bot, type CapabilitiesResponse, type Capability, type ConversationWebSearchSettings, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type SendMessageOptions, type TenantConfig, type TenantDetail, type TenantSummary, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchAgents, fetchBotList, fetchCapabilities, getAvailableWebSearchProviders, getConversationWebSearch, getMessageList, getTenantById, getTenantConfig, introspectApiKey, isBBApiError, listTenants, normalizeUrl, sendMessage, setAgentActive, setAgentAvailability, setCapabilityActive, setCapabilityAvailability, setConversationWebSearch, setCustomAgentsEnabled, transcribeAudio };

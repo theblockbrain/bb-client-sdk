@@ -349,6 +349,158 @@ async function getConversationWebSearch(ctx, convoId) {
   };
 }
 
+// src/api/_auth-headers.ts
+function bbApiAuthHeaders(ctx) {
+  const headers = {
+    Accept: "application/json",
+    Authorization: `Bearer ${ctx.token}`
+  };
+  if (ctx.mode === "oauth") {
+    headers["x-zitadel-org-id"] = ctx.orgId;
+  }
+  return headers;
+}
+
+// src/api/agents.ts
+function agentsUrlWithExtra(ctx, path, extra) {
+  const base = normalizeUrl(ctx.baseUrl);
+  const params = new URLSearchParams(extra);
+  params.set("orgId", ctx.orgId);
+  return `${base}/${path}?${params.toString()}`;
+}
+async function throwIfNotOk(res, endpoint) {
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+}
+async function fetchAgents(ctx) {
+  const endpoint = "agents";
+  const url = agentsUrlWithExtra(ctx, endpoint, {
+    includeInactive: "true",
+    includeUnavailable: "true"
+  });
+  const res = await fetch(url, {
+    method: "GET",
+    headers: bbApiAuthHeaders(ctx)
+  });
+  await throwIfNotOk(res, endpoint);
+  return res.json();
+}
+async function setAgentActive(ctx, agentId, active) {
+  const endpoint = "agents/set-active";
+  const url = agentsUrlWithExtra(ctx, endpoint, {});
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
+    body: JSON.stringify({ agentId, active })
+  });
+  await throwIfNotOk(res, endpoint);
+  return res.json();
+}
+async function setAgentAvailability(ctx, agentId, available) {
+  const endpoint = "agents/set-availability";
+  const url = agentsUrlWithExtra(ctx, endpoint, {});
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
+    body: JSON.stringify({ agentId, available, orgId: ctx.orgId })
+  });
+  await throwIfNotOk(res, endpoint);
+  return res.json();
+}
+
+// src/api/capabilities.ts
+function capsUrl(ctx, path, extra = {}) {
+  const base = normalizeUrl(ctx.baseUrl);
+  const params = new URLSearchParams(extra);
+  params.set("orgId", ctx.orgId);
+  return `${base}/${path}?${params.toString()}`;
+}
+async function throwIfNotOk2(res, endpoint) {
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+}
+async function fetchCapabilities(ctx) {
+  const endpoint = "capabilities";
+  const url = capsUrl(ctx, endpoint, { includeInactive: "true", includeUnavailable: "true" });
+  const res = await fetch(url, {
+    method: "GET",
+    headers: bbApiAuthHeaders(ctx)
+  });
+  await throwIfNotOk2(res, endpoint);
+  return res.json();
+}
+async function setCapabilityActive(ctx, capabilityId, active) {
+  const endpoint = "capabilities/set-active";
+  const url = capsUrl(ctx, endpoint);
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
+    body: JSON.stringify({ capabilityId, active })
+  });
+  await throwIfNotOk2(res, endpoint);
+  return res.json();
+}
+async function setCapabilityAvailability(ctx, capabilityId, available) {
+  const endpoint = "capabilities/set-availability";
+  const url = capsUrl(ctx, endpoint);
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
+    body: JSON.stringify({ capabilityId, available, orgId: ctx.orgId })
+  });
+  await throwIfNotOk2(res, endpoint);
+  return res.json();
+}
+
+// src/api/tenant-config.ts
+async function throwIfNotOk3(res, endpoint) {
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+}
+async function getTenantConfig(ctx) {
+  const endpoint = "tenants";
+  const base = normalizeUrl(ctx.baseUrl);
+  const params = new URLSearchParams({ orgId: ctx.orgId });
+  const url = `${base}/${endpoint}?${params.toString()}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: bbApiAuthHeaders(ctx)
+  });
+  await throwIfNotOk3(res, endpoint);
+  const data = await res.json();
+  return { customAgentsEnabled: data.config?.customAgentsEnabled ?? false };
+}
+async function setCustomAgentsEnabled(ctx, enabled) {
+  const endpoint = "tenants/config";
+  const base = normalizeUrl(ctx.baseUrl);
+  const params = new URLSearchParams({ orgId: ctx.orgId });
+  const url = `${base}/${endpoint}?${params.toString()}`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
+    body: JSON.stringify({ customAgentsEnabled: enabled })
+  });
+  await throwIfNotOk3(res, endpoint);
+}
+
 export {
   authHeaders,
   normalizeUrl,
@@ -366,6 +518,14 @@ export {
   getTenantById,
   getAvailableWebSearchProviders,
   setConversationWebSearch,
-  getConversationWebSearch
+  getConversationWebSearch,
+  fetchAgents,
+  setAgentActive,
+  setAgentAvailability,
+  fetchCapabilities,
+  setCapabilityActive,
+  setCapabilityAvailability,
+  getTenantConfig,
+  setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-GYBOOGHJ.js.map
+//# sourceMappingURL=chunk-GGN3F2YF.js.map
