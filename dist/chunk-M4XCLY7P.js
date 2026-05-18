@@ -2,6 +2,12 @@
 import { marked } from "marked";
 marked.use({ gfm: true });
 var DEFAULT_ALLOWED_PROTOCOLS = ["https:", "http:", "mailto:"];
+function cls(opts, suffix) {
+  return opts.classPrefix ? opts.classPrefix + suffix : "";
+}
+function setClass(el, className) {
+  if (className) el.className = className;
+}
 function appendInlineTokens(parent, tokens, opts, doc) {
   for (const token of tokens) {
     appendInlineToken(parent, token, opts, doc);
@@ -20,24 +26,28 @@ function appendInlineToken(parent, token, opts, doc) {
     }
     case "strong": {
       const el = doc.createElement("strong");
+      setClass(el, cls(opts, "-strong"));
       appendInlineTokens(el, token.tokens ?? [], opts, doc);
       parent.appendChild(el);
       break;
     }
     case "em": {
       const el = doc.createElement("em");
+      setClass(el, cls(opts, "-em"));
       appendInlineTokens(el, token.tokens ?? [], opts, doc);
       parent.appendChild(el);
       break;
     }
     case "del": {
       const el = doc.createElement("del");
+      setClass(el, cls(opts, "-del"));
       appendInlineTokens(el, token.tokens ?? [], opts, doc);
       parent.appendChild(el);
       break;
     }
     case "codespan": {
       const el = doc.createElement("code");
+      setClass(el, cls(opts, "-code"));
       el.textContent = token.text;
       parent.appendChild(el);
       break;
@@ -53,6 +63,7 @@ function appendInlineToken(parent, token, opts, doc) {
       }
       if (safe) {
         const a = doc.createElement("a");
+        setClass(a, cls(opts, "-link"));
         a.setAttribute("href", href);
         if (opts.target) a.setAttribute("target", opts.target);
         if (opts.rel) a.setAttribute("rel", opts.rel);
@@ -92,8 +103,10 @@ function appendBlockToken(parent, token, opts, doc) {
   switch (token.type) {
     case "heading": {
       const ht = token;
-      const tag = `h${Math.min(6, Math.max(1, ht.depth))}`;
+      const depth = Math.min(6, Math.max(1, ht.depth));
+      const tag = `h${depth}`;
       const el = doc.createElement(tag);
+      setClass(el, cls(opts, `-h${depth}`));
       appendInlineTokens(el, ht.tokens ?? [], opts, doc);
       parent.appendChild(el);
       break;
@@ -101,6 +114,7 @@ function appendBlockToken(parent, token, opts, doc) {
     case "paragraph": {
       const pt = token;
       const p = doc.createElement("p");
+      setClass(p, cls(opts, "-p"));
       appendInlineTokens(p, pt.tokens ?? [], opts, doc);
       parent.appendChild(p);
       break;
@@ -108,8 +122,10 @@ function appendBlockToken(parent, token, opts, doc) {
     case "code": {
       const ct = token;
       const pre = doc.createElement("pre");
+      setClass(pre, cls(opts, "-pre"));
       const code = doc.createElement("code");
-      if (ct.lang) code.setAttribute("class", `language-${ct.lang}`);
+      const combined = [cls(opts, "-pre-code"), ct.lang ? `language-${ct.lang}` : ""].filter(Boolean).join(" ");
+      if (combined) code.setAttribute("class", combined);
       code.textContent = ct.text;
       pre.appendChild(code);
       parent.appendChild(pre);
@@ -117,6 +133,7 @@ function appendBlockToken(parent, token, opts, doc) {
     }
     case "blockquote": {
       const bq = doc.createElement("blockquote");
+      setClass(bq, cls(opts, "-quote"));
       appendBlockTokens(bq, token.tokens ?? [], opts, doc);
       parent.appendChild(bq);
       break;
@@ -124,8 +141,10 @@ function appendBlockToken(parent, token, opts, doc) {
     case "list": {
       const lt = token;
       const list = doc.createElement(lt.ordered ? "ol" : "ul");
+      setClass(list, cls(opts, lt.ordered ? "-ol" : "-ul"));
       for (const item of lt.items) {
         const li = doc.createElement("li");
+        setClass(li, cls(opts, "-li"));
         if (item.tokens && item.tokens.length > 0) {
           appendBlockTokens(li, item.tokens, opts, doc);
         } else {
@@ -139,10 +158,14 @@ function appendBlockToken(parent, token, opts, doc) {
     case "table": {
       const tt = token;
       const table = doc.createElement("table");
+      setClass(table, cls(opts, "-table"));
       const thead = doc.createElement("thead");
+      setClass(thead, cls(opts, "-thead"));
       const headerRow = doc.createElement("tr");
+      setClass(headerRow, cls(opts, "-tr"));
       for (const cell of tt.header) {
         const th = doc.createElement("th");
+        setClass(th, cls(opts, "-th"));
         if (cell.align) th.setAttribute("style", `text-align:${cell.align}`);
         appendInlineTokens(th, cell.tokens ?? [], opts, doc);
         headerRow.appendChild(th);
@@ -150,11 +173,14 @@ function appendBlockToken(parent, token, opts, doc) {
       thead.appendChild(headerRow);
       table.appendChild(thead);
       const tbody = doc.createElement("tbody");
+      setClass(tbody, cls(opts, "-tbody"));
       for (const row of tt.rows) {
         const tr = doc.createElement("tr");
+        setClass(tr, cls(opts, "-tr"));
         for (let i = 0; i < row.length; i++) {
           const cell = row[i];
           const td = doc.createElement("td");
+          setClass(td, cls(opts, "-td"));
           const align = tt.header[i]?.align;
           if (align) td.setAttribute("style", `text-align:${align}`);
           appendInlineTokens(td, cell.tokens ?? [], opts, doc);
@@ -167,7 +193,9 @@ function appendBlockToken(parent, token, opts, doc) {
       break;
     }
     case "hr": {
-      parent.appendChild(doc.createElement("hr"));
+      const hr = doc.createElement("hr");
+      setClass(hr, cls(opts, "-hr"));
+      parent.appendChild(hr);
       break;
     }
     case "space": {
@@ -189,7 +217,8 @@ function renderMarkdown(text, options, doc = document) {
   const opts = {
     allowedProtocols: options?.allowedProtocols ?? DEFAULT_ALLOWED_PROTOCOLS,
     target: options?.target ?? "_blank",
-    rel: options?.rel ?? "noreferrer noopener"
+    rel: options?.rel ?? "noreferrer noopener",
+    classPrefix: options?.classPrefix ?? ""
   };
   const tokens = marked.lexer(text);
   const fragment = doc.createDocumentFragment();
@@ -253,4 +282,4 @@ export {
   themeIcon,
   timeAgo
 };
-//# sourceMappingURL=chunk-RSMKYJBO.js.map
+//# sourceMappingURL=chunk-M4XCLY7P.js.map

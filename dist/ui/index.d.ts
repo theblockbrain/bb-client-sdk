@@ -5,6 +5,13 @@ interface MarkdownOptions {
     target?: "_blank" | "_self";
     /** Link rel attribute. Default: "noreferrer noopener" */
     rel?: string;
+    /**
+     * Optional class-name prefix added to every emitted element.
+     * Example: `classPrefix: "md"` → `<h1 class="md-h1">`, `<p class="md-p">`, etc.
+     *
+     * When undefined (default), no classes are added — backward-compatible.
+     */
+    classPrefix?: string;
 }
 /**
  * Render markdown to a DocumentFragment without innerHTML or eval.

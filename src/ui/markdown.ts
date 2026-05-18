@@ -13,6 +13,23 @@ export interface MarkdownOptions {
   target?: "_blank" | "_self";
   /** Link rel attribute. Default: "noreferrer noopener" */
   rel?: string;
+  /**
+   * Optional class-name prefix added to every emitted element.
+   * Example: `classPrefix: "md"` → `<h1 class="md-h1">`, `<p class="md-p">`, etc.
+   *
+   * When undefined (default), no classes are added — backward-compatible.
+   */
+  classPrefix?: string;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function cls(opts: Required<MarkdownOptions>, suffix: string): string {
+  return opts.classPrefix ? opts.classPrefix + suffix : "";
+}
+
+function setClass(el: HTMLElement, className: string): void {
+  if (className) el.className = className;
 }
 
 // ─── Inline walker ────────────────────────────────────────────────────────────
@@ -47,24 +64,28 @@ function appendInlineToken(
     }
     case "strong": {
       const el = doc.createElement("strong");
+      setClass(el, cls(opts, "-strong"));
       appendInlineTokens(el, (token as Tokens.Strong).tokens ?? [], opts, doc);
       parent.appendChild(el);
       break;
     }
     case "em": {
       const el = doc.createElement("em");
+      setClass(el, cls(opts, "-em"));
       appendInlineTokens(el, (token as Tokens.Em).tokens ?? [], opts, doc);
       parent.appendChild(el);
       break;
     }
     case "del": {
       const el = doc.createElement("del");
+      setClass(el, cls(opts, "-del"));
       appendInlineTokens(el, (token as Tokens.Del).tokens ?? [], opts, doc);
       parent.appendChild(el);
       break;
     }
     case "codespan": {
       const el = doc.createElement("code");
+      setClass(el, cls(opts, "-code"));
       el.textContent = (token as Tokens.Codespan).text;
       parent.appendChild(el);
       break;
@@ -81,6 +102,7 @@ function appendInlineToken(
       }
       if (safe) {
         const a = doc.createElement("a");
+        setClass(a, cls(opts, "-link"));
         a.setAttribute("href", href);
         if (opts.target) a.setAttribute("target", opts.target);
         if (opts.rel) a.setAttribute("rel", opts.rel);
@@ -137,8 +159,10 @@ function appendBlockToken(
   switch (token.type) {
     case "heading": {
       const ht = token as Tokens.Heading;
-      const tag = (`h${Math.min(6, Math.max(1, ht.depth))}` as keyof HTMLElementTagNameMap);
+      const depth = Math.min(6, Math.max(1, ht.depth));
+      const tag = `h${depth}` as keyof HTMLElementTagNameMap;
       const el = doc.createElement(tag);
+      setClass(el, cls(opts, `-h${depth}`));
       appendInlineTokens(el, ht.tokens ?? [], opts, doc);
       parent.appendChild(el);
       break;
@@ -146,6 +170,7 @@ function appendBlockToken(
     case "paragraph": {
       const pt = token as Tokens.Paragraph;
       const p = doc.createElement("p");
+      setClass(p, cls(opts, "-p"));
       appendInlineTokens(p, pt.tokens ?? [], opts, doc);
       parent.appendChild(p);
       break;
@@ -153,8 +178,14 @@ function appendBlockToken(
     case "code": {
       const ct = token as Tokens.Code;
       const pre = doc.createElement("pre");
+      setClass(pre, cls(opts, "-pre"));
       const code = doc.createElement("code");
-      if (ct.lang) code.setAttribute("class", `language-${ct.lang}`);
+      // Combine prefix class and language class so syntax highlighters still work
+      // alongside Tailwind class-targeting. Only set the attribute when non-empty.
+      const combined = [cls(opts, "-pre-code"), ct.lang ? `language-${ct.lang}` : ""]
+        .filter(Boolean)
+        .join(" ");
+      if (combined) code.setAttribute("class", combined);
       code.textContent = ct.text;
       pre.appendChild(code);
       parent.appendChild(pre);
@@ -162,6 +193,7 @@ function appendBlockToken(
     }
     case "blockquote": {
       const bq = doc.createElement("blockquote");
+      setClass(bq, cls(opts, "-quote"));
       appendBlockTokens(bq, (token as Tokens.Blockquote).tokens ?? [], opts, doc);
       parent.appendChild(bq);
       break;
@@ -169,8 +201,10 @@ function appendBlockToken(
     case "list": {
       const lt = token as Tokens.List;
       const list = doc.createElement(lt.ordered ? "ol" : "ul");
+      setClass(list, cls(opts, lt.ordered ? "-ol" : "-ul"));
       for (const item of lt.items) {
         const li = doc.createElement("li");
+        setClass(li, cls(opts, "-li"));
         // List items may contain block-level tokens (nested lists, paragraphs)
         if (item.tokens && item.tokens.length > 0) {
           appendBlockTokens(li, item.tokens, opts, doc);
@@ -185,11 +219,15 @@ function appendBlockToken(
     case "table": {
       const tt = token as Tokens.Table;
       const table = doc.createElement("table");
+      setClass(table, cls(opts, "-table"));
 
       const thead = doc.createElement("thead");
+      setClass(thead, cls(opts, "-thead"));
       const headerRow = doc.createElement("tr");
+      setClass(headerRow, cls(opts, "-tr"));
       for (const cell of tt.header) {
         const th = doc.createElement("th");
+        setClass(th, cls(opts, "-th"));
         if (cell.align) th.setAttribute("style", `text-align:${cell.align}`);
         appendInlineTokens(th, cell.tokens ?? [], opts, doc);
         headerRow.appendChild(th);
@@ -198,11 +236,14 @@ function appendBlockToken(
       table.appendChild(thead);
 
       const tbody = doc.createElement("tbody");
+      setClass(tbody, cls(opts, "-tbody"));
       for (const row of tt.rows) {
         const tr = doc.createElement("tr");
+        setClass(tr, cls(opts, "-tr"));
         for (let i = 0; i < row.length; i++) {
           const cell = row[i];
           const td = doc.createElement("td");
+          setClass(td, cls(opts, "-td"));
           const align = tt.header[i]?.align;
           if (align) td.setAttribute("style", `text-align:${align}`);
           appendInlineTokens(td, cell.tokens ?? [], opts, doc);
@@ -215,7 +256,9 @@ function appendBlockToken(
       break;
     }
     case "hr": {
-      parent.appendChild(doc.createElement("hr"));
+      const hr = doc.createElement("hr");
+      setClass(hr, cls(opts, "-hr"));
+      parent.appendChild(hr);
       break;
     }
     case "space": {
@@ -257,6 +300,7 @@ export function renderMarkdown(
     allowedProtocols: options?.allowedProtocols ?? DEFAULT_ALLOWED_PROTOCOLS,
     target: options?.target ?? "_blank",
     rel: options?.rel ?? "noreferrer noopener",
+    classPrefix: options?.classPrefix ?? "",
   };
 
   const tokens = marked.lexer(text);
