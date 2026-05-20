@@ -4,12 +4,22 @@ Shared frontend SDK for BlockBrain apps (Chrome extension, Outlook add-in, futur
 
 ## Install
 
+```sh
+# .npmrc (project-level, committed — no token here)
+@theblockbrain:registry=https://npm.pkg.github.com
+
+# ~/.npmrc (machine-level, not committed)
+//npm.pkg.github.com/:_authToken=<PAT with read:packages>
+```
+
 ```jsonc
-// package.json — via Git URL (private repo)
+// package.json
 "dependencies": {
-  "@theblockbrain/bb-client-sdk": "github:theblockbrain/bb-client-sdk#main"
+  "@theblockbrain/bb-client-sdk": "^0.7.2"
 }
 ```
+
+The package is published to GitHub Packages (private, `theblockbrain` org). Consumers need a GitHub PAT with `read:packages` scope configured locally, and their repo must be granted access under the package settings.
 
 ## Sub-path imports
 
@@ -168,4 +178,4 @@ await beginBrowserLogin({ clientId, authorizeEndpoint, tokenEndpoint, redirectUr
 
 ## Release
 
-Tag `vX.Y.Z` on main. Apps pin `#main` for latest or `#vX.Y.Z` for stability.
+Push tag `vX.Y.Z` on main — the publish workflow triggers automatically and publishes to GitHub Packages.
