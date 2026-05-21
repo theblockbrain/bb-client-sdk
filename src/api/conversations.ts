@@ -60,8 +60,9 @@ export async function deleteConversation(
 }
 
 /**
- * Shape mirrors v1-frontend `UploadedFile` (lib/firestore-types.ts).
- * Backend route returns `AttachedFilesDTO` directly — no CommonResponseDTO envelope.
+ * Shape mirrors v1-frontend `UploadedFile` (lib/firestore-types.ts) plus
+ * additional fields observed in the live API response.
+ * Backend wraps the DTO in a CommonResponseDTO envelope: `{ code, key, body: AttachedFilesDTO }`.
  */
 export interface AttachmentUploadResult {
   _id: string;
@@ -72,23 +73,32 @@ export interface AttachmentUploadResult {
   modifiedAt: string;
   status: string;
   success?: boolean;
-  errorMessage?: string;
+  errorMessage?: string | null;
   calculatedStatus?: string;
-  url?: string;
-  originUrl?: string;
-  thumbUrl?: string;
+  /** Detected file type, e.g. "TEXT", "IMAGE". */
+  fileType?: string;
+  url?: string | null;
+  originUrl?: string | null;
+  thumbUrl?: string | null;
   isDeleted?: boolean;
   /** Whether the file was processed with Smart OCR. */
   isSmartOcr?: boolean;
   /** Key used to detect and handle duplicate uploads. */
-  uploadKey?: string;
+  uploadKey?: string | null;
   /** Conversation this attachment belongs to. */
   convoId?: string;
   /** Data room this attachment belongs to (when promoted). */
-  dataroomId?: string;
+  dataroomId?: string | null;
   /** Whether the attachment has been permanently saved to a data room. */
   isSaved?: boolean;
-  archivedAt?: string;
+  archivedAt?: string | null;
+  dataRetentionConfig?: unknown;
+}
+
+interface AttachmentUploadEnvelope {
+  code: number;
+  key: string | null;
+  body: AttachmentUploadResult;
 }
 
 /**
@@ -111,9 +121,9 @@ export interface AttachmentUploadResult {
  * @param sessionId - Fresh UUID per batch. Groups concurrent uploads in the backend
  *                    processing pipeline.
  *
- * NOTE: Do NOT spread `authHeaders()` result into a manually constructed object that
- * also sets `Content-Type` — the multipart boundary must be set by the runtime when
- * a `FormData` body is provided. See `authHeaders` in headers.ts for context.
+ * NOTE: Do NOT add `Content-Type` to the headers object — the multipart boundary
+ * must be set by the runtime when a `FormData` body is provided. See `authHeaders`
+ * in headers.ts for context.
  */
 export async function uploadConversationAttachment(
   ctx: AuthContext,
@@ -143,10 +153,11 @@ export async function uploadConversationAttachment(
     throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
   }
 
-  // Backend returns AttachedFilesDTO flat — no CommonResponseDTO envelope.
-  const data = (await res.json()) as AttachmentUploadResult;
-  if (!data._id || !data.name) {
-    throw new BBApiError("Attachment upload response missing required fields", res.status, { endpoint, responseBody: data });
+  // Backend wraps in CommonResponseDTO: { code, key, body: AttachedFilesDTO }
+  const envelope = (await res.json()) as AttachmentUploadEnvelope;
+  const data = envelope.body;
+  if (!data?._id || !data?.name) {
+    throw new BBApiError("Attachment upload response missing required fields", res.status, { endpoint, responseBody: envelope });
   }
   return data;
 }

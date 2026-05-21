@@ -1,11 +1,4 @@
 import {
-  buildEmailPrompt,
-  buildNewEmailPrompt,
-  buildPagePrompt,
-  parseResponse,
-  parseSubjectAndBody
-} from "./chunk-EFKOQZLN.js";
-import {
   createLock,
   extractCode,
   extractJson,
@@ -13,12 +6,18 @@ import {
   siteKey
 } from "./chunk-TC3463HT.js";
 import {
+  applyTheme,
+  configureLogo,
+  cycleTheme,
+  renderMarkdown,
+  renderMarkdownInto,
+  themeIcon,
+  timeAgo
+} from "./chunk-ZJIUWD7E.js";
+import {
   AVAILABLE_ACTIONS,
   runActions
 } from "./chunk-TUTKA2JH.js";
-import {
-  ACTION_SYSTEM_PROMPT
-} from "./chunk-C25NYCKP.js";
 import {
   BBApiError,
   authHeaders,
@@ -47,7 +46,7 @@ import {
   setCustomAgentsEnabled,
   transcribeAudio,
   uploadConversationAttachment
-} from "./chunk-3KDAGV7L.js";
+} from "./chunk-RFMWBDQK.js";
 import {
   beginBrowserLogin,
   completeBrowserLogin,
@@ -61,6 +60,16 @@ import {
   generateVerifier,
   login
 } from "./chunk-535SU5A4.js";
+import {
+  buildEmailPrompt,
+  buildNewEmailPrompt,
+  buildPagePrompt,
+  parseResponse,
+  parseSubjectAndBody
+} from "./chunk-EFKOQZLN.js";
+import {
+  ACTION_SYSTEM_PROMPT
+} from "./chunk-C25NYCKP.js";
 import {
   DEFAULTS,
   getAuthContext,
@@ -81,15 +90,6 @@ import {
   OAUTH_BACKEND_URL,
   TOKEN_ENDPOINT
 } from "./chunk-OPBRY7NV.js";
-import {
-  applyTheme,
-  configureLogo,
-  cycleTheme,
-  renderMarkdown,
-  renderMarkdownInto,
-  themeIcon,
-  timeAgo
-} from "./chunk-ZJIUWD7E.js";
 export {
   ACTION_SYSTEM_PROMPT,
   AUTHORIZE_ENDPOINT,

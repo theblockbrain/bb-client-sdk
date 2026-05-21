@@ -155,9 +155,10 @@ async function uploadConversationAttachment(ctx, convoId, file, sessionId) {
     }
     throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
   }
-  const data = await res.json();
-  if (!data._id || !data.name) {
-    throw new BBApiError("Attachment upload response missing required fields", res.status, { endpoint, responseBody: data });
+  const envelope = await res.json();
+  const data = envelope.body;
+  if (!data?._id || !data?.name) {
+    throw new BBApiError("Attachment upload response missing required fields", res.status, { endpoint, responseBody: envelope });
   }
   return data;
 }
@@ -553,4 +554,4 @@ export {
   getTenantConfig,
   setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-3KDAGV7L.js.map
+//# sourceMappingURL=chunk-RFMWBDQK.js.map
