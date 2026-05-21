@@ -1,11 +1,4 @@
 import {
-  createLock,
-  extractCode,
-  extractJson,
-  repairUnescapedQuotes,
-  siteKey
-} from "./chunk-TC3463HT.js";
-import {
   applyTheme,
   configureLogo,
   cycleTheme,
@@ -14,6 +7,13 @@ import {
   themeIcon,
   timeAgo
 } from "./chunk-ZJIUWD7E.js";
+import {
+  createLock,
+  extractCode,
+  extractJson,
+  repairUnescapedQuotes,
+  siteKey
+} from "./chunk-TC3463HT.js";
 import {
   AVAILABLE_ACTIONS,
   runActions
@@ -46,7 +46,7 @@ import {
   setCustomAgentsEnabled,
   transcribeAudio,
   uploadConversationAttachment
-} from "./chunk-RFMWBDQK.js";
+} from "./chunk-UP3GD5RA.js";
 import {
   beginBrowserLogin,
   completeBrowserLogin,

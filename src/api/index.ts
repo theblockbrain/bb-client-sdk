@@ -6,7 +6,7 @@ export type { IntrospectResponse } from "./introspect.js";
 export { fetchBotList } from "./bots.js";
 export type { Bot } from "./bots.js";
 export { createConversation, deleteConversation, uploadConversationAttachment } from "./conversations.js";
-export type { AttachmentUploadResult } from "./conversations.js";
+export type { AttachmentUploadResult, UploadAttachmentOptions } from "./conversations.js";
 export { sendMessage, getMessageList } from "./messages.js";
 export type { SendMessageOptions, MessageItem, MessageListBody, GetMessageListOptions } from "./messages.js";
 export { transcribeAudio } from "./transcribe.js";
