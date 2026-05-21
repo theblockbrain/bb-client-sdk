@@ -100,30 +100,52 @@ interface AttachmentUploadResult {
     dataRetentionConfig?: unknown;
 }
 /**
+ * Optional parameters for `uploadConversationAttachment`.
+ * All map directly to backend Form fields in `direct_upload_attachment`
+ * (blocky/src/api/nexus/conversation/routes.py).
+ * When omitted, the backend applies its own defaults.
+ */
+interface UploadAttachmentOptions {
+    /**
+     * Run AWS Textract OCR on PDFs and images for higher-fidelity text extraction.
+     * Backend default: true for PDF/image, false for plain text.
+     */
+    isSmartOcr?: boolean;
+    /**
+     * When a file with the same name already exists in the conversation:
+     * keep both files side-by-side. Mutually exclusive with `isOverwriteDuplicate`.
+     */
+    isKeepBothDuplicate?: boolean;
+    /**
+     * When a file with the same name already exists in the conversation:
+     * overwrite the existing file. Mutually exclusive with `isKeepBothDuplicate`.
+     */
+    isOverwriteDuplicate?: boolean;
+    /**
+     * Opaque key for grouping or deduplicating uploads on the server side.
+     * Distinct from `sessionId` — used by callers that manage upload identity
+     * independently of the session grouping.
+     */
+    uploadKey?: string;
+}
+/**
  * Upload a file as an attachment to an existing conversation.
  * The file is processed and made available as context for subsequent messages.
  *
  * POST /cortex/conversation/:convoId/attachment (multipart/form-data)
  * Backend route: blocky/src/api/nexus/conversation/routes.py — `direct_upload_attachment`
  *
- * Required form fields:
- *   - `attachment` — the file
- *   - `session_id` — opaque value grouping attachments from a single user-initiated
- *     upload flow. Pass a fresh `crypto.randomUUID()` per upload batch.
- *
- * Known optional form fields (not exposed here — add overload if needed):
- *   `is_smart_ocr`, `is_keep_both_duplicate`, `is_overwrite_duplicate`, `upload_key`
- *
  * @param file      - A `File` (browser) or `Blob` with a `.name` property. In Bun/Node,
  *                    pass `new File([buffer], filename, { type: mimeType })`.
  * @param sessionId - Fresh UUID per batch. Groups concurrent uploads in the backend
- *                    processing pipeline.
+ *                    processing pipeline. Required by the backend.
+ * @param options   - Optional upload behaviour overrides (OCR, duplicate handling, etc.).
  *
  * NOTE: Do NOT add `Content-Type` to the headers object — the multipart boundary
  * must be set by the runtime when a `FormData` body is provided. See `authHeaders`
  * in headers.ts for context.
  */
-declare function uploadConversationAttachment(ctx: AuthContext, convoId: string, file: File | Blob, sessionId: string): Promise<AttachmentUploadResult>;
+declare function uploadConversationAttachment(ctx: AuthContext, convoId: string, file: File | Blob, sessionId: string, options?: UploadAttachmentOptions): Promise<AttachmentUploadResult>;
 
 interface SendMessageOptions {
     /** Enable streaming mode. Default: false. */
@@ -346,4 +368,4 @@ declare function getTenantConfig(ctx: AuthContext, targetOrgId?: string): Promis
  */
 declare function setCustomAgentsEnabled(ctx: AuthContext, enabled: boolean, targetOrgId?: string): Promise<void>;
 
-export { type Agent, type AgentsResponse, type ApiResponse, type AttachmentUploadResult, BBApiError, type Bot, type CapabilitiesResponse, type Capability, type ConversationWebSearchSettings, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type SendMessageOptions, type TenantConfig, type TenantDetail, type TenantSummary, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, deleteConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchAgents, fetchBotList, fetchCapabilities, getAvailableWebSearchProviders, getConversationWebSearch, getMessageList, getTenantById, getTenantConfig, introspectApiKey, isBBApiError, listTenants, normalizeUrl, sendMessage, setAgentActive, setAgentAvailability, setCapabilityActive, setCapabilityAvailability, setConversationWebSearch, setCustomAgentsEnabled, transcribeAudio, uploadConversationAttachment };
+export { type Agent, type AgentsResponse, type ApiResponse, type AttachmentUploadResult, BBApiError, type Bot, type CapabilitiesResponse, type Capability, type ConversationWebSearchSettings, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type SendMessageOptions, type TenantConfig, type TenantDetail, type TenantSummary, type UploadAttachmentOptions, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, deleteConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchAgents, fetchBotList, fetchCapabilities, getAvailableWebSearchProviders, getConversationWebSearch, getMessageList, getTenantById, getTenantConfig, introspectApiKey, isBBApiError, listTenants, normalizeUrl, sendMessage, setAgentActive, setAgentAvailability, setCapabilityActive, setCapabilityAvailability, setConversationWebSearch, setCustomAgentsEnabled, transcribeAudio, uploadConversationAttachment };

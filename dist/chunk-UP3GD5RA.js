@@ -136,12 +136,24 @@ async function deleteConversation(ctx, convoId) {
     throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
   }
 }
-async function uploadConversationAttachment(ctx, convoId, file, sessionId) {
+async function uploadConversationAttachment(ctx, convoId, file, sessionId, options) {
   const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}/attachment`;
   const url = normalizeUrl(ctx.baseUrl);
   const form = new FormData();
   form.append("attachment", file);
   form.append("session_id", sessionId);
+  if (options?.isSmartOcr !== void 0) {
+    form.append("is_smart_ocr", String(options.isSmartOcr));
+  }
+  if (options?.isKeepBothDuplicate !== void 0) {
+    form.append("is_keep_both_duplicate", String(options.isKeepBothDuplicate));
+  }
+  if (options?.isOverwriteDuplicate !== void 0) {
+    form.append("is_overwrite_duplicate", String(options.isOverwriteDuplicate));
+  }
+  if (options?.uploadKey !== void 0) {
+    form.append("upload_key", options.uploadKey);
+  }
   const res = await fetch(`${url}${endpoint}`, {
     method: "POST",
     headers: authHeaders(ctx.token, ctx.orgId),
@@ -554,4 +566,4 @@ export {
   getTenantConfig,
   setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-RFMWBDQK.js.map
+//# sourceMappingURL=chunk-UP3GD5RA.js.map

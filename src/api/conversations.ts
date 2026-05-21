@@ -102,24 +102,47 @@ interface AttachmentUploadEnvelope {
 }
 
 /**
+ * Optional parameters for `uploadConversationAttachment`.
+ * All map directly to backend Form fields in `direct_upload_attachment`
+ * (blocky/src/api/nexus/conversation/routes.py).
+ * When omitted, the backend applies its own defaults.
+ */
+export interface UploadAttachmentOptions {
+  /**
+   * Run AWS Textract OCR on PDFs and images for higher-fidelity text extraction.
+   * Backend default: true for PDF/image, false for plain text.
+   */
+  isSmartOcr?: boolean;
+  /**
+   * When a file with the same name already exists in the conversation:
+   * keep both files side-by-side. Mutually exclusive with `isOverwriteDuplicate`.
+   */
+  isKeepBothDuplicate?: boolean;
+  /**
+   * When a file with the same name already exists in the conversation:
+   * overwrite the existing file. Mutually exclusive with `isKeepBothDuplicate`.
+   */
+  isOverwriteDuplicate?: boolean;
+  /**
+   * Opaque key for grouping or deduplicating uploads on the server side.
+   * Distinct from `sessionId` — used by callers that manage upload identity
+   * independently of the session grouping.
+   */
+  uploadKey?: string;
+}
+
+/**
  * Upload a file as an attachment to an existing conversation.
  * The file is processed and made available as context for subsequent messages.
  *
  * POST /cortex/conversation/:convoId/attachment (multipart/form-data)
  * Backend route: blocky/src/api/nexus/conversation/routes.py — `direct_upload_attachment`
  *
- * Required form fields:
- *   - `attachment` — the file
- *   - `session_id` — opaque value grouping attachments from a single user-initiated
- *     upload flow. Pass a fresh `crypto.randomUUID()` per upload batch.
- *
- * Known optional form fields (not exposed here — add overload if needed):
- *   `is_smart_ocr`, `is_keep_both_duplicate`, `is_overwrite_duplicate`, `upload_key`
- *
  * @param file      - A `File` (browser) or `Blob` with a `.name` property. In Bun/Node,
  *                    pass `new File([buffer], filename, { type: mimeType })`.
  * @param sessionId - Fresh UUID per batch. Groups concurrent uploads in the backend
- *                    processing pipeline.
+ *                    processing pipeline. Required by the backend.
+ * @param options   - Optional upload behaviour overrides (OCR, duplicate handling, etc.).
  *
  * NOTE: Do NOT add `Content-Type` to the headers object — the multipart boundary
  * must be set by the runtime when a `FormData` body is provided. See `authHeaders`
@@ -130,6 +153,7 @@ export async function uploadConversationAttachment(
   convoId: string,
   file: File | Blob,
   sessionId: string,
+  options?: UploadAttachmentOptions,
 ): Promise<AttachmentUploadResult> {
   const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}/attachment`;
   const url = normalizeUrl(ctx.baseUrl);
@@ -137,6 +161,19 @@ export async function uploadConversationAttachment(
   const form = new FormData();
   form.append("attachment", file);
   form.append("session_id", sessionId);
+
+  if (options?.isSmartOcr !== undefined) {
+    form.append("is_smart_ocr", String(options.isSmartOcr));
+  }
+  if (options?.isKeepBothDuplicate !== undefined) {
+    form.append("is_keep_both_duplicate", String(options.isKeepBothDuplicate));
+  }
+  if (options?.isOverwriteDuplicate !== undefined) {
+    form.append("is_overwrite_duplicate", String(options.isOverwriteDuplicate));
+  }
+  if (options?.uploadKey !== undefined) {
+    form.append("upload_key", options.uploadKey);
+  }
 
   // Do NOT set Content-Type here — the runtime sets the multipart boundary
   // automatically when a FormData body is provided. Manually setting
