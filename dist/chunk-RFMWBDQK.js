@@ -99,7 +99,7 @@ async function fetchBotList(ctx) {
 
 // src/api/conversations.ts
 async function createConversation(ctx, botId, convoName = "BlockBrain Conversation") {
-  const endpoint = `/cortex/active-bot/${botId}/convo`;
+  const endpoint = `/cortex/active-bot/${encodeURIComponent(botId)}/convo`;
   const url = normalizeUrl(ctx.baseUrl);
   const res = await fetch(`${url}${endpoint}`, {
     method: "POST",
@@ -119,6 +119,48 @@ async function createConversation(ctx, botId, convoName = "BlockBrain Conversati
   }
   const data = await res.json();
   return { convoId: data.body.dataRoomId };
+}
+async function deleteConversation(ctx, convoId) {
+  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "DELETE",
+    headers: authHeaders(ctx.token, ctx.orgId)
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+}
+async function uploadConversationAttachment(ctx, convoId, file, sessionId) {
+  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}/attachment`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const form = new FormData();
+  form.append("attachment", file);
+  form.append("session_id", sessionId);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "POST",
+    headers: authHeaders(ctx.token, ctx.orgId),
+    body: form
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+  const envelope = await res.json();
+  const data = envelope.body;
+  if (!data?._id || !data?.name) {
+    throw new BBApiError("Attachment upload response missing required fields", res.status, { endpoint, responseBody: envelope });
+  }
+  return data;
 }
 
 // src/api/messages.ts
@@ -492,6 +534,8 @@ export {
   extractOrgIdFromIntrospect,
   fetchBotList,
   createConversation,
+  deleteConversation,
+  uploadConversationAttachment,
   sendMessage,
   getMessageList,
   transcribeAudio,
@@ -510,4 +554,4 @@ export {
   getTenantConfig,
   setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-4OCLLCEG.js.map
+//# sourceMappingURL=chunk-RFMWBDQK.js.map

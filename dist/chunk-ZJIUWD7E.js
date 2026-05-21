@@ -201,6 +201,15 @@ function appendBlockToken(parent, token, opts, doc) {
     case "space": {
       break;
     }
+    case "text": {
+      const t = token;
+      if (t.tokens && t.tokens.length > 0) {
+        appendInlineTokens(parent, t.tokens, opts, doc);
+      } else {
+        parent.appendChild(doc.createTextNode(t.text));
+      }
+      break;
+    }
     case "html": {
       const raw = token.raw;
       if (raw) parent.appendChild(doc.createTextNode(raw));
@@ -282,4 +291,4 @@ export {
   themeIcon,
   timeAgo
 };
-//# sourceMappingURL=chunk-M4XCLY7P.js.map
+//# sourceMappingURL=chunk-ZJIUWD7E.js.map

@@ -265,6 +265,15 @@ function appendBlockToken(
       // whitespace between blocks — skip
       break;
     }
+    case "text": {
+      const t = token as Tokens.Text;
+      if (t.tokens && t.tokens.length > 0) {
+        appendInlineTokens(parent, t.tokens, opts, doc);
+      } else {
+        parent.appendChild(doc.createTextNode(t.text));
+      }
+      break;
+    }
     case "html": {
       // Raw HTML blocks are dropped for XSS safety — render raw text
       const raw = (token as Tokens.HTML).raw;
