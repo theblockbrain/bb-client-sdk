@@ -198,3 +198,47 @@ export async function uploadConversationAttachment(
   }
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// GET /cortex/conversation/:convoId/attachment
+// ---------------------------------------------------------------------------
+
+interface ConversationAttachmentsEnvelope {
+  body: AttachmentUploadResult[];
+}
+
+/**
+ * Returns all attachments for a conversation.
+ * Used to poll until the backend finishes processing uploaded files
+ * (status transitions from "IN_PROGRESS" / "LOADING" to "COMPLETED" / "SUCCESS" / "FAILED").
+ *
+ * Status values observed in production (from v1-frontend constants):
+ *   "IN_PROGRESS" | "LOADING"             — still processing
+ *   "COMPLETED"   | "SUCCESS"             — ready for LLM use
+ *   "ERROR"       | "FAILED"              — processing failed
+ *
+ * GET /cortex/conversation/:convoId/attachment
+ */
+export async function getConversationAttachments(
+  ctx: AuthContext,
+  convoId: string,
+): Promise<AttachmentUploadResult[]> {
+  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}/attachment`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "GET",
+    headers: authHeaders(ctx.token, ctx.orgId),
+  });
+
+  if (!res.ok) {
+    let body: unknown;
+    try { body = await res.json(); } catch { /* response may not be JSON */ }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+
+  // Response may be a plain array or wrapped in a CommonResponseDTO envelope
+  const raw = await res.json();
+  if (Array.isArray(raw)) return raw as AttachmentUploadResult[];
+  const envelope = raw as ConversationAttachmentsEnvelope;
+  return Array.isArray(envelope.body) ? envelope.body : [];
+}

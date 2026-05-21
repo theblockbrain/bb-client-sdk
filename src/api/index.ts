@@ -5,7 +5,7 @@ export { introspectApiKey, extractOrgIdFromIntrospect } from "./introspect.js";
 export type { IntrospectResponse } from "./introspect.js";
 export { fetchBotList } from "./bots.js";
 export type { Bot } from "./bots.js";
-export { createConversation, deleteConversation, uploadConversationAttachment } from "./conversations.js";
+export { createConversation, deleteConversation, uploadConversationAttachment, getConversationAttachments } from "./conversations.js";
 export type { AttachmentUploadResult, UploadAttachmentOptions } from "./conversations.js";
 export { sendMessage, getMessageList } from "./messages.js";
 export type { SendMessageOptions, MessageItem, MessageListBody, GetMessageListOptions } from "./messages.js";
