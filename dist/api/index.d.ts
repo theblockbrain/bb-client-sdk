@@ -3,6 +3,10 @@ import { AuthContext } from '../settings/index.js';
 /**
  * Build auth headers for BlockBrain API requests.
  * x-zitadel-org-id is sent whenever orgId is provided — required for tenant isolation.
+ *
+ * NOTE: Does NOT set Content-Type. For JSON bodies callers add it explicitly;
+ * for multipart/form-data (see uploadConversationAttachment) it must NOT be set
+ * manually — the runtime derives the boundary from the FormData body automatically.
  */
 declare function authHeaders(token: string, orgId?: string | null): Record<string, string>;
 
@@ -60,26 +64,62 @@ declare function createConversation(ctx: AuthContext, botId: string, convoName?:
  * DELETE /cortex/conversation/:convoId
  */
 declare function deleteConversation(ctx: AuthContext, convoId: string): Promise<void>;
+/**
+ * Shape mirrors v1-frontend `UploadedFile` (lib/firestore-types.ts).
+ * Backend route returns `AttachedFilesDTO` directly — no CommonResponseDTO envelope.
+ */
 interface AttachmentUploadResult {
     _id: string;
     name: string;
     tokens: number;
     enabled: boolean;
-    status?: string;
     createdAt: string;
     modifiedAt: string;
+    status: string;
+    success?: boolean;
+    errorMessage?: string;
+    calculatedStatus?: string;
+    url?: string;
+    originUrl?: string;
+    thumbUrl?: string;
+    isDeleted?: boolean;
+    /** Whether the file was processed with Smart OCR. */
+    isSmartOcr?: boolean;
+    /** Key used to detect and handle duplicate uploads. */
+    uploadKey?: string;
+    /** Conversation this attachment belongs to. */
+    convoId?: string;
+    /** Data room this attachment belongs to (when promoted). */
+    dataroomId?: string;
+    /** Whether the attachment has been permanently saved to a data room. */
+    isSaved?: boolean;
+    archivedAt?: string;
 }
 /**
  * Upload a file as an attachment to an existing conversation.
  * The file is processed and made available as context for subsequent messages.
  *
  * POST /cortex/conversation/:convoId/attachment (multipart/form-data)
- * Field name: "attachment"
+ * Backend route: blocky/src/api/nexus/conversation/routes.py — `direct_upload_attachment`
  *
- * @param file - A `File` (browser) or `Blob` with a `.name` property. In Bun/Node,
- *   pass `new File([buffer], filename, { type: mimeType })`.
+ * Required form fields:
+ *   - `attachment` — the file
+ *   - `session_id` — opaque value grouping attachments from a single user-initiated
+ *     upload flow. Pass a fresh `crypto.randomUUID()` per upload batch.
+ *
+ * Known optional form fields (not exposed here — add overload if needed):
+ *   `is_smart_ocr`, `is_keep_both_duplicate`, `is_overwrite_duplicate`, `upload_key`
+ *
+ * @param file      - A `File` (browser) or `Blob` with a `.name` property. In Bun/Node,
+ *                    pass `new File([buffer], filename, { type: mimeType })`.
+ * @param sessionId - Fresh UUID per batch. Groups concurrent uploads in the backend
+ *                    processing pipeline.
+ *
+ * NOTE: Do NOT spread `authHeaders()` result into a manually constructed object that
+ * also sets `Content-Type` — the multipart boundary must be set by the runtime when
+ * a `FormData` body is provided. See `authHeaders` in headers.ts for context.
  */
-declare function uploadConversationAttachment(ctx: AuthContext, convoId: string, file: File | Blob): Promise<AttachmentUploadResult>;
+declare function uploadConversationAttachment(ctx: AuthContext, convoId: string, file: File | Blob, sessionId: string): Promise<AttachmentUploadResult>;
 
 interface SendMessageOptions {
     /** Enable streaming mode. Default: false. */

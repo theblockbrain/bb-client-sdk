@@ -99,7 +99,7 @@ async function fetchBotList(ctx) {
 
 // src/api/conversations.ts
 async function createConversation(ctx, botId, convoName = "BlockBrain Conversation") {
-  const endpoint = `/cortex/active-bot/${botId}/convo`;
+  const endpoint = `/cortex/active-bot/${encodeURIComponent(botId)}/convo`;
   const url = normalizeUrl(ctx.baseUrl);
   const res = await fetch(`${url}${endpoint}`, {
     method: "POST",
@@ -121,7 +121,7 @@ async function createConversation(ctx, botId, convoName = "BlockBrain Conversati
   return { convoId: data.body.dataRoomId };
 }
 async function deleteConversation(ctx, convoId) {
-  const endpoint = `/cortex/conversation/${convoId}`;
+  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}`;
   const url = normalizeUrl(ctx.baseUrl);
   const res = await fetch(`${url}${endpoint}`, {
     method: "DELETE",
@@ -136,11 +136,12 @@ async function deleteConversation(ctx, convoId) {
     throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
   }
 }
-async function uploadConversationAttachment(ctx, convoId, file) {
-  const endpoint = `/cortex/conversation/${convoId}/attachment`;
+async function uploadConversationAttachment(ctx, convoId, file, sessionId) {
+  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}/attachment`;
   const url = normalizeUrl(ctx.baseUrl);
   const form = new FormData();
   form.append("attachment", file);
+  form.append("session_id", sessionId);
   const res = await fetch(`${url}${endpoint}`, {
     method: "POST",
     headers: authHeaders(ctx.token, ctx.orgId),
@@ -155,10 +156,10 @@ async function uploadConversationAttachment(ctx, convoId, file) {
     throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
   }
   const data = await res.json();
-  if (!data?.body) {
-    throw new BBApiError("Attachment upload returned no body", res.status, { endpoint });
+  if (!data._id || !data.name) {
+    throw new BBApiError("Attachment upload response missing required fields", res.status, { endpoint, responseBody: data });
   }
-  return data.body;
+  return data;
 }
 
 // src/api/messages.ts
@@ -552,4 +553,4 @@ export {
   getTenantConfig,
   setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-HSUWGZUF.js.map
+//# sourceMappingURL=chunk-3KDAGV7L.js.map
