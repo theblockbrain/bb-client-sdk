@@ -2,6 +2,7 @@ import {
   BBApiError,
   authHeaders,
   createConversation,
+  deleteConversation,
   discoverFrontendUrls,
   extractOrgIdFromIntrospect,
   fetchAgents,
@@ -23,12 +24,14 @@ import {
   setCapabilityAvailability,
   setConversationWebSearch,
   setCustomAgentsEnabled,
-  transcribeAudio
-} from "../chunk-4OCLLCEG.js";
+  transcribeAudio,
+  uploadConversationAttachment
+} from "../chunk-HSUWGZUF.js";
 export {
   BBApiError,
   authHeaders,
   createConversation,
+  deleteConversation,
   discoverFrontendUrls,
   extractOrgIdFromIntrospect,
   fetchAgents,
@@ -50,6 +53,7 @@ export {
   setCapabilityAvailability,
   setConversationWebSearch,
   setCustomAgentsEnabled,
-  transcribeAudio
+  transcribeAudio,
+  uploadConversationAttachment
 };
 //# sourceMappingURL=index.js.map

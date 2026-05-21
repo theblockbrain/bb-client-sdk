@@ -52,6 +52,34 @@ declare function fetchBotList(ctx: AuthContext): Promise<Bot[]>;
 declare function createConversation(ctx: AuthContext, botId: string, convoName?: string): Promise<{
     convoId: string;
 }>;
+/**
+ * Delete a conversation by ID.
+ * Should be called in a finally block after each batch file pipeline to avoid
+ * leaving orphaned conversations in the user's tenant.
+ *
+ * DELETE /cortex/conversation/:convoId
+ */
+declare function deleteConversation(ctx: AuthContext, convoId: string): Promise<void>;
+interface AttachmentUploadResult {
+    _id: string;
+    name: string;
+    tokens: number;
+    enabled: boolean;
+    status?: string;
+    createdAt: string;
+    modifiedAt: string;
+}
+/**
+ * Upload a file as an attachment to an existing conversation.
+ * The file is processed and made available as context for subsequent messages.
+ *
+ * POST /cortex/conversation/:convoId/attachment (multipart/form-data)
+ * Field name: "attachment"
+ *
+ * @param file - A `File` (browser) or `Blob` with a `.name` property. In Bun/Node,
+ *   pass `new File([buffer], filename, { type: mimeType })`.
+ */
+declare function uploadConversationAttachment(ctx: AuthContext, convoId: string, file: File | Blob): Promise<AttachmentUploadResult>;
 
 interface SendMessageOptions {
     /** Enable streaming mode. Default: false. */
@@ -274,4 +302,4 @@ declare function getTenantConfig(ctx: AuthContext, targetOrgId?: string): Promis
  */
 declare function setCustomAgentsEnabled(ctx: AuthContext, enabled: boolean, targetOrgId?: string): Promise<void>;
 
-export { type Agent, type AgentsResponse, type ApiResponse, BBApiError, type Bot, type CapabilitiesResponse, type Capability, type ConversationWebSearchSettings, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type SendMessageOptions, type TenantConfig, type TenantDetail, type TenantSummary, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchAgents, fetchBotList, fetchCapabilities, getAvailableWebSearchProviders, getConversationWebSearch, getMessageList, getTenantById, getTenantConfig, introspectApiKey, isBBApiError, listTenants, normalizeUrl, sendMessage, setAgentActive, setAgentAvailability, setCapabilityActive, setCapabilityAvailability, setConversationWebSearch, setCustomAgentsEnabled, transcribeAudio };
+export { type Agent, type AgentsResponse, type ApiResponse, type AttachmentUploadResult, BBApiError, type Bot, type CapabilitiesResponse, type Capability, type ConversationWebSearchSettings, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type SendMessageOptions, type TenantConfig, type TenantDetail, type TenantSummary, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, deleteConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchAgents, fetchBotList, fetchCapabilities, getAvailableWebSearchProviders, getConversationWebSearch, getMessageList, getTenantById, getTenantConfig, introspectApiKey, isBBApiError, listTenants, normalizeUrl, sendMessage, setAgentActive, setAgentAvailability, setCapabilityActive, setCapabilityAvailability, setConversationWebSearch, setCustomAgentsEnabled, transcribeAudio, uploadConversationAttachment };

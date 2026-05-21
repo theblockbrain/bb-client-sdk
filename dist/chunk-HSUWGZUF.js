@@ -120,6 +120,46 @@ async function createConversation(ctx, botId, convoName = "BlockBrain Conversati
   const data = await res.json();
   return { convoId: data.body.dataRoomId };
 }
+async function deleteConversation(ctx, convoId) {
+  const endpoint = `/cortex/conversation/${convoId}`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "DELETE",
+    headers: authHeaders(ctx.token, ctx.orgId)
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+}
+async function uploadConversationAttachment(ctx, convoId, file) {
+  const endpoint = `/cortex/conversation/${convoId}/attachment`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const form = new FormData();
+  form.append("attachment", file);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "POST",
+    headers: authHeaders(ctx.token, ctx.orgId),
+    body: form
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+  const data = await res.json();
+  if (!data?.body) {
+    throw new BBApiError("Attachment upload returned no body", res.status, { endpoint });
+  }
+  return data.body;
+}
 
 // src/api/messages.ts
 async function sendMessage(ctx, convoId, content, options = {}) {
@@ -492,6 +532,8 @@ export {
   extractOrgIdFromIntrospect,
   fetchBotList,
   createConversation,
+  deleteConversation,
+  uploadConversationAttachment,
   sendMessage,
   getMessageList,
   transcribeAudio,
@@ -510,4 +552,4 @@ export {
   getTenantConfig,
   setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-4OCLLCEG.js.map
+//# sourceMappingURL=chunk-HSUWGZUF.js.map

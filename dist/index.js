@@ -1,4 +1,11 @@
 import {
+  createLock,
+  extractCode,
+  extractJson,
+  repairUnescapedQuotes,
+  siteKey
+} from "./chunk-TC3463HT.js";
+import {
   applyTheme,
   configureLogo,
   cycleTheme,
@@ -6,28 +13,16 @@ import {
   renderMarkdownInto,
   themeIcon,
   timeAgo
-} from "./chunk-M4XCLY7P.js";
+} from "./chunk-ZJIUWD7E.js";
 import {
   AVAILABLE_ACTIONS,
   runActions
 } from "./chunk-TUTKA2JH.js";
 import {
-  beginBrowserLogin,
-  completeBrowserLogin,
-  createRefreshGuard,
-  decodeJwtPayload,
-  decodePKCEState,
-  encodePKCEState,
-  extractOrgIdFromClaims,
-  extractProfile,
-  generateChallenge,
-  generateVerifier,
-  login
-} from "./chunk-535SU5A4.js";
-import {
   BBApiError,
   authHeaders,
   createConversation,
+  deleteConversation,
   discoverFrontendUrls,
   extractOrgIdFromIntrospect,
   fetchAgents,
@@ -49,8 +44,32 @@ import {
   setCapabilityAvailability,
   setConversationWebSearch,
   setCustomAgentsEnabled,
-  transcribeAudio
-} from "./chunk-4OCLLCEG.js";
+  transcribeAudio,
+  uploadConversationAttachment
+} from "./chunk-HSUWGZUF.js";
+import {
+  beginBrowserLogin,
+  completeBrowserLogin,
+  createRefreshGuard,
+  decodeJwtPayload,
+  decodePKCEState,
+  encodePKCEState,
+  extractOrgIdFromClaims,
+  extractProfile,
+  generateChallenge,
+  generateVerifier,
+  login
+} from "./chunk-535SU5A4.js";
+import {
+  buildEmailPrompt,
+  buildNewEmailPrompt,
+  buildPagePrompt,
+  parseResponse,
+  parseSubjectAndBody
+} from "./chunk-EFKOQZLN.js";
+import {
+  ACTION_SYSTEM_PROMPT
+} from "./chunk-C25NYCKP.js";
 import {
   DEFAULTS,
   getAuthContext,
@@ -71,23 +90,6 @@ import {
   OAUTH_BACKEND_URL,
   TOKEN_ENDPOINT
 } from "./chunk-OPBRY7NV.js";
-import {
-  createLock,
-  extractCode,
-  extractJson,
-  repairUnescapedQuotes,
-  siteKey
-} from "./chunk-TC3463HT.js";
-import {
-  buildEmailPrompt,
-  buildNewEmailPrompt,
-  buildPagePrompt,
-  parseResponse,
-  parseSubjectAndBody
-} from "./chunk-EFKOQZLN.js";
-import {
-  ACTION_SYSTEM_PROMPT
-} from "./chunk-C25NYCKP.js";
 export {
   ACTION_SYSTEM_PROMPT,
   AUTHORIZE_ENDPOINT,
@@ -114,6 +116,7 @@ export {
   cycleTheme,
   decodeJwtPayload,
   decodePKCEState,
+  deleteConversation,
   discoverFrontendUrls,
   encodePKCEState,
   exchangeCode,
@@ -158,6 +161,7 @@ export {
   siteKey,
   themeIcon,
   timeAgo,
-  transcribeAudio
+  transcribeAudio,
+  uploadConversationAttachment
 };
 //# sourceMappingURL=index.js.map
