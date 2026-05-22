@@ -48,22 +48,24 @@ export async function exchangeCode(
 /**
  * Refresh the access token using the refresh_token grant.
  *
+ * `scope` is intentionally omitted from the request body. RFC 6749 §6 makes it
+ * optional; when absent, the AS re-grants all original scopes. Sending it
+ * triggers Zitadel `invalid_scope` because custom scopes like `blockbrain:grants`
+ * are not accepted in refresh requests — only in the initial authorization.
+ *
  * @param refreshToken  Stored refresh token.
  * @param clientId      Defaults to AUTH_CLIENT_ID.
  * @param tokenEndpoint Defaults to TOKEN_ENDPOINT.
- * @param scopes        Defaults to AUTH_SCOPES.
  */
 export async function refreshTokens(
   refreshToken: string,
   clientId = AUTH_CLIENT_ID,
   tokenEndpoint = TOKEN_ENDPOINT,
-  scopes: readonly string[] = AUTH_SCOPES,
 ): Promise<TokenResult> {
   const params = new URLSearchParams({
     grant_type: "refresh_token",
     client_id: clientId,
     refresh_token: refreshToken,
-    scope: [...scopes].join(" "),
   });
 
   const res = await fetch(tokenEndpoint, {

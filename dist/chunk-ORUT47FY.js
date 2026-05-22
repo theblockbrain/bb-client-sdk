@@ -1,7 +1,7 @@
 import {
   computeExpiration,
   exchangeCode
-} from "./chunk-EBZFVPXU.js";
+} from "./chunk-CMFSLSL2.js";
 import {
   AUTHORIZE_ENDPOINT,
   AUTH_CLIENT_ID,
@@ -244,4 +244,4 @@ export {
   beginBrowserLogin,
   completeBrowserLogin
 };
-//# sourceMappingURL=chunk-535SU5A4.js.map
+//# sourceMappingURL=chunk-ORUT47FY.js.map

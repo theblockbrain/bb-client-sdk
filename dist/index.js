@@ -29,6 +29,7 @@ import {
   fetchBotList,
   fetchCapabilities,
   getAvailableWebSearchProviders,
+  getConversationAttachments,
   getConversationWebSearch,
   getMessageList,
   getTenantById,
@@ -46,7 +47,7 @@ import {
   setCustomAgentsEnabled,
   transcribeAudio,
   uploadConversationAttachment
-} from "./chunk-UP3GD5RA.js";
+} from "./chunk-YWOIJHBP.js";
 import {
   beginBrowserLogin,
   completeBrowserLogin,
@@ -59,7 +60,27 @@ import {
   generateChallenge,
   generateVerifier,
   login
-} from "./chunk-535SU5A4.js";
+} from "./chunk-ORUT47FY.js";
+import {
+  DEFAULTS,
+  getAuthContext,
+  hasUsableAuth,
+  inferAuthMode
+} from "./chunk-PSZNUYQR.js";
+import {
+  computeExpiration,
+  exchangeCode,
+  isTokenExpired,
+  refreshTokens
+} from "./chunk-CMFSLSL2.js";
+import {
+  AUTHORIZE_ENDPOINT,
+  AUTH_AUTHORITY,
+  AUTH_CLIENT_ID,
+  AUTH_SCOPES,
+  OAUTH_BACKEND_URL,
+  TOKEN_ENDPOINT
+} from "./chunk-OPBRY7NV.js";
 import {
   buildEmailPrompt,
   buildNewEmailPrompt,
@@ -70,26 +91,6 @@ import {
 import {
   ACTION_SYSTEM_PROMPT
 } from "./chunk-C25NYCKP.js";
-import {
-  DEFAULTS,
-  getAuthContext,
-  hasUsableAuth,
-  inferAuthMode
-} from "./chunk-ZFCTUXAD.js";
-import {
-  computeExpiration,
-  exchangeCode,
-  isTokenExpired,
-  refreshTokens
-} from "./chunk-EBZFVPXU.js";
-import {
-  AUTHORIZE_ENDPOINT,
-  AUTH_AUTHORITY,
-  AUTH_CLIENT_ID,
-  AUTH_SCOPES,
-  OAUTH_BACKEND_URL,
-  TOKEN_ENDPOINT
-} from "./chunk-OPBRY7NV.js";
 export {
   ACTION_SYSTEM_PROMPT,
   AUTHORIZE_ENDPOINT,
@@ -132,6 +133,7 @@ export {
   generateVerifier,
   getAuthContext,
   getAvailableWebSearchProviders,
+  getConversationAttachments,
   getConversationWebSearch,
   getMessageList,
   getTenantById,

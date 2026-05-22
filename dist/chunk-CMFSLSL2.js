@@ -1,6 +1,5 @@
 import {
   AUTH_CLIENT_ID,
-  AUTH_SCOPES,
   TOKEN_ENDPOINT
 } from "./chunk-OPBRY7NV.js";
 
@@ -24,12 +23,11 @@ async function exchangeCode(code, verifier, redirectUri, clientId = AUTH_CLIENT_
   }
   return await res.json();
 }
-async function refreshTokens(refreshToken, clientId = AUTH_CLIENT_ID, tokenEndpoint = TOKEN_ENDPOINT, scopes = AUTH_SCOPES) {
+async function refreshTokens(refreshToken, clientId = AUTH_CLIENT_ID, tokenEndpoint = TOKEN_ENDPOINT) {
   const params = new URLSearchParams({
     grant_type: "refresh_token",
     client_id: clientId,
-    refresh_token: refreshToken,
-    scope: [...scopes].join(" ")
+    refresh_token: refreshToken
   });
   const res = await fetch(tokenEndpoint, {
     method: "POST",
@@ -57,4 +55,4 @@ export {
   computeExpiration,
   isTokenExpired
 };
-//# sourceMappingURL=chunk-EBZFVPXU.js.map
+//# sourceMappingURL=chunk-CMFSLSL2.js.map

@@ -9,6 +9,7 @@ import {
   fetchBotList,
   fetchCapabilities,
   getAvailableWebSearchProviders,
+  getConversationAttachments,
   getConversationWebSearch,
   getMessageList,
   getTenantById,
@@ -26,7 +27,7 @@ import {
   setCustomAgentsEnabled,
   transcribeAudio,
   uploadConversationAttachment
-} from "../chunk-UP3GD5RA.js";
+} from "../chunk-YWOIJHBP.js";
 export {
   BBApiError,
   authHeaders,
@@ -38,6 +39,7 @@ export {
   fetchBotList,
   fetchCapabilities,
   getAvailableWebSearchProviders,
+  getConversationAttachments,
   getConversationWebSearch,
   getMessageList,
   getTenantById,

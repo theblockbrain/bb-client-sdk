@@ -174,6 +174,26 @@ async function uploadConversationAttachment(ctx, convoId, file, sessionId, optio
   }
   return data;
 }
+async function getConversationAttachments(ctx, convoId) {
+  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}/attachment`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "GET",
+    headers: authHeaders(ctx.token, ctx.orgId)
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+  const raw = await res.json();
+  if (Array.isArray(raw)) return raw;
+  const envelope = raw;
+  return Array.isArray(envelope.body) ? envelope.body : [];
+}
 
 // src/api/messages.ts
 async function sendMessage(ctx, convoId, content, options = {}) {
@@ -548,6 +568,7 @@ export {
   createConversation,
   deleteConversation,
   uploadConversationAttachment,
+  getConversationAttachments,
   sendMessage,
   getMessageList,
   transcribeAudio,
@@ -566,4 +587,4 @@ export {
   getTenantConfig,
   setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-UP3GD5RA.js.map
+//# sourceMappingURL=chunk-YWOIJHBP.js.map

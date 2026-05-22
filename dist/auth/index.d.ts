@@ -82,12 +82,16 @@ declare function exchangeCode(code: string, verifier: string, redirectUri: strin
 /**
  * Refresh the access token using the refresh_token grant.
  *
+ * `scope` is intentionally omitted from the request body. RFC 6749 §6 makes it
+ * optional; when absent, the AS re-grants all original scopes. Sending it
+ * triggers Zitadel `invalid_scope` because custom scopes like `blockbrain:grants`
+ * are not accepted in refresh requests — only in the initial authorization.
+ *
  * @param refreshToken  Stored refresh token.
  * @param clientId      Defaults to AUTH_CLIENT_ID.
  * @param tokenEndpoint Defaults to TOKEN_ENDPOINT.
- * @param scopes        Defaults to AUTH_SCOPES.
  */
-declare function refreshTokens(refreshToken: string, clientId?: string, tokenEndpoint?: string, scopes?: readonly string[]): Promise<TokenResult>;
+declare function refreshTokens(refreshToken: string, clientId?: string, tokenEndpoint?: string): Promise<TokenResult>;
 /** Compute the expiration timestamp (ms) from an expires_in value (seconds). */
 declare function computeExpiration(expiresInSeconds: number): number;
 /** True when the token expires within the given lead time (default: 60 seconds). */
