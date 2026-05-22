@@ -2,6 +2,7 @@ import { authHeaders } from "./headers.js";
 import { normalizeUrl } from "./url.js";
 import { BBApiError } from "./errors.js";
 import type { AuthContext } from "../settings/auth-mode.js";
+import type { WebSearchType, WebSearchConfig } from "./websearch.js";
 
 interface ConversationResponse {
   body: { dataRoomId: string };
@@ -241,4 +242,79 @@ export async function getConversationAttachments(
   if (Array.isArray(raw)) return raw as AttachmentUploadResult[];
   const envelope = raw as ConversationAttachmentsEnvelope;
   return Array.isArray(envelope.body) ? envelope.body : [];
+}
+
+// ---------------------------------------------------------------------------
+// PATCH /cortex/conversation/:convoId
+// ---------------------------------------------------------------------------
+
+/**
+ * Partial-update patch for a conversation.
+ * All fields are optional — only the fields present in the body are applied.
+ *
+ * Mirrors the `CortexConvoUpdateRequest` schema from
+ * blocky/src/api/nexus/conversation/schemas.py.
+ * Backend accepts camelCase aliases (populate_by_name=True + alias fields).
+ *
+ * Common use-cases:
+ *  - Enable web search:  { enableWebSearch: true, webSearchType: "normal_web_search" }
+ *  - Rename:             { name: "My Conversation" }
+ *  - Swap model:         { model: "gpt-4o" }
+ */
+export interface UpdateConversationPatch {
+  /** Rename the conversation. */
+  name?: string;
+  /** Enable/disable web search for this conversation. */
+  enableWebSearch?: boolean;
+  /**
+   * Web search provider type. Values match the backend `WebSearchType` enum:
+   * "normal_web_search" | "linkup_pro_web_search" | "linkup_pro_r_web_search" | …
+   * Use the `WebSearchType` union from websearch.ts for safe values.
+   */
+  webSearchType?: WebSearchType;
+  /** Fine-grained web search provider configuration (provider key, deep-search flag). */
+  webSearchConfig?: WebSearchConfig;
+  /** Enable semantic reranker for retrieval. */
+  enableReranker?: boolean;
+  /** Enable agentic retrieval mode. */
+  enableAgentRetrieval?: boolean;
+  /** Override the AI model for this conversation. */
+  model?: string;
+  /** Enable image generation responses. */
+  enableGenerateImage?: boolean;
+  /** Enable auto-response mode (bot replies without explicit send). */
+  enableAutoResponse?: boolean;
+  /** Response length preset. */
+  lengthPreset?: string;
+}
+
+/**
+ * Apply a partial update to an existing conversation.
+ * Returns void — callers that need the updated state should re-fetch
+ * via `getConversationWebSearch` or a dedicated GET endpoint.
+ *
+ * PATCH /cortex/conversation/{convoId}
+ * Backend: blocky/src/api/nexus/conversation/routes.py — `update_convo_detail`
+ */
+export async function updateConversation(
+  ctx: AuthContext,
+  convoId: string,
+  patch: UpdateConversationPatch,
+): Promise<void> {
+  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(ctx.token, ctx.orgId),
+    },
+    body: JSON.stringify(patch),
+  });
+
+  if (!res.ok) {
+    let body: unknown;
+    try { body = await res.json(); } catch { /* response may not be JSON */ }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
 }

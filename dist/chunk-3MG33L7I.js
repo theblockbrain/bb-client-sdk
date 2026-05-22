@@ -194,6 +194,59 @@ async function getConversationAttachments(ctx, convoId) {
   const envelope = raw;
   return Array.isArray(envelope.body) ? envelope.body : [];
 }
+async function updateConversation(ctx, convoId, patch) {
+  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(ctx.token, ctx.orgId)
+    },
+    body: JSON.stringify(patch)
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+}
+
+// src/api/notes.ts
+async function createNote(ctx, params) {
+  const endpoint = "/cortex/notes/add-note";
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(ctx.token, ctx.orgId)
+    },
+    body: JSON.stringify({
+      title: params.title,
+      summary: params.summary,
+      parent_path: params.parentPath,
+      is_ai_generated: params.isAiGenerated ?? false
+    })
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+  const envelope = await res.json();
+  const data = envelope.body;
+  if (!data?._id) {
+    throw new BBApiError("Note create response missing _id", res.status, { endpoint, responseBody: envelope });
+  }
+  return data;
+}
 
 // src/api/messages.ts
 async function sendMessage(ctx, convoId, content, options = {}) {
@@ -569,6 +622,8 @@ export {
   deleteConversation,
   uploadConversationAttachment,
   getConversationAttachments,
+  updateConversation,
+  createNote,
   sendMessage,
   getMessageList,
   transcribeAudio,
@@ -587,4 +642,4 @@ export {
   getTenantConfig,
   setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-YWOIJHBP.js.map
+//# sourceMappingURL=chunk-3MG33L7I.js.map

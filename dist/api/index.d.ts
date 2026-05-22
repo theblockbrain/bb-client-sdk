@@ -52,6 +52,42 @@ interface Bot {
 /** Fetch the list of active bots for the authenticated context. */
 declare function fetchBotList(ctx: AuthContext): Promise<Bot[]>;
 
+type WebSearchProvider = "linkup_normal_web_search" | "linkup_pro_web_search" | "linkup_pro_r_web_search" | "tavily_normal_web_search" | "tavily_pro_web_search" | "tavily_pro_r_web_search" | "perplexity_normal_web_search" | "perplexity_pro_web_search" | "perplexity_pro_r_web_search";
+type WebSearchType = "normal_web_search" | "pro_web_search" | "pro_r_web_search";
+interface WebSearchConfig {
+    webSearchProvider: WebSearchProvider;
+    /** Only relevant for Linkup providers. */
+    isLinkupDeepSearch?: boolean;
+}
+interface WebSearchProviderStatus {
+    webSearchProvider: WebSearchProvider;
+    tenantId: string;
+    isEnable: boolean;
+    isEnableByMaster: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+interface ConversationWebSearchSettings {
+    enableWebSearch?: boolean;
+    webSearchType?: WebSearchType;
+    webSearchConfig?: WebSearchConfig;
+}
+/**
+ * Get available web search providers for the authenticated tenant.
+ * GET /cortex/web-search/provider
+ */
+declare function getAvailableWebSearchProviders(ctx: AuthContext): Promise<WebSearchProviderStatus[]>;
+/**
+ * Update web search settings for a conversation.
+ * PATCH /cortex/conversation/{convoId}
+ */
+declare function setConversationWebSearch(ctx: AuthContext, convoId: string, settings: ConversationWebSearchSettings): Promise<void>;
+/**
+ * Read current web search settings for a conversation.
+ * GET /cortex/conversation/{convoId}
+ */
+declare function getConversationWebSearch(ctx: AuthContext, convoId: string): Promise<ConversationWebSearchSettings>;
+
 /** Create a new conversation for a bot. Returns the conversation ID. */
 declare function createConversation(ctx: AuthContext, botId: string, convoName?: string): Promise<{
     convoId: string;
@@ -159,6 +195,84 @@ declare function uploadConversationAttachment(ctx: AuthContext, convoId: string,
  * GET /cortex/conversation/:convoId/attachment
  */
 declare function getConversationAttachments(ctx: AuthContext, convoId: string): Promise<AttachmentUploadResult[]>;
+/**
+ * Partial-update patch for a conversation.
+ * All fields are optional — only the fields present in the body are applied.
+ *
+ * Mirrors the `CortexConvoUpdateRequest` schema from
+ * blocky/src/api/nexus/conversation/schemas.py.
+ * Backend accepts camelCase aliases (populate_by_name=True + alias fields).
+ *
+ * Common use-cases:
+ *  - Enable web search:  { enableWebSearch: true, webSearchType: "normal_web_search" }
+ *  - Rename:             { name: "My Conversation" }
+ *  - Swap model:         { model: "gpt-4o" }
+ */
+interface UpdateConversationPatch {
+    /** Rename the conversation. */
+    name?: string;
+    /** Enable/disable web search for this conversation. */
+    enableWebSearch?: boolean;
+    /**
+     * Web search provider type. Values match the backend `WebSearchType` enum:
+     * "normal_web_search" | "linkup_pro_web_search" | "linkup_pro_r_web_search" | …
+     * Use the `WebSearchType` union from websearch.ts for safe values.
+     */
+    webSearchType?: WebSearchType;
+    /** Fine-grained web search provider configuration (provider key, deep-search flag). */
+    webSearchConfig?: WebSearchConfig;
+    /** Enable semantic reranker for retrieval. */
+    enableReranker?: boolean;
+    /** Enable agentic retrieval mode. */
+    enableAgentRetrieval?: boolean;
+    /** Override the AI model for this conversation. */
+    model?: string;
+    /** Enable image generation responses. */
+    enableGenerateImage?: boolean;
+    /** Enable auto-response mode (bot replies without explicit send). */
+    enableAutoResponse?: boolean;
+    /** Response length preset. */
+    lengthPreset?: string;
+}
+/**
+ * Apply a partial update to an existing conversation.
+ * Returns void — callers that need the updated state should re-fetch
+ * via `getConversationWebSearch` or a dedicated GET endpoint.
+ *
+ * PATCH /cortex/conversation/{convoId}
+ * Backend: blocky/src/api/nexus/conversation/routes.py — `update_convo_detail`
+ */
+declare function updateConversation(ctx: AuthContext, convoId: string, patch: UpdateConversationPatch): Promise<void>;
+
+interface CreateNoteParams {
+    title: string;
+    summary: string;
+    parentPath?: string;
+    isAiGenerated?: boolean;
+}
+/**
+ * Result shape mirrors `NoteShortDTO` (extends `BaseDTO`) from
+ * blocky/src/api/nexus/notes/schemas.py.
+ * The route returns a ResponseEntity envelope: { code, key, body: NoteShortDTO }.
+ */
+interface NoteResult {
+    _id: string;
+    title: string;
+    isEdited: boolean;
+    createdAt: string;
+    modifiedAt: string;
+}
+/**
+ * Save a note (insight) to the authenticated user's Blockbrain workspace.
+ *
+ * POST /cortex/notes/add-note
+ * Backend: blocky/src/api/nexus/notes/routes.py — `add_chat_note_manual`
+ * Body schema: NoteCreateDTO (title, summary, parent_path?, is_ai_generated?)
+ *
+ * Field names are snake_case as required by the backend model
+ * (`BlockyBaseModel` populates by field name, not alias, for POST bodies).
+ */
+declare function createNote(ctx: AuthContext, params: CreateNoteParams): Promise<NoteResult>;
 
 interface SendMessageOptions {
     /** Enable streaming mode. Default: false. */
@@ -255,42 +369,6 @@ declare function listTenants(ctx: AuthContext, options?: ListTenantsOptions): Pr
  */
 declare function getTenantById(ctx: AuthContext, tenantId: string): Promise<TenantDetail>;
 
-type WebSearchProvider = "linkup_normal_web_search" | "linkup_pro_web_search" | "linkup_pro_r_web_search" | "tavily_normal_web_search" | "tavily_pro_web_search" | "tavily_pro_r_web_search" | "perplexity_normal_web_search" | "perplexity_pro_web_search" | "perplexity_pro_r_web_search";
-type WebSearchType = "normal_web_search" | "pro_web_search" | "pro_r_web_search";
-interface WebSearchConfig {
-    webSearchProvider: WebSearchProvider;
-    /** Only relevant for Linkup providers. */
-    isLinkupDeepSearch?: boolean;
-}
-interface WebSearchProviderStatus {
-    webSearchProvider: WebSearchProvider;
-    tenantId: string;
-    isEnable: boolean;
-    isEnableByMaster: boolean;
-    createdAt?: string;
-    updatedAt?: string;
-}
-interface ConversationWebSearchSettings {
-    enableWebSearch?: boolean;
-    webSearchType?: WebSearchType;
-    webSearchConfig?: WebSearchConfig;
-}
-/**
- * Get available web search providers for the authenticated tenant.
- * GET /cortex/web-search/provider
- */
-declare function getAvailableWebSearchProviders(ctx: AuthContext): Promise<WebSearchProviderStatus[]>;
-/**
- * Update web search settings for a conversation.
- * PATCH /cortex/conversation/{convoId}
- */
-declare function setConversationWebSearch(ctx: AuthContext, convoId: string, settings: ConversationWebSearchSettings): Promise<void>;
-/**
- * Read current web search settings for a conversation.
- * GET /cortex/conversation/{convoId}
- */
-declare function getConversationWebSearch(ctx: AuthContext, convoId: string): Promise<ConversationWebSearchSettings>;
-
 interface Agent {
     id: string;
     name: string;
@@ -381,4 +459,4 @@ declare function getTenantConfig(ctx: AuthContext, targetOrgId?: string): Promis
  */
 declare function setCustomAgentsEnabled(ctx: AuthContext, enabled: boolean, targetOrgId?: string): Promise<void>;
 
-export { type Agent, type AgentsResponse, type ApiResponse, type AttachmentUploadResult, BBApiError, type Bot, type CapabilitiesResponse, type Capability, type ConversationWebSearchSettings, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type SendMessageOptions, type TenantConfig, type TenantDetail, type TenantSummary, type UploadAttachmentOptions, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, deleteConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchAgents, fetchBotList, fetchCapabilities, getAvailableWebSearchProviders, getConversationAttachments, getConversationWebSearch, getMessageList, getTenantById, getTenantConfig, introspectApiKey, isBBApiError, listTenants, normalizeUrl, sendMessage, setAgentActive, setAgentAvailability, setCapabilityActive, setCapabilityAvailability, setConversationWebSearch, setCustomAgentsEnabled, transcribeAudio, uploadConversationAttachment };
+export { type Agent, type AgentsResponse, type ApiResponse, type AttachmentUploadResult, BBApiError, type Bot, type CapabilitiesResponse, type Capability, type ConversationWebSearchSettings, type CreateNoteParams, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type NoteResult, type SendMessageOptions, type TenantConfig, type TenantDetail, type TenantSummary, type UpdateConversationPatch, type UploadAttachmentOptions, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, createNote, deleteConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchAgents, fetchBotList, fetchCapabilities, getAvailableWebSearchProviders, getConversationAttachments, getConversationWebSearch, getMessageList, getTenantById, getTenantConfig, introspectApiKey, isBBApiError, listTenants, normalizeUrl, sendMessage, setAgentActive, setAgentAvailability, setCapabilityActive, setCapabilityAvailability, setConversationWebSearch, setCustomAgentsEnabled, transcribeAudio, updateConversation, uploadConversationAttachment };
