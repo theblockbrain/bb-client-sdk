@@ -176,6 +176,64 @@ await beginBrowserLogin({ clientId, authorizeEndpoint, tokenEndpoint, redirectUr
 // Never returns — page navigates to Zitadel
 ```
 
+## Theme system (React)
+
+`/ui` exports a canonical `useTheme` hook and `ThemeToggle` component. Both use
+the **class-strategy** (`<html class="dark">`), matching Tailwind's
+`@custom-variant dark (&:where(.dark, .dark *))` convention.
+
+```tsx
+import { useTheme, ThemeToggle } from "@theblockbrain/bb-client-sdk/ui";
+
+function Header() {
+  const [theme, mode, cycleTheme] = useTheme(); // default key: "bb-theme"
+  // Per-tool key prevents cross-tool collisions on the same origin:
+  // const [theme, mode, cycleTheme] = useTheme("bb-dashboard-theme");
+
+  return <ThemeToggle theme={theme} mode={mode} onToggle={cycleTheme} />;
+  // variant="login" for gradient entry screens
+}
+```
+
+### Shared CSS
+
+Import the base stylesheet in your app's CSS (after `@import "tailwindcss"`):
+
+```css
+@import "@theblockbrain/bb-client-sdk/ui/theme-base.css";
+```
+
+This includes the `@custom-variant dark` declaration, `.animate-fade-in`,
+`.dot-grid-*`, and scrollbar styles. The `@custom-variant` line replaces
+the one you'd otherwise copy into every app.
+
+### Tailwind v4 — `@source` directive
+
+Tailwind v4 scans only your own source files by default. Add the SDK's `/ui`
+path so `ThemeToggle`'s Tailwind classes are included:
+
+```css
+/* In your app's main CSS file, after @import "tailwindcss" */
+@source "../node_modules/@theblockbrain/bb-client-sdk/dist";
+```
+
+Adjust the relative path to point at `node_modules` from your CSS file's
+location. Point at `dist` (not `src/` — source is not published) and scan the
+whole dist folder: tsup chunk-splits mean ThemeToggle's Tailwind classes may
+land in a root-level chunk, not only under `dist/ui/`. Without this, the
+`ThemeToggle` button styles will be stripped from the production build.
+
+### `storageKey` parameter
+
+Pass a per-tool key to avoid localStorage collisions when multiple BB tools
+share the same origin:
+
+| Tool | Recommended key |
+|------|-----------------|
+| bb-batch-analyzer | `"bb-theme"` (default) |
+| bb-dashboard | `"bb-dashboard-theme"` |
+| chrome-addon | handled via chrome.storage — custom hook |
+
 ## Release
 
 Push tag `vX.Y.Z` on main — the publish workflow triggers automatically and publishes to GitHub Packages.

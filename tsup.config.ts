@@ -17,4 +17,6 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: true,
+  // Required for ThemeToggle.tsx and any future JSX components
+  jsx: "react-jsx",
 });
