@@ -8,4 +8,5 @@ export { AUTHORIZE_ENDPOINT, AUTH_AUTHORITY, AUTH_CLIENT_ID, AUTH_SCOPES, OAUTH_
 export { CspMode, EmailContext, NewEmailContext, PageContext, ParsedResponse, buildEmailPrompt, buildNewEmailPrompt, buildPagePrompt, parseResponse, parseSubjectAndBody } from './prompt/index.js';
 export { A as AVAILABLE_ACTIONS, a as ActionResult, b as ActionStep } from './schema-BJs6_Xa5.js';
 export { ACTION_SYSTEM_PROMPT, runActions } from './actions/index.js';
-export { MarkdownOptions, ThemePref, applyTheme, configureLogo, cycleTheme, renderMarkdown, renderMarkdownInto, themeIcon, timeAgo } from './ui/index.js';
+export { MarkdownOptions, Theme, ThemeMode, ThemePref, ThemeToggle, ThemeToggleProps, applyTheme, configureLogo, cycleTheme, renderMarkdown, renderMarkdownInto, themeIcon, timeAgo, useTheme } from './ui/index.js';
+import 'react/jsx-runtime';

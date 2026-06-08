@@ -1,10 +1,4 @@
 import {
-  DEFAULTS,
-  getAuthContext,
-  hasUsableAuth,
-  inferAuthMode
-} from "./chunk-PSZNUYQR.js";
-import {
   createLock,
   extractCode,
   extractJson,
@@ -12,36 +6,20 @@ import {
   siteKey
 } from "./chunk-TC3463HT.js";
 import {
+  ThemeToggle,
+  applyTheme,
+  configureLogo,
+  cycleTheme,
+  renderMarkdown,
+  renderMarkdownInto,
+  themeIcon,
+  timeAgo,
+  useTheme
+} from "./chunk-QZ5YQ6RL.js";
+import {
   AVAILABLE_ACTIONS,
   runActions
 } from "./chunk-TUTKA2JH.js";
-import {
-  beginBrowserLogin,
-  completeBrowserLogin,
-  createRefreshGuard,
-  decodeJwtPayload,
-  decodePKCEState,
-  encodePKCEState,
-  extractOrgIdFromClaims,
-  extractProfile,
-  generateChallenge,
-  generateVerifier,
-  login
-} from "./chunk-ORUT47FY.js";
-import {
-  computeExpiration,
-  exchangeCode,
-  isTokenExpired,
-  refreshTokens
-} from "./chunk-CMFSLSL2.js";
-import {
-  AUTHORIZE_ENDPOINT,
-  AUTH_AUTHORITY,
-  AUTH_CLIENT_ID,
-  AUTH_SCOPES,
-  OAUTH_BACKEND_URL,
-  TOKEN_ENDPOINT
-} from "./chunk-OPBRY7NV.js";
 import {
   BBApiError,
   authHeaders,
@@ -73,7 +51,20 @@ import {
   transcribeAudio,
   updateConversation,
   uploadConversationAttachment
-} from "./chunk-3MG33L7I.js";
+} from "./chunk-T6SAEHFL.js";
+import {
+  beginBrowserLogin,
+  completeBrowserLogin,
+  createRefreshGuard,
+  decodeJwtPayload,
+  decodePKCEState,
+  encodePKCEState,
+  extractOrgIdFromClaims,
+  extractProfile,
+  generateChallenge,
+  generateVerifier,
+  login
+} from "./chunk-ORUT47FY.js";
 import {
   buildEmailPrompt,
   buildNewEmailPrompt,
@@ -85,14 +76,25 @@ import {
   ACTION_SYSTEM_PROMPT
 } from "./chunk-C25NYCKP.js";
 import {
-  applyTheme,
-  configureLogo,
-  cycleTheme,
-  renderMarkdown,
-  renderMarkdownInto,
-  themeIcon,
-  timeAgo
-} from "./chunk-ZJIUWD7E.js";
+  DEFAULTS,
+  getAuthContext,
+  hasUsableAuth,
+  inferAuthMode
+} from "./chunk-PSZNUYQR.js";
+import {
+  computeExpiration,
+  exchangeCode,
+  isTokenExpired,
+  refreshTokens
+} from "./chunk-CMFSLSL2.js";
+import {
+  AUTHORIZE_ENDPOINT,
+  AUTH_AUTHORITY,
+  AUTH_CLIENT_ID,
+  AUTH_SCOPES,
+  OAUTH_BACKEND_URL,
+  TOKEN_ENDPOINT
+} from "./chunk-OPBRY7NV.js";
 export {
   ACTION_SYSTEM_PROMPT,
   AUTHORIZE_ENDPOINT,
@@ -104,6 +106,7 @@ export {
   DEFAULTS,
   OAUTH_BACKEND_URL,
   TOKEN_ENDPOINT,
+  ThemeToggle,
   applyTheme,
   authHeaders,
   beginBrowserLogin,
@@ -168,6 +171,7 @@ export {
   timeAgo,
   transcribeAudio,
   updateConversation,
-  uploadConversationAttachment
+  uploadConversationAttachment,
+  useTheme
 };
 //# sourceMappingURL=index.js.map

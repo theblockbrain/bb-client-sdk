@@ -49,9 +49,11 @@ export async function fetchBotList(ctx: AuthContext): Promise<Bot[]> {
 
   if (bots.length === 0) throw new Error("No bots found.");
 
-  return bots.map((bot) => ({
-    id: bot._id ?? bot.id ?? "",
-    name: bot.name ?? bot.displayName ?? bot._id ?? "",
-    model: bot.model ?? "",
-  }));
+  return bots
+    .map((bot) => ({
+      id: bot._id ?? bot.id ?? "",
+      name: bot.name ?? bot.displayName ?? bot._id ?? "",
+      model: bot.model ?? "",
+    }))
+    .filter((bot) => bot.name !== "Nexus Mobile App");
 }

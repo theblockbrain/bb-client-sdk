@@ -94,7 +94,7 @@ async function fetchBotList(ctx) {
     id: bot._id ?? bot.id ?? "",
     name: bot.name ?? bot.displayName ?? bot._id ?? "",
     model: bot.model ?? ""
-  }));
+  })).filter((bot) => bot.name !== "Nexus Mobile App");
 }
 
 // src/api/conversations.ts
@@ -642,4 +642,4 @@ export {
   getTenantConfig,
   setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-3MG33L7I.js.map
+//# sourceMappingURL=chunk-T6SAEHFL.js.map
