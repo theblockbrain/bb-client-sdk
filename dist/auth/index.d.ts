@@ -75,10 +75,10 @@ interface TokenResult {
  * @param code        Authorization code from the redirect callback.
  * @param verifier    PKCE code verifier generated before the authorize redirect.
  * @param redirectUri Must match the URI registered in Zitadel and used in the authorize URL.
- * @param clientId    Defaults to AUTH_CLIENT_ID.
+ * @param clientId    OAuth client_id — must be provided by the caller.
  * @param tokenEndpoint Defaults to TOKEN_ENDPOINT.
  */
-declare function exchangeCode(code: string, verifier: string, redirectUri: string, clientId?: string, tokenEndpoint?: string): Promise<TokenResult>;
+declare function exchangeCode(code: string, verifier: string, redirectUri: string, clientId: string, tokenEndpoint?: string): Promise<TokenResult>;
 /**
  * Refresh the access token using the refresh_token grant.
  *
@@ -88,10 +88,10 @@ declare function exchangeCode(code: string, verifier: string, redirectUri: strin
  * are not accepted in refresh requests — only in the initial authorization.
  *
  * @param refreshToken  Stored refresh token.
- * @param clientId      Defaults to AUTH_CLIENT_ID.
+ * @param clientId      OAuth client_id — must be provided by the caller.
  * @param tokenEndpoint Defaults to TOKEN_ENDPOINT.
  */
-declare function refreshTokens(refreshToken: string, clientId?: string, tokenEndpoint?: string): Promise<TokenResult>;
+declare function refreshTokens(refreshToken: string, clientId: string, tokenEndpoint?: string): Promise<TokenResult>;
 /** Compute the expiration timestamp (ms) from an expires_in value (seconds). */
 declare function computeExpiration(expiresInSeconds: number): number;
 /** True when the token expires within the given lead time (default: 60 seconds). */
@@ -104,7 +104,8 @@ interface LoginResult extends TokenResult {
     orgId: string | null;
 }
 interface LoginOptions {
-    clientId?: string;
+    /** OAuth client_id — must be provided by the caller; no SDK-level default. */
+    clientId: string;
     scopes?: readonly string[];
     authorizeEndpoint?: string;
     tokenEndpoint?: string;
@@ -119,7 +120,7 @@ interface LoginOptions {
  * 5. Exchange code for tokens.
  * 6. Extract profile + orgId from id_token (access_token as fallback).
  */
-declare function login(identity: IdentityAdapter, options?: LoginOptions): Promise<LoginResult>;
+declare function login(identity: IdentityAdapter, options: LoginOptions): Promise<LoginResult>;
 
 /**
  * createRefreshGuard — factory that prevents parallel token refresh calls.
@@ -133,8 +134,8 @@ declare function createRefreshGuard<T>(refreshFn: () => Promise<T>): {
 };
 
 interface BrowserRedirectOptions {
-    /** OAuth client_id — defaults to AUTH_CLIENT_ID */
-    clientId?: string;
+    /** OAuth client_id — must be provided by the caller; no SDK-level default. */
+    clientId: string;
     /** Default: AUTH_SCOPES from config */
     scopes?: readonly string[];
     /** Default: AUTHORIZE_ENDPOINT from config */

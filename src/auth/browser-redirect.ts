@@ -7,7 +7,6 @@ import {
 import { exchangeCode, computeExpiration } from "./tokens.js";
 import { extractProfile } from "./jwt.js";
 import {
-  AUTH_CLIENT_ID,
   AUTH_SCOPES,
   AUTHORIZE_ENDPOINT,
   TOKEN_ENDPOINT,
@@ -17,8 +16,8 @@ import type { LoginResult } from "./login.js";
 const STATE_KEY = "bb_pkce_state";
 
 export interface BrowserRedirectOptions {
-  /** OAuth client_id — defaults to AUTH_CLIENT_ID */
-  clientId?: string;
+  /** OAuth client_id — must be provided by the caller; no SDK-level default. */
+  clientId: string;
   /** Default: AUTH_SCOPES from config */
   scopes?: readonly string[];
   /** Default: AUTHORIZE_ENDPOINT from config */
@@ -43,7 +42,7 @@ export interface BrowserLoginResult extends LoginResult {
 export async function beginBrowserLogin(
   opts: BrowserRedirectOptions,
 ): Promise<never> {
-  const clientId = opts.clientId ?? AUTH_CLIENT_ID;
+  const clientId = opts.clientId;
   const scopes = opts.scopes ?? AUTH_SCOPES;
   const authorizeEndpoint = opts.authorizeEndpoint ?? AUTHORIZE_ENDPOINT;
 
@@ -83,7 +82,7 @@ export async function beginBrowserLogin(
 export async function completeBrowserLogin(
   opts: BrowserRedirectOptions,
 ): Promise<BrowserLoginResult> {
-  const clientId = opts.clientId ?? AUTH_CLIENT_ID;
+  const clientId = opts.clientId;
   const tokenEndpoint = opts.tokenEndpoint ?? TOKEN_ENDPOINT;
 
   const params = new URLSearchParams(window.location.search);

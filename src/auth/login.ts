@@ -1,6 +1,5 @@
 import type { IdentityAdapter } from "../adapters/identity.js";
 import {
-  AUTH_CLIENT_ID,
   AUTH_SCOPES,
   AUTHORIZE_ENDPOINT,
   TOKEN_ENDPOINT,
@@ -19,7 +18,8 @@ export interface LoginResult extends TokenResult {
 }
 
 export interface LoginOptions {
-  clientId?: string;
+  /** OAuth client_id — must be provided by the caller; no SDK-level default. */
+  clientId: string;
   scopes?: readonly string[];
   authorizeEndpoint?: string;
   tokenEndpoint?: string;
@@ -37,10 +37,10 @@ export interface LoginOptions {
  */
 export async function login(
   identity: IdentityAdapter,
-  options: LoginOptions = {},
+  options: LoginOptions,
 ): Promise<LoginResult> {
   const {
-    clientId = AUTH_CLIENT_ID,
+    clientId,
     scopes = AUTH_SCOPES,
     authorizeEndpoint = AUTHORIZE_ENDPOINT,
     tokenEndpoint = TOKEN_ENDPOINT,

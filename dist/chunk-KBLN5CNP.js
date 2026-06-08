@@ -1,13 +1,12 @@
 import {
   computeExpiration,
   exchangeCode
-} from "./chunk-CMFSLSL2.js";
+} from "./chunk-Y7K7A6MU.js";
 import {
   AUTHORIZE_ENDPOINT,
-  AUTH_CLIENT_ID,
   AUTH_SCOPES,
   TOKEN_ENDPOINT
-} from "./chunk-OPBRY7NV.js";
+} from "./chunk-TGCXGCQH.js";
 
 // src/auth/pkce.ts
 function base64urlEncode(buf) {
@@ -90,9 +89,9 @@ function extractProfile(idToken, accessToken) {
 }
 
 // src/auth/login.ts
-async function login(identity, options = {}) {
+async function login(identity, options) {
   const {
-    clientId = AUTH_CLIENT_ID,
+    clientId,
     scopes = AUTH_SCOPES,
     authorizeEndpoint = AUTHORIZE_ENDPOINT,
     tokenEndpoint = TOKEN_ENDPOINT
@@ -153,7 +152,7 @@ function createRefreshGuard(refreshFn) {
 // src/auth/browser-redirect.ts
 var STATE_KEY = "bb_pkce_state";
 async function beginBrowserLogin(opts) {
-  const clientId = opts.clientId ?? AUTH_CLIENT_ID;
+  const clientId = opts.clientId;
   const scopes = opts.scopes ?? AUTH_SCOPES;
   const authorizeEndpoint = opts.authorizeEndpoint ?? AUTHORIZE_ENDPOINT;
   const verifier = generateVerifier();
@@ -173,7 +172,7 @@ async function beginBrowserLogin(opts) {
   });
 }
 async function completeBrowserLogin(opts) {
-  const clientId = opts.clientId ?? AUTH_CLIENT_ID;
+  const clientId = opts.clientId;
   const tokenEndpoint = opts.tokenEndpoint ?? TOKEN_ENDPOINT;
   const params = new URLSearchParams(window.location.search);
   const oauthError = params.get("error");
@@ -244,4 +243,4 @@ export {
   beginBrowserLogin,
   completeBrowserLogin
 };
-//# sourceMappingURL=chunk-ORUT47FY.js.map
+//# sourceMappingURL=chunk-KBLN5CNP.js.map

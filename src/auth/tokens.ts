@@ -1,4 +1,4 @@
-import { AUTH_CLIENT_ID, AUTH_SCOPES, TOKEN_ENDPOINT } from "../config.js";
+import { AUTH_SCOPES, TOKEN_ENDPOINT } from "../config.js";
 
 export interface TokenResult {
   access_token: string;
@@ -13,14 +13,14 @@ export interface TokenResult {
  * @param code        Authorization code from the redirect callback.
  * @param verifier    PKCE code verifier generated before the authorize redirect.
  * @param redirectUri Must match the URI registered in Zitadel and used in the authorize URL.
- * @param clientId    Defaults to AUTH_CLIENT_ID.
+ * @param clientId    OAuth client_id — must be provided by the caller.
  * @param tokenEndpoint Defaults to TOKEN_ENDPOINT.
  */
 export async function exchangeCode(
   code: string,
   verifier: string,
   redirectUri: string,
-  clientId = AUTH_CLIENT_ID,
+  clientId: string,
   tokenEndpoint = TOKEN_ENDPOINT,
 ): Promise<TokenResult> {
   const params = new URLSearchParams({
@@ -54,12 +54,12 @@ export async function exchangeCode(
  * are not accepted in refresh requests — only in the initial authorization.
  *
  * @param refreshToken  Stored refresh token.
- * @param clientId      Defaults to AUTH_CLIENT_ID.
+ * @param clientId      OAuth client_id — must be provided by the caller.
  * @param tokenEndpoint Defaults to TOKEN_ENDPOINT.
  */
 export async function refreshTokens(
   refreshToken: string,
-  clientId = AUTH_CLIENT_ID,
+  clientId: string,
   tokenEndpoint = TOKEN_ENDPOINT,
 ): Promise<TokenResult> {
   const params = new URLSearchParams({

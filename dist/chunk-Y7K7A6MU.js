@@ -1,10 +1,9 @@
 import {
-  AUTH_CLIENT_ID,
   TOKEN_ENDPOINT
-} from "./chunk-OPBRY7NV.js";
+} from "./chunk-TGCXGCQH.js";
 
 // src/auth/tokens.ts
-async function exchangeCode(code, verifier, redirectUri, clientId = AUTH_CLIENT_ID, tokenEndpoint = TOKEN_ENDPOINT) {
+async function exchangeCode(code, verifier, redirectUri, clientId, tokenEndpoint = TOKEN_ENDPOINT) {
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     client_id: clientId,
@@ -23,7 +22,7 @@ async function exchangeCode(code, verifier, redirectUri, clientId = AUTH_CLIENT_
   }
   return await res.json();
 }
-async function refreshTokens(refreshToken, clientId = AUTH_CLIENT_ID, tokenEndpoint = TOKEN_ENDPOINT) {
+async function refreshTokens(refreshToken, clientId, tokenEndpoint = TOKEN_ENDPOINT) {
   const params = new URLSearchParams({
     grant_type: "refresh_token",
     client_id: clientId,
@@ -55,4 +54,4 @@ export {
   computeExpiration,
   isTokenExpired
 };
-//# sourceMappingURL=chunk-CMFSLSL2.js.map
+//# sourceMappingURL=chunk-Y7K7A6MU.js.map
