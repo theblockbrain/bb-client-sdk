@@ -44,4 +44,30 @@ declare function extractJson<T = unknown>(text: string): T | null;
  */
 declare function repairUnescapedQuotes(str: string): string;
 
-export { createLock, extractCode, extractJson, repairUnescapedQuotes, siteKey };
+/**
+ * Minimal JWT payload reader — no signature verification.
+ *
+ * We only need to read the `sub` claim from Zitadel access tokens so the SDK
+ * can auto-fill `resourceId` for Agentic calls without requiring callers to
+ * thread a userId through their auth wiring.
+ *
+ * Signature verification is intentionally OMITTED here: the backend verifies
+ * the token on every request. Reading the sub client-side is safe because we
+ * never make trust decisions based on it — it is sent to the server as a
+ * `resourceId` hint that the server can cross-check against the verified JWT.
+ */
+/**
+ * Extract the `sub` claim from a Zitadel access-token JWT.
+ *
+ * Returns the sub string when the token is a valid JWT with a non-empty sub
+ * claim. Returns `null` for:
+ * - Non-JWT tokens (API keys, opaque tokens)
+ * - JWTs without a `sub` claim
+ * - Malformed input
+ *
+ * This is oauth-only by design: callers must gate on `mode === "oauth"` before
+ * calling, since API-key tokens are not JWTs.
+ */
+declare function subFromAccessToken(token: string): string | null;
+
+export { createLock, extractCode, extractJson, repairUnescapedQuotes, siteKey, subFromAccessToken };

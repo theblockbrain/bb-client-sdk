@@ -1,5 +1,6 @@
 import { OAUTH_BACKEND_URL } from "../config.js";
 import { isTokenExpired } from "../auth/tokens.js";
+import { subFromAccessToken } from "../utils/jwt.js";
 import type { Settings } from "./schema.js";
 
 export type AuthMode = "oauth" | "api-key";
@@ -67,9 +68,9 @@ export function inferAuthMode(loaded: Partial<Settings>): AuthMode {
  *
  * @param config.oauthBaseUrl Override for OAUTH_BACKEND_URL (e.g. in tests).
  * @param config.userId Zitadel user ID (`Profile.sub`) — populate from `extractProfile(idToken).sub`
- *   after a successful OAuth login. Required for Agentic API calls; callers without it
- *   will receive `userId: undefined` and the Agentic path will throw a hard error.
- *   Intentionally absent in api-key mode (Agentic is OAuth-only).
+ *   after a successful OAuth login. When omitted in OAuth mode, the SDK derives it automatically
+ *   from the `sub` claim of the access-token JWT — so callers that don't thread userId explicitly
+ *   still get Agentic routing. Intentionally absent in api-key mode (Agentic is OAuth-only).
  */
 export function getAuthContext(
   settings: Settings,
@@ -77,12 +78,17 @@ export function getAuthContext(
   config: { oauthBaseUrl?: string; userId?: string } = {},
 ): AuthContext | null {
   if (tokens?.accessToken && settings.bbOrgId && !isTokenExpired(tokens.expirationMs)) {
+    // Prefer the caller-supplied userId; fall back to the `sub` claim in the
+    // access-token JWT so consumers that don't thread userId explicitly still
+    // get a populated userId for Agentic calls. Only attempted in OAuth mode
+    // (api-key tokens are not JWTs and do not carry a sub claim).
+    const userId = config.userId ?? subFromAccessToken(tokens.accessToken) ?? undefined;
     return {
       baseUrl: config.oauthBaseUrl ?? OAUTH_BACKEND_URL,
       token: tokens.accessToken,
       orgId: settings.bbOrgId,
       mode: "oauth",
-      userId: config.userId,
+      userId,
     };
   }
 

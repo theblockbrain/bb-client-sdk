@@ -1,4 +1,7 @@
 import {
+  subFromAccessToken
+} from "./chunk-GEERJDH5.js";
+import {
   isTokenExpired
 } from "./chunk-IS5FIW7M.js";
 import {
@@ -28,12 +31,13 @@ function inferAuthMode(loaded) {
 }
 function getAuthContext(settings, tokens, config = {}) {
   if (tokens?.accessToken && settings.bbOrgId && !isTokenExpired(tokens.expirationMs)) {
+    const userId = config.userId ?? subFromAccessToken(tokens.accessToken) ?? void 0;
     return {
       baseUrl: config.oauthBaseUrl ?? OAUTH_BACKEND_URL,
       token: tokens.accessToken,
       orgId: settings.bbOrgId,
       mode: "oauth",
-      userId: config.userId
+      userId
     };
   }
   if (settings.bbToken) {
@@ -57,4 +61,4 @@ export {
   getAuthContext,
   hasUsableAuth
 };
-//# sourceMappingURL=chunk-HEVQMFYJ.js.map
+//# sourceMappingURL=chunk-VSQ7WUQF.js.map
