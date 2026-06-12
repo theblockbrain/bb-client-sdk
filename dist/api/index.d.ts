@@ -49,8 +49,34 @@ interface Bot {
     name: string;
     model: string;
 }
+/**
+ * Routing-relevant fields from a single bot record.
+ * `agent` is the Mastra agent ID — when set, conversations for this bot
+ * must carry `agent` in their create payload so `sendMessage` routes to
+ * the Agentic path.
+ */
+interface BotDetail {
+    id: string;
+    name: string;
+    model: string;
+    /** Mastra agent ID; empty string or null when the bot is LLM-only. */
+    agent: string | null;
+    /** Custom agent ID (distinct from the Mastra agent). */
+    customAgentId: string | null;
+}
 /** Fetch the list of active bots for the authenticated context. */
 declare function fetchBotList(ctx: AuthContext): Promise<Bot[]>;
+/**
+ * Fetch routing-relevant detail for a single bot.
+ *
+ * GET /cortex/active-bot/{botId}
+ *
+ * Used internally by `createConversation` to propagate the bot's `agent`
+ * field to the new conversation — required so `sendMessage` can route to
+ * the Agentic path. Callers that only need the basic `Bot` shape should
+ * use `fetchBotList` instead.
+ */
+declare function fetchBotDetail(ctx: AuthContext, botId: string): Promise<BotDetail>;
 
 type WebSearchProvider = "linkup_normal_web_search" | "linkup_pro_web_search" | "linkup_pro_r_web_search" | "tavily_normal_web_search" | "tavily_pro_web_search" | "tavily_pro_r_web_search" | "perplexity_normal_web_search" | "perplexity_pro_web_search" | "perplexity_pro_r_web_search";
 type WebSearchType = "normal_web_search" | "pro_web_search" | "pro_r_web_search";
@@ -115,7 +141,16 @@ interface ConversationDetail {
  * frontend repository directly.
  */
 declare function getConversationDetail(ctx: AuthContext, convoId: string): Promise<ConversationDetail>;
-/** Create a new conversation for a bot. Returns the conversation ID. */
+/**
+ * Create a new conversation for a bot. Returns the conversation ID.
+ *
+ * Fetches the bot's `agent` field from `GET /cortex/active-bot/{botId}` and
+ * includes it in the create payload when non-empty. This is required for
+ * `sendMessage` to route to the Agentic path — the backend only persists
+ * `agent` on the conversation when the field is present at create time.
+ * Mirrors the behaviour of `CortexRepository.createConvoOfCortexBot` in
+ * v1-frontend (spreads `options` including `agent` into the POST body).
+ */
 declare function createConversation(ctx: AuthContext, botId: string, convoName?: string): Promise<{
     convoId: string;
 }>;
@@ -610,4 +645,4 @@ declare function getTenantConfig(ctx: AuthContext, targetOrgId?: string): Promis
  */
 declare function setCustomAgentsEnabled(ctx: AuthContext, enabled: boolean, targetOrgId?: string): Promise<void>;
 
-export { type Agent, type AgentsResponse, type ApiResponse, type AttachmentUploadResult, BBApiError, type Bot, type CapabilitiesResponse, type Capability, type ConversationDetail, type ConversationWebSearchSettings, type CreateNoteParams, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type MessageStream, type NoteResult, type SendMessageOptions, type SendMessageStreamOptions, type TenantConfig, type TenantDetail, type TenantSummary, type UpdateConversationPatch, type UploadAttachmentOptions, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, createMessageStream, createNote, deleteConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchAgents, fetchBotList, fetchCapabilities, getAvailableWebSearchProviders, getConversationAttachments, getConversationDetail, getConversationWebSearch, getMessageList, getTenantById, getTenantConfig, introspectApiKey, invalidateConvoDetailCache, isBBApiError, listTenants, normalizeUrl, sendMessage, setAgentActive, setAgentAvailability, setCapabilityActive, setCapabilityAvailability, setConversationWebSearch, setCustomAgentsEnabled, transcribeAudio, updateConversation, uploadConversationAttachment, wrapStringAsStream };
+export { type Agent, type AgentsResponse, type ApiResponse, type AttachmentUploadResult, BBApiError, type Bot, type BotDetail, type CapabilitiesResponse, type Capability, type ConversationDetail, type ConversationWebSearchSettings, type CreateNoteParams, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type MessageStream, type NoteResult, type SendMessageOptions, type SendMessageStreamOptions, type TenantConfig, type TenantDetail, type TenantSummary, type UpdateConversationPatch, type UploadAttachmentOptions, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, createMessageStream, createNote, deleteConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchAgents, fetchBotDetail, fetchBotList, fetchCapabilities, getAvailableWebSearchProviders, getConversationAttachments, getConversationDetail, getConversationWebSearch, getMessageList, getTenantById, getTenantConfig, introspectApiKey, invalidateConvoDetailCache, isBBApiError, listTenants, normalizeUrl, sendMessage, setAgentActive, setAgentAvailability, setCapabilityActive, setCapabilityAvailability, setConversationWebSearch, setCustomAgentsEnabled, transcribeAudio, updateConversation, uploadConversationAttachment, wrapStringAsStream };

@@ -100,6 +100,31 @@ async function fetchBotList(ctx) {
     model: bot.model ?? ""
   })).filter((bot) => bot.name !== "Nexus Mobile App");
 }
+async function fetchBotDetail(ctx, botId) {
+  const endpoint = `/cortex/active-bot/${encodeURIComponent(botId)}`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "GET",
+    headers: authHeaders(ctx.token, ctx.orgId)
+  });
+  if (!res.ok) {
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+  const data = await res.json();
+  const raw = data.body ?? data;
+  return {
+    id: raw._id ?? raw.id ?? botId,
+    name: raw.name ?? raw.displayName ?? "",
+    model: raw.model ?? "",
+    agent: raw.agent ?? null,
+    customAgentId: raw.customAgentId ?? null
+  };
+}
 
 // src/api/conversations.ts
 async function getConversationDetail(ctx, convoId) {
@@ -117,13 +142,20 @@ async function getConversationDetail(ctx, convoId) {
     }
     throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
   }
-  const data = await res.json();
+  const envelope = await res.json();
+  const data = envelope.body ?? envelope;
   return {
     agent: data.agent ?? null,
     customAgentId: data.customAgentId ?? null
   };
 }
 async function createConversation(ctx, botId, convoName = "BlockBrain Conversation") {
+  let agentId = null;
+  try {
+    const botDetail = await fetchBotDetail(ctx, botId);
+    agentId = botDetail.agent && botDetail.agent.length > 0 ? botDetail.agent : null;
+  } catch {
+  }
   const endpoint = `/cortex/active-bot/${encodeURIComponent(botId)}/convo`;
   const url = normalizeUrl(ctx.baseUrl);
   const res = await fetch(`${url}${endpoint}`, {
@@ -132,7 +164,10 @@ async function createConversation(ctx, botId, convoName = "BlockBrain Conversati
       "Content-Type": "application/json",
       ...authHeaders(ctx.token, ctx.orgId)
     },
-    body: JSON.stringify({ convoName })
+    body: JSON.stringify({
+      convoName,
+      ...agentId !== null && { agent: agentId }
+    })
   });
   if (!res.ok) {
     let body;
@@ -1020,6 +1055,7 @@ export {
   introspectApiKey,
   extractOrgIdFromIntrospect,
   fetchBotList,
+  fetchBotDetail,
   getConversationDetail,
   createConversation,
   deleteConversation,
@@ -1048,4 +1084,4 @@ export {
   getTenantConfig,
   setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-LQE6KOIB.js.map
+//# sourceMappingURL=chunk-A4X3PM67.js.map

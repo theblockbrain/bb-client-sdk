@@ -1,4 +1,11 @@
 import {
+  createLock,
+  extractCode,
+  extractJson,
+  repairUnescapedQuotes,
+  siteKey
+} from "./chunk-TC3463HT.js";
+import {
   ThemeToggle,
   applyTheme,
   configureLogo,
@@ -10,16 +17,22 @@ import {
   useTheme
 } from "./chunk-QZ5YQ6RL.js";
 import {
-  createLock,
-  extractCode,
-  extractJson,
-  repairUnescapedQuotes,
-  siteKey
-} from "./chunk-TC3463HT.js";
-import {
   AVAILABLE_ACTIONS,
   runActions
 } from "./chunk-TUTKA2JH.js";
+import {
+  beginBrowserLogin,
+  completeBrowserLogin,
+  createRefreshGuard,
+  decodeJwtPayload,
+  decodePKCEState,
+  encodePKCEState,
+  extractOrgIdFromClaims,
+  extractProfile,
+  generateChallenge,
+  generateVerifier,
+  login
+} from "./chunk-2EYRIOGI.js";
 import {
   BBApiError,
   authHeaders,
@@ -30,6 +43,7 @@ import {
   discoverFrontendUrls,
   extractOrgIdFromIntrospect,
   fetchAgents,
+  fetchBotDetail,
   fetchBotList,
   fetchCapabilities,
   getAvailableWebSearchProviders,
@@ -55,20 +69,7 @@ import {
   updateConversation,
   uploadConversationAttachment,
   wrapStringAsStream
-} from "./chunk-LQE6KOIB.js";
-import {
-  beginBrowserLogin,
-  completeBrowserLogin,
-  createRefreshGuard,
-  decodeJwtPayload,
-  decodePKCEState,
-  encodePKCEState,
-  extractOrgIdFromClaims,
-  extractProfile,
-  generateChallenge,
-  generateVerifier,
-  login
-} from "./chunk-2EYRIOGI.js";
+} from "./chunk-A4X3PM67.js";
 import {
   buildEmailPrompt,
   buildNewEmailPrompt,
@@ -138,6 +139,7 @@ export {
   extractOrgIdFromIntrospect,
   extractProfile,
   fetchAgents,
+  fetchBotDetail,
   fetchBotList,
   fetchCapabilities,
   generateChallenge,

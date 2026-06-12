@@ -8,6 +8,7 @@ import {
   discoverFrontendUrls,
   extractOrgIdFromIntrospect,
   fetchAgents,
+  fetchBotDetail,
   fetchBotList,
   fetchCapabilities,
   getAvailableWebSearchProviders,
@@ -33,7 +34,7 @@ import {
   updateConversation,
   uploadConversationAttachment,
   wrapStringAsStream
-} from "../chunk-LQE6KOIB.js";
+} from "../chunk-A4X3PM67.js";
 import "../chunk-6GWCCXNN.js";
 export {
   BBApiError,
@@ -45,6 +46,7 @@ export {
   discoverFrontendUrls,
   extractOrgIdFromIntrospect,
   fetchAgents,
+  fetchBotDetail,
   fetchBotList,
   fetchCapabilities,
   getAvailableWebSearchProviders,
