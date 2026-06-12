@@ -1,4 +1,7 @@
 import {
+  subFromAccessToken
+} from "./chunk-GEERJDH5.js";
+import {
   AGENTIC_BASE_URL
 } from "./chunk-6GWCCXNN.js";
 
@@ -657,9 +660,10 @@ async function sendMessage(ctx, convoId, content, options = {}) {
   const streaming = options.enableStreaming === true;
   const agentId = await getCachedConvoAgent(ctx, convoId);
   if (agentId) {
-    if (!ctx.userId) {
+    const resourceId = ctx.userId ?? subFromAccessToken(ctx.token) ?? null;
+    if (!resourceId) {
       throw new Error(
-        "Agentic API requires OAuth context with a userId. Pass `config.userId = profile.sub` to `getAuthContext` during login."
+        "Agentic API requires a Zitadel user ID. Either pass `config.userId = profile.sub` to `getAuthContext`, or ensure the access token is a Zitadel OAuth JWT (not an API key). Agentic routing is not available in api-key mode."
       );
     }
     const deltaSource = callAgenticStream({
@@ -667,7 +671,7 @@ async function sendMessage(ctx, convoId, content, options = {}) {
       orgId: ctx.orgId,
       agentId,
       convoId,
-      userId: ctx.userId,
+      userId: resourceId,
       content,
       // botId is not available from /general-info; X-BLOCKBRAIN-ACTIVE-BOT-ID
       // is sent conditionally — absent here means the header is omitted.
@@ -1084,4 +1088,4 @@ export {
   getTenantConfig,
   setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-A4X3PM67.js.map
+//# sourceMappingURL=chunk-XMMBLJDB.js.map

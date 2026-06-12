@@ -5,6 +5,7 @@ import { getConversationDetail } from "./conversations.js";
 import { callAgenticStream } from "./agentic/client.js";
 import { parseBlockySseStream } from "./blocky-sse.js";
 import { createMessageStream, wrapStringAsStream } from "./stream-result.js";
+import { subFromAccessToken } from "../utils/jwt.js";
 import type { MessageStream } from "./stream-result.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 import type { ApprovalResolver } from "./agentic/client.js";
@@ -111,10 +112,24 @@ export async function sendMessage(
 
   if (agentId) {
     // ── Agentic path ──────────────────────────────────────────────────────────
-    if (!ctx.userId) {
+    //
+    // Resolve resourceId (Zitadel user sub) via three-tier fallback:
+    //   1. ctx.userId — explicitly set by the caller (most reliable)
+    //   2. sub decoded from the access-token JWT — covers callers that build
+    //      AuthContext manually without threading a userId param through
+    //      (chrome-addon, ms-outlook-addin without 0.15.0 upgrade, etc.)
+    //   3. null → hard error (only when token carries no sub, e.g. api-key)
+    //
+    // We read ctx.token here because: (a) getAuthContext may have already
+    // derived sub and set ctx.userId, but (b) some callers construct
+    // AuthContext directly and bypass getAuthContext entirely.
+    const resourceId = ctx.userId ?? subFromAccessToken(ctx.token) ?? null;
+    if (!resourceId) {
       throw new Error(
-        "Agentic API requires OAuth context with a userId. " +
-        "Pass `config.userId = profile.sub` to `getAuthContext` during login.",
+        "Agentic API requires a Zitadel user ID. " +
+        "Either pass `config.userId = profile.sub` to `getAuthContext`, or " +
+        "ensure the access token is a Zitadel OAuth JWT (not an API key). " +
+        "Agentic routing is not available in api-key mode.",
       );
     }
 
@@ -123,7 +138,7 @@ export async function sendMessage(
       orgId: ctx.orgId,
       agentId,
       convoId,
-      userId: ctx.userId,
+      userId: resourceId,
       content,
       // botId is not available from /general-info; X-BLOCKBRAIN-ACTIVE-BOT-ID
       // is sent conditionally — absent here means the header is omitted.

@@ -1,38 +1,20 @@
 import {
+  DEFAULTS,
+  getAuthContext,
+  hasUsableAuth,
+  inferAuthMode
+} from "./chunk-VSQ7WUQF.js";
+import {
   createLock,
   extractCode,
   extractJson,
   repairUnescapedQuotes,
   siteKey
-} from "./chunk-TC3463HT.js";
-import {
-  ThemeToggle,
-  applyTheme,
-  configureLogo,
-  cycleTheme,
-  renderMarkdown,
-  renderMarkdownInto,
-  themeIcon,
-  timeAgo,
-  useTheme
-} from "./chunk-QZ5YQ6RL.js";
+} from "./chunk-7RVOYF2S.js";
 import {
   AVAILABLE_ACTIONS,
   runActions
 } from "./chunk-TUTKA2JH.js";
-import {
-  beginBrowserLogin,
-  completeBrowserLogin,
-  createRefreshGuard,
-  decodeJwtPayload,
-  decodePKCEState,
-  encodePKCEState,
-  extractOrgIdFromClaims,
-  extractProfile,
-  generateChallenge,
-  generateVerifier,
-  login
-} from "./chunk-2EYRIOGI.js";
 import {
   BBApiError,
   authHeaders,
@@ -69,23 +51,23 @@ import {
   updateConversation,
   uploadConversationAttachment,
   wrapStringAsStream
-} from "./chunk-A4X3PM67.js";
+} from "./chunk-XMMBLJDB.js";
 import {
-  buildEmailPrompt,
-  buildNewEmailPrompt,
-  buildPagePrompt,
-  parseResponse,
-  parseSubjectAndBody
-} from "./chunk-EFKOQZLN.js";
+  subFromAccessToken
+} from "./chunk-GEERJDH5.js";
 import {
-  ACTION_SYSTEM_PROMPT
-} from "./chunk-C25NYCKP.js";
-import {
-  DEFAULTS,
-  getAuthContext,
-  hasUsableAuth,
-  inferAuthMode
-} from "./chunk-HEVQMFYJ.js";
+  beginBrowserLogin,
+  completeBrowserLogin,
+  createRefreshGuard,
+  decodeJwtPayload,
+  decodePKCEState,
+  encodePKCEState,
+  extractOrgIdFromClaims,
+  extractProfile,
+  generateChallenge,
+  generateVerifier,
+  login
+} from "./chunk-2EYRIOGI.js";
 import {
   computeExpiration,
   exchangeCode,
@@ -100,6 +82,27 @@ import {
   OAUTH_BACKEND_URL,
   TOKEN_ENDPOINT
 } from "./chunk-6GWCCXNN.js";
+import {
+  buildEmailPrompt,
+  buildNewEmailPrompt,
+  buildPagePrompt,
+  parseResponse,
+  parseSubjectAndBody
+} from "./chunk-EFKOQZLN.js";
+import {
+  ACTION_SYSTEM_PROMPT
+} from "./chunk-C25NYCKP.js";
+import {
+  ThemeToggle,
+  applyTheme,
+  configureLogo,
+  cycleTheme,
+  renderMarkdown,
+  renderMarkdownInto,
+  themeIcon,
+  timeAgo,
+  useTheme
+} from "./chunk-QZ5YQ6RL.js";
 export {
   ACTION_SYSTEM_PROMPT,
   AGENTIC_BASE_URL,
@@ -176,6 +179,7 @@ export {
   setConversationWebSearch,
   setCustomAgentsEnabled,
   siteKey,
+  subFromAccessToken,
   themeIcon,
   timeAgo,
   transcribeAudio,
