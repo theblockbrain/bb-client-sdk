@@ -28,3 +28,14 @@ export const AUTH_SCOPES = [
 
 export const TOKEN_ENDPOINT = `${AUTH_AUTHORITY}/oauth/v2/token`;
 export const AUTHORIZE_ENDPOINT = `${AUTH_AUTHORITY}/oauth/v2/authorize`;
+
+/**
+ * Base URL for the Agentic API.
+ *
+ * The streaming endpoint is derived from this by replacing the trailing `/api`
+ * segment with `/v2/api`, then appending `/agents/{agentId}/stream`:
+ *
+ *   https://agentic.theblockbrain.ai/api
+ *   → https://agentic.theblockbrain.ai/v2/api/agents/{agentId}/stream
+ */
+export const AGENTIC_BASE_URL = "https://agentic.theblockbrain.ai/api";

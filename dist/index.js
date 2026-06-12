@@ -1,4 +1,11 @@
 import {
+  createLock,
+  extractCode,
+  extractJson,
+  repairUnescapedQuotes,
+  siteKey
+} from "./chunk-TC3463HT.js";
+import {
   ThemeToggle,
   applyTheme,
   configureLogo,
@@ -9,13 +16,6 @@ import {
   timeAgo,
   useTheme
 } from "./chunk-QZ5YQ6RL.js";
-import {
-  createLock,
-  extractCode,
-  extractJson,
-  repairUnescapedQuotes,
-  siteKey
-} from "./chunk-TC3463HT.js";
 import {
   AVAILABLE_ACTIONS,
   runActions
@@ -32,25 +32,29 @@ import {
   generateChallenge,
   generateVerifier,
   login
-} from "./chunk-KBLN5CNP.js";
+} from "./chunk-2EYRIOGI.js";
 import {
   BBApiError,
   authHeaders,
   createConversation,
+  createMessageStream,
   createNote,
   deleteConversation,
   discoverFrontendUrls,
   extractOrgIdFromIntrospect,
   fetchAgents,
+  fetchBotDetail,
   fetchBotList,
   fetchCapabilities,
   getAvailableWebSearchProviders,
   getConversationAttachments,
+  getConversationDetail,
   getConversationWebSearch,
   getMessageList,
   getTenantById,
   getTenantConfig,
   introspectApiKey,
+  invalidateConvoDetailCache,
   isBBApiError,
   listTenants,
   normalizeUrl,
@@ -63,8 +67,9 @@ import {
   setCustomAgentsEnabled,
   transcribeAudio,
   updateConversation,
-  uploadConversationAttachment
-} from "./chunk-T6SAEHFL.js";
+  uploadConversationAttachment,
+  wrapStringAsStream
+} from "./chunk-A4X3PM67.js";
 import {
   buildEmailPrompt,
   buildNewEmailPrompt,
@@ -80,22 +85,24 @@ import {
   getAuthContext,
   hasUsableAuth,
   inferAuthMode
-} from "./chunk-7DXZ3VJR.js";
+} from "./chunk-HEVQMFYJ.js";
 import {
   computeExpiration,
   exchangeCode,
   isTokenExpired,
   refreshTokens
-} from "./chunk-Y7K7A6MU.js";
+} from "./chunk-IS5FIW7M.js";
 import {
+  AGENTIC_BASE_URL,
   AUTHORIZE_ENDPOINT,
   AUTH_AUTHORITY,
   AUTH_SCOPES,
   OAUTH_BACKEND_URL,
   TOKEN_ENDPOINT
-} from "./chunk-TGCXGCQH.js";
+} from "./chunk-6GWCCXNN.js";
 export {
   ACTION_SYSTEM_PROMPT,
+  AGENTIC_BASE_URL,
   AUTHORIZE_ENDPOINT,
   AUTH_AUTHORITY,
   AUTH_SCOPES,
@@ -116,6 +123,7 @@ export {
   configureLogo,
   createConversation,
   createLock,
+  createMessageStream,
   createNote,
   createRefreshGuard,
   cycleTheme,
@@ -131,6 +139,7 @@ export {
   extractOrgIdFromIntrospect,
   extractProfile,
   fetchAgents,
+  fetchBotDetail,
   fetchBotList,
   fetchCapabilities,
   generateChallenge,
@@ -138,6 +147,7 @@ export {
   getAuthContext,
   getAvailableWebSearchProviders,
   getConversationAttachments,
+  getConversationDetail,
   getConversationWebSearch,
   getMessageList,
   getTenantById,
@@ -145,6 +155,7 @@ export {
   hasUsableAuth,
   inferAuthMode,
   introspectApiKey,
+  invalidateConvoDetailCache,
   isBBApiError,
   isTokenExpired,
   listTenants,
@@ -170,6 +181,7 @@ export {
   transcribeAudio,
   updateConversation,
   uploadConversationAttachment,
-  useTheme
+  useTheme,
+  wrapStringAsStream
 };
 //# sourceMappingURL=index.js.map

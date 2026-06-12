@@ -10,12 +10,14 @@ var AUTH_SCOPES = [
 ];
 var TOKEN_ENDPOINT = `${AUTH_AUTHORITY}/oauth/v2/token`;
 var AUTHORIZE_ENDPOINT = `${AUTH_AUTHORITY}/oauth/v2/authorize`;
+var AGENTIC_BASE_URL = "https://agentic.theblockbrain.ai/api";
 
 export {
   AUTH_AUTHORITY,
   OAUTH_BACKEND_URL,
   AUTH_SCOPES,
   TOKEN_ENDPOINT,
-  AUTHORIZE_ENDPOINT
+  AUTHORIZE_ENDPOINT,
+  AGENTIC_BASE_URL
 };
-//# sourceMappingURL=chunk-TGCXGCQH.js.map
+//# sourceMappingURL=chunk-6GWCCXNN.js.map

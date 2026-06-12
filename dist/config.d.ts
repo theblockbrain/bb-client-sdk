@@ -18,5 +18,15 @@ declare const OAUTH_BACKEND_URL = "https://blocky.theblockbrain.ai";
 declare const AUTH_SCOPES: readonly ["openid", "profile", "email", "offline_access", "blockbrain:grants"];
 declare const TOKEN_ENDPOINT = "https://auth.theblockbrain.ai/oauth/v2/token";
 declare const AUTHORIZE_ENDPOINT = "https://auth.theblockbrain.ai/oauth/v2/authorize";
+/**
+ * Base URL for the Agentic API.
+ *
+ * The streaming endpoint is derived from this by replacing the trailing `/api`
+ * segment with `/v2/api`, then appending `/agents/{agentId}/stream`:
+ *
+ *   https://agentic.theblockbrain.ai/api
+ *   → https://agentic.theblockbrain.ai/v2/api/agents/{agentId}/stream
+ */
+declare const AGENTIC_BASE_URL = "https://agentic.theblockbrain.ai/api";
 
-export { AUTHORIZE_ENDPOINT, AUTH_AUTHORITY, AUTH_SCOPES, OAUTH_BACKEND_URL, TOKEN_ENDPOINT };
+export { AGENTIC_BASE_URL, AUTHORIZE_ENDPOINT, AUTH_AUTHORITY, AUTH_SCOPES, OAUTH_BACKEND_URL, TOKEN_ENDPOINT };

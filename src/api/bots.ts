@@ -9,16 +9,38 @@ export interface Bot {
   model: string;
 }
 
+/**
+ * Routing-relevant fields from a single bot record.
+ * `agent` is the Mastra agent ID — when set, conversations for this bot
+ * must carry `agent` in their create payload so `sendMessage` routes to
+ * the Agentic path.
+ */
+export interface BotDetail {
+  id: string;
+  name: string;
+  model: string;
+  /** Mastra agent ID; empty string or null when the bot is LLM-only. */
+  agent: string | null;
+  /** Custom agent ID (distinct from the Mastra agent). */
+  customAgentId: string | null;
+}
+
 interface RawBot {
   _id?: string;
   id?: string;
   name?: string;
   displayName?: string;
   model?: string;
+  agent?: string | null;
+  customAgentId?: string | null;
 }
 
 interface BotListResponse {
   body?: { data?: RawBot[] } & RawBot[];
+}
+
+interface BotDetailResponse {
+  body?: RawBot;
 }
 
 /** Fetch the list of active bots for the authenticated context. */
@@ -56,4 +78,39 @@ export async function fetchBotList(ctx: AuthContext): Promise<Bot[]> {
       model: bot.model ?? "",
     }))
     .filter((bot) => bot.name !== "Nexus Mobile App");
+}
+
+/**
+ * Fetch routing-relevant detail for a single bot.
+ *
+ * GET /cortex/active-bot/{botId}
+ *
+ * Used internally by `createConversation` to propagate the bot's `agent`
+ * field to the new conversation — required so `sendMessage` can route to
+ * the Agentic path. Callers that only need the basic `Bot` shape should
+ * use `fetchBotList` instead.
+ */
+export async function fetchBotDetail(ctx: AuthContext, botId: string): Promise<BotDetail> {
+  const endpoint = `/cortex/active-bot/${encodeURIComponent(botId)}`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "GET",
+    headers: authHeaders(ctx.token, ctx.orgId),
+  });
+
+  if (!res.ok) {
+    let body: unknown;
+    try { body = await res.json(); } catch { /* response may not be JSON */ }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+
+  const data = (await res.json()) as BotDetailResponse;
+  const raw = data.body ?? (data as unknown as RawBot);
+  return {
+    id: raw._id ?? raw.id ?? botId,
+    name: raw.name ?? raw.displayName ?? "",
+    model: raw.model ?? "",
+    agent: raw.agent ?? null,
+    customAgentId: raw.customAgentId ?? null,
+  };
 }

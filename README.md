@@ -9,7 +9,7 @@ Shared frontend SDK for BlockBrain apps (Chrome extension, Outlook add-in, futur
 @theblockbrain:registry=https://npm.pkg.github.com
 
 # ~/.npmrc (machine-level, not committed)
-//npm.pkg.github.com/:_authToken=<PAT with read:packages>
+//npm.pkg.github.com/:_authToken=<PAT (classic) with read:packages>
 ```
 
 ```jsonc

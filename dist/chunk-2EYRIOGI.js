@@ -1,12 +1,12 @@
 import {
   computeExpiration,
   exchangeCode
-} from "./chunk-Y7K7A6MU.js";
+} from "./chunk-IS5FIW7M.js";
 import {
   AUTHORIZE_ENDPOINT,
   AUTH_SCOPES,
   TOKEN_ENDPOINT
-} from "./chunk-TGCXGCQH.js";
+} from "./chunk-6GWCCXNN.js";
 
 // src/auth/pkce.ts
 function base64urlEncode(buf) {
@@ -243,4 +243,4 @@ export {
   beginBrowserLogin,
   completeBrowserLogin
 };
-//# sourceMappingURL=chunk-KBLN5CNP.js.map
+//# sourceMappingURL=chunk-2EYRIOGI.js.map

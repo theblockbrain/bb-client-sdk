@@ -1,19 +1,115 @@
 import { authHeaders } from "./headers.js";
 import { normalizeUrl } from "./url.js";
 import { BBApiError } from "./errors.js";
+import { fetchBotDetail } from "./bots.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 import type { WebSearchType, WebSearchConfig } from "./websearch.js";
+
+// ─── getConversationDetail ─────────────────────────────────────────────────────
+
+/**
+ * Subset of `ConvoGeneralInfoDTO` (blocky/src/api/nexus/conversation/schemas.py)
+ * that the SDK needs for routing decisions.
+ *
+ * `agent` — when set, the conversation is wired to an Agentic agent and
+ * `sendMessage` will route to the Agentic stream endpoint instead of Blocky.
+ *
+ * Note: `botId` is NOT returned by `/general-info` — the header
+ * `X-BLOCKBRAIN-ACTIVE-BOT-ID` is sent conditionally and only when the caller
+ * supplies it explicitly.
+ */
+export interface ConversationDetail {
+  /** Agentic agent ID when the conversation has an agent configured; null/undefined otherwise. */
+  agent?: string | null;
+  /** Custom agent ID (separate from the Mastra agent ID in `agent`). */
+  customAgentId?: string | null;
+}
+
+interface ConvoGeneralInfoDto {
+  agent?: string | null;
+  customAgentId?: string | null;
+  [key: string]: unknown;
+}
+
+/**
+ * The endpoint returns a CommonResponseDTO envelope: `{ code, key, body: ConvoGeneralInfoDto }`.
+ * Some callers may also receive a flat (unwrapped) response — handle both.
+ */
+interface ConvoGeneralInfoResponse {
+  body?: ConvoGeneralInfoDto;
+  agent?: string | null;
+  customAgentId?: string | null;
+  [key: string]: unknown;
+}
+
+/**
+ * Fetch lightweight conversation metadata used for routing.
+ *
+ * GET /cortex/conversation/{convoId}/general-info
+ *
+ * The response is intentionally narrow — only fields the SDK uses for internal
+ * routing are surfaced; callers that need richer detail should use their own
+ * frontend repository directly.
+ */
+export async function getConversationDetail(
+  ctx: AuthContext,
+  convoId: string,
+): Promise<ConversationDetail> {
+  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}/general-info`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "GET",
+    headers: authHeaders(ctx.token, ctx.orgId),
+  });
+
+  if (!res.ok) {
+    let body: unknown;
+    try { body = await res.json(); } catch { /* response may not be JSON */ }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+
+  const envelope = (await res.json()) as ConvoGeneralInfoResponse;
+  // Backend wraps in CommonResponseDTO: { code, key, body: {...} }.
+  // Fall back to top-level fields for callers that receive unwrapped responses.
+  const data: ConvoGeneralInfoDto = envelope.body ?? envelope;
+  return {
+    agent: data.agent ?? null,
+    customAgentId: data.customAgentId ?? null,
+  };
+}
 
 interface ConversationResponse {
   body: { dataRoomId: string };
 }
 
-/** Create a new conversation for a bot. Returns the conversation ID. */
+/**
+ * Create a new conversation for a bot. Returns the conversation ID.
+ *
+ * Fetches the bot's `agent` field from `GET /cortex/active-bot/{botId}` and
+ * includes it in the create payload when non-empty. This is required for
+ * `sendMessage` to route to the Agentic path — the backend only persists
+ * `agent` on the conversation when the field is present at create time.
+ * Mirrors the behaviour of `CortexRepository.createConvoOfCortexBot` in
+ * v1-frontend (spreads `options` including `agent` into the POST body).
+ */
 export async function createConversation(
   ctx: AuthContext,
   botId: string,
   convoName = "BlockBrain Conversation",
 ): Promise<{ convoId: string }> {
+  // Fetch the bot's agent field so we can propagate it to the conversation.
+  // A failed bot-detail fetch is non-fatal — we fall back to creating without
+  // the agent field, which means the conversation routes via Blocky. This is
+  // the safe degradation: better to work without Agentic routing than to fail
+  // the whole create.
+  let agentId: string | null = null;
+  try {
+    const botDetail = await fetchBotDetail(ctx, botId);
+    agentId = botDetail.agent && botDetail.agent.length > 0 ? botDetail.agent : null;
+  } catch {
+    // Non-fatal: proceed without agent — Blocky routing applies
+  }
+
   const endpoint = `/cortex/active-bot/${encodeURIComponent(botId)}/convo`;
   const url = normalizeUrl(ctx.baseUrl);
   const res = await fetch(`${url}${endpoint}`, {
@@ -22,7 +118,10 @@ export async function createConversation(
       "Content-Type": "application/json",
       ...authHeaders(ctx.token, ctx.orgId),
     },
-    body: JSON.stringify({ convoName }),
+    body: JSON.stringify({
+      convoName,
+      ...(agentId !== null && { agent: agentId }),
+    }),
   });
 
   if (!res.ok) {
