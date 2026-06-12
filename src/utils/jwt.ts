@@ -48,8 +48,8 @@ function decodeJwtPayload(token: string): JwtPayload | null {
  * - JWTs without a `sub` claim
  * - Malformed input
  *
- * This is oauth-only by design: callers must gate on `mode === "oauth"` before
- * calling, since API-key tokens are not JWTs.
+ * Returns `null` for non-JWT tokens such as `sk-` API keys, so callers need
+ * not gate on `mode === "oauth"` — the shape-check handles it gracefully.
  */
 export function subFromAccessToken(token: string): string | null {
   const payload = decodeJwtPayload(token);
