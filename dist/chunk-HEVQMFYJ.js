@@ -1,9 +1,9 @@
 import {
   isTokenExpired
-} from "./chunk-Y7K7A6MU.js";
+} from "./chunk-IS5FIW7M.js";
 import {
   OAUTH_BACKEND_URL
-} from "./chunk-TGCXGCQH.js";
+} from "./chunk-6GWCCXNN.js";
 
 // src/settings/schema.ts
 var DEFAULTS = {
@@ -32,7 +32,8 @@ function getAuthContext(settings, tokens, config = {}) {
       baseUrl: config.oauthBaseUrl ?? OAUTH_BACKEND_URL,
       token: tokens.accessToken,
       orgId: settings.bbOrgId,
-      mode: "oauth"
+      mode: "oauth",
+      userId: config.userId
     };
   }
   if (settings.bbToken) {
@@ -41,6 +42,7 @@ function getAuthContext(settings, tokens, config = {}) {
       token: settings.bbToken,
       orgId: settings.bbOrgId || "",
       mode: "api-key"
+      // userId is intentionally absent in api-key mode — Agentic is OAuth-only
     };
   }
   return null;
@@ -55,4 +57,4 @@ export {
   getAuthContext,
   hasUsableAuth
 };
-//# sourceMappingURL=chunk-7DXZ3VJR.js.map
+//# sourceMappingURL=chunk-HEVQMFYJ.js.map

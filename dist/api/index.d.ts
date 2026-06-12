@@ -88,6 +88,33 @@ declare function setConversationWebSearch(ctx: AuthContext, convoId: string, set
  */
 declare function getConversationWebSearch(ctx: AuthContext, convoId: string): Promise<ConversationWebSearchSettings>;
 
+/**
+ * Subset of `ConvoGeneralInfoDTO` (blocky/src/api/nexus/conversation/schemas.py)
+ * that the SDK needs for routing decisions.
+ *
+ * `agent` — when set, the conversation is wired to an Agentic agent and
+ * `sendMessage` will route to the Agentic stream endpoint instead of Blocky.
+ *
+ * Note: `botId` is NOT returned by `/general-info` — the header
+ * `X-BLOCKBRAIN-ACTIVE-BOT-ID` is sent conditionally and only when the caller
+ * supplies it explicitly.
+ */
+interface ConversationDetail {
+    /** Agentic agent ID when the conversation has an agent configured; null/undefined otherwise. */
+    agent?: string | null;
+    /** Custom agent ID (separate from the Mastra agent ID in `agent`). */
+    customAgentId?: string | null;
+}
+/**
+ * Fetch lightweight conversation metadata used for routing.
+ *
+ * GET /cortex/conversation/{convoId}/general-info
+ *
+ * The response is intentionally narrow — only fields the SDK uses for internal
+ * routing are surfaced; callers that need richer detail should use their own
+ * frontend repository directly.
+ */
+declare function getConversationDetail(ctx: AuthContext, convoId: string): Promise<ConversationDetail>;
 /** Create a new conversation for a bot. Returns the conversation ID. */
 declare function createConversation(ctx: AuthContext, botId: string, convoName?: string): Promise<{
     convoId: string;
@@ -274,15 +301,139 @@ interface NoteResult {
  */
 declare function createNote(ctx: AuthContext, params: CreateNoteParams): Promise<NoteResult>;
 
+/**
+ * Shared streaming result shape used by both the Blocky and Agentic send paths.
+ *
+ * `sendMessage` with `enableStreaming: true` resolves to this type regardless
+ * of which backend handled the request — callers get a unified interface.
+ */
+interface MessageStream {
+    /**
+     * Async iterable that yields text deltas as they arrive.
+     *
+     * For Blocky without true SSE: yields a single string containing the full
+     * response (the endpoint returns JSON, not a stream). The `final` promise
+     * resolves to the same value.
+     *
+     * For Agentic: yields incremental `text-delta` chunks from the SSE stream.
+     */
+    textDeltas: AsyncIterable<string>;
+    /**
+     * Resolves to the fully assembled response text when the stream is complete.
+     *
+     * `final` resolves independently of whether `textDeltas` is consumed — it is
+     * safe to await `final` without iterating `textDeltas`, and vice versa.
+     * An internal drain runs automatically so callers are never deadlocked.
+     *
+     * Rejects if the underlying source throws during reading.
+     */
+    final: Promise<string>;
+}
+/**
+ * Wrap a single pre-resolved string into a `MessageStream`.
+ *
+ * Used by the Blocky path when `enableStreaming: true` is requested but the
+ * Blocky endpoint returns a JSON response (no actual SSE).
+ */
+declare function wrapStringAsStream(text: string): MessageStream;
+/**
+ * Build a `MessageStream` from an `AsyncIterable<string>` of text deltas.
+ *
+ * The source is drained by an internal background task immediately on creation,
+ * so `final` resolves regardless of whether `textDeltas` is consumed:
+ *
+ *   // Only final:
+ *   const text = await stream.final;
+ *
+ *   // Only deltas:
+ *   for await (const d of stream.textDeltas) { ... }
+ *
+ *   // Both (concurrent):
+ *   for await (const d of stream.textDeltas) { ... }
+ *   const text = await stream.final; // already resolved by the time the loop exits
+ *
+ * `textDeltas` yields each delta as it arrives from the internal queue.
+ * If the caller does not iterate `textDeltas`, the queue grows but is bounded
+ * by the source length — acceptable for the typical chat-response size.
+ */
+declare function createMessageStream(source: AsyncIterable<string>): MessageStream;
+
+/**
+ * Approval context passed to the resolver on a tool-call-approval event.
+ * Shape mirrors the `data` payload of the `data-tool-call-approval` SSE frame.
+ */
+interface ApprovalContext {
+    runId?: string;
+    toolCallId?: string;
+    toolName?: string;
+    [key: string]: unknown;
+}
+/**
+ * Suspension context passed to the resolver on a tool-call-suspended event.
+ * The resolver must return an answer map or signal cancellation.
+ */
+interface SuspendContext {
+    runId?: string;
+    toolCallId?: string;
+    [key: string]: unknown;
+}
+interface ApprovalResult {
+    approved: boolean;
+}
+interface SuspendResult {
+    answers?: Record<string, string>;
+    cancelled?: boolean;
+}
+/**
+ * Strategy interface for handling tool-call approval and ask-user-question events.
+ *
+ * Replace the default `autoApprove` implementation to surface prompts to users.
+ * The call path is unchanged — only the resolver impl changes.
+ */
+interface ApprovalResolver {
+    resolveApproval(ctx: ApprovalContext): Promise<ApprovalResult>;
+    resolveSuspend(ctx: SuspendContext): Promise<SuspendResult>;
+}
+
 interface SendMessageOptions {
     /** Enable streaming mode. Default: false. */
     enableStreaming?: boolean;
+    /**
+     * Tool-call approval resolver for Agentic turns.
+     * Default: `autoApproveResolver` (auto-approves all tool calls).
+     * Replace to surface approval prompts to users without changing the call signature.
+     */
+    approvalResolver?: ApprovalResolver;
 }
+interface SendMessageStreamOptions extends SendMessageOptions {
+    enableStreaming: true;
+}
+/** Evict a cached conversation (e.g. when the agent assignment changes). */
+declare function invalidateConvoDetailCache(convoId: string): void;
 /**
  * Send user input to a conversation and get the bot response.
- * Returns the response content string.
+ *
+ * Routes automatically between Blocky and the Agentic API based on whether
+ * the conversation has an agent configured — determined by a call to
+ * `GET /cortex/conversation/{convoId}/general-info`.
+ *
+ * **Routing cache:** the agent assignment for each `convoId` is cached in memory
+ * for up to 5 minutes. If the agent of a conversation is changed mid-session
+ * (added or removed), routing continues to use the cached value until the TTL
+ * expires. Call `invalidateConvoDetailCache(convoId)` after changing a
+ * conversation's agent assignment to force an immediate re-fetch.
+ *
+ * @overload Non-streaming (default) — returns the full response as a string.
  */
-declare function sendMessage(ctx: AuthContext, convoId: string, content: string, options?: SendMessageOptions): Promise<string>;
+declare function sendMessage(ctx: AuthContext, convoId: string, content: string, options?: SendMessageOptions & {
+    enableStreaming?: false;
+}): Promise<string>;
+/**
+ * @overload Streaming — returns a `MessageStream` with `textDeltas` and `final`.
+ * Both Blocky and Agentic paths produce the same shape; the Blocky path yields a
+ * single-delta stream if the Blocky endpoint does not support true SSE.
+ */
+declare function sendMessage(ctx: AuthContext, convoId: string, content: string, options: SendMessageStreamOptions): Promise<MessageStream>;
 interface MessageItem {
     content: string;
     role: string;
@@ -459,4 +610,4 @@ declare function getTenantConfig(ctx: AuthContext, targetOrgId?: string): Promis
  */
 declare function setCustomAgentsEnabled(ctx: AuthContext, enabled: boolean, targetOrgId?: string): Promise<void>;
 
-export { type Agent, type AgentsResponse, type ApiResponse, type AttachmentUploadResult, BBApiError, type Bot, type CapabilitiesResponse, type Capability, type ConversationWebSearchSettings, type CreateNoteParams, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type NoteResult, type SendMessageOptions, type TenantConfig, type TenantDetail, type TenantSummary, type UpdateConversationPatch, type UploadAttachmentOptions, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, createNote, deleteConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchAgents, fetchBotList, fetchCapabilities, getAvailableWebSearchProviders, getConversationAttachments, getConversationWebSearch, getMessageList, getTenantById, getTenantConfig, introspectApiKey, isBBApiError, listTenants, normalizeUrl, sendMessage, setAgentActive, setAgentAvailability, setCapabilityActive, setCapabilityAvailability, setConversationWebSearch, setCustomAgentsEnabled, transcribeAudio, updateConversation, uploadConversationAttachment };
+export { type Agent, type AgentsResponse, type ApiResponse, type AttachmentUploadResult, BBApiError, type Bot, type CapabilitiesResponse, type Capability, type ConversationDetail, type ConversationWebSearchSettings, type CreateNoteParams, type GetMessageListOptions, type IntrospectResponse, type ListTenantsOptions, type ListTenantsResponse, type MessageItem, type MessageListBody, type MessageStream, type NoteResult, type SendMessageOptions, type SendMessageStreamOptions, type TenantConfig, type TenantDetail, type TenantSummary, type UpdateConversationPatch, type UploadAttachmentOptions, type WebSearchConfig, type WebSearchProvider, type WebSearchProviderStatus, type WebSearchType, authHeaders, createConversation, createMessageStream, createNote, deleteConversation, discoverFrontendUrls, extractOrgIdFromIntrospect, fetchAgents, fetchBotList, fetchCapabilities, getAvailableWebSearchProviders, getConversationAttachments, getConversationDetail, getConversationWebSearch, getMessageList, getTenantById, getTenantConfig, introspectApiKey, invalidateConvoDetailCache, isBBApiError, listTenants, normalizeUrl, sendMessage, setAgentActive, setAgentAvailability, setCapabilityActive, setCapabilityAvailability, setConversationWebSearch, setCustomAgentsEnabled, transcribeAudio, updateConversation, uploadConversationAttachment, wrapStringAsStream };

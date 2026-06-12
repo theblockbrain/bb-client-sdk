@@ -4,6 +4,65 @@ import { BBApiError } from "./errors.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 import type { WebSearchType, WebSearchConfig } from "./websearch.js";
 
+// ─── getConversationDetail ─────────────────────────────────────────────────────
+
+/**
+ * Subset of `ConvoGeneralInfoDTO` (blocky/src/api/nexus/conversation/schemas.py)
+ * that the SDK needs for routing decisions.
+ *
+ * `agent` — when set, the conversation is wired to an Agentic agent and
+ * `sendMessage` will route to the Agentic stream endpoint instead of Blocky.
+ *
+ * Note: `botId` is NOT returned by `/general-info` — the header
+ * `X-BLOCKBRAIN-ACTIVE-BOT-ID` is sent conditionally and only when the caller
+ * supplies it explicitly.
+ */
+export interface ConversationDetail {
+  /** Agentic agent ID when the conversation has an agent configured; null/undefined otherwise. */
+  agent?: string | null;
+  /** Custom agent ID (separate from the Mastra agent ID in `agent`). */
+  customAgentId?: string | null;
+}
+
+interface ConvoGeneralInfoResponse {
+  agent?: string | null;
+  customAgentId?: string | null;
+  [key: string]: unknown;
+}
+
+/**
+ * Fetch lightweight conversation metadata used for routing.
+ *
+ * GET /cortex/conversation/{convoId}/general-info
+ *
+ * The response is intentionally narrow — only fields the SDK uses for internal
+ * routing are surfaced; callers that need richer detail should use their own
+ * frontend repository directly.
+ */
+export async function getConversationDetail(
+  ctx: AuthContext,
+  convoId: string,
+): Promise<ConversationDetail> {
+  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}/general-info`;
+  const url = normalizeUrl(ctx.baseUrl);
+  const res = await fetch(`${url}${endpoint}`, {
+    method: "GET",
+    headers: authHeaders(ctx.token, ctx.orgId),
+  });
+
+  if (!res.ok) {
+    let body: unknown;
+    try { body = await res.json(); } catch { /* response may not be JSON */ }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+  }
+
+  const data = (await res.json()) as ConvoGeneralInfoResponse;
+  return {
+    agent: data.agent ?? null,
+    customAgentId: data.customAgentId ?? null,
+  };
+}
+
 interface ConversationResponse {
   body: { dataRoomId: string };
 }

@@ -24,6 +24,15 @@ interface AuthContext {
      */
     orgId: string;
     mode: AuthMode;
+    /**
+     * Zitadel user ID (`sub` claim from the ID token).
+     * Present in OAuth mode only — undefined in api-key mode.
+     *
+     * Required for Agentic API calls (`resourceId` in the request body).
+     * Agentic is OAuth-only; callers should throw when this is absent and they
+     * need the Agentic path.
+     */
+    userId?: string;
 }
 interface OAuthTokens {
     accessToken: string;
@@ -52,9 +61,14 @@ declare function inferAuthMode(loaded: Partial<Settings>): AuthMode;
  * intentionally ignored in OAuth mode.
  *
  * @param config.oauthBaseUrl Override for OAUTH_BACKEND_URL (e.g. in tests).
+ * @param config.userId Zitadel user ID (`Profile.sub`) — populate from `extractProfile(idToken).sub`
+ *   after a successful OAuth login. Required for Agentic API calls; callers without it
+ *   will receive `userId: undefined` and the Agentic path will throw a hard error.
+ *   Intentionally absent in api-key mode (Agentic is OAuth-only).
  */
 declare function getAuthContext(settings: Settings, tokens: OAuthTokens | null, config?: {
     oauthBaseUrl?: string;
+    userId?: string;
 }): AuthContext | null;
 /** True when the user has at least one viable auth method available. */
 declare function hasUsableAuth(settings: Settings, tokens: OAuthTokens | null): boolean;

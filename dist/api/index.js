@@ -2,6 +2,7 @@ import {
   BBApiError,
   authHeaders,
   createConversation,
+  createMessageStream,
   createNote,
   deleteConversation,
   discoverFrontendUrls,
@@ -11,11 +12,13 @@ import {
   fetchCapabilities,
   getAvailableWebSearchProviders,
   getConversationAttachments,
+  getConversationDetail,
   getConversationWebSearch,
   getMessageList,
   getTenantById,
   getTenantConfig,
   introspectApiKey,
+  invalidateConvoDetailCache,
   isBBApiError,
   listTenants,
   normalizeUrl,
@@ -28,12 +31,15 @@ import {
   setCustomAgentsEnabled,
   transcribeAudio,
   updateConversation,
-  uploadConversationAttachment
-} from "../chunk-T6SAEHFL.js";
+  uploadConversationAttachment,
+  wrapStringAsStream
+} from "../chunk-IRYT4XHZ.js";
+import "../chunk-6GWCCXNN.js";
 export {
   BBApiError,
   authHeaders,
   createConversation,
+  createMessageStream,
   createNote,
   deleteConversation,
   discoverFrontendUrls,
@@ -43,11 +49,13 @@ export {
   fetchCapabilities,
   getAvailableWebSearchProviders,
   getConversationAttachments,
+  getConversationDetail,
   getConversationWebSearch,
   getMessageList,
   getTenantById,
   getTenantConfig,
   introspectApiKey,
+  invalidateConvoDetailCache,
   isBBApiError,
   listTenants,
   normalizeUrl,
@@ -60,6 +68,7 @@ export {
   setCustomAgentsEnabled,
   transcribeAudio,
   updateConversation,
-  uploadConversationAttachment
+  uploadConversationAttachment,
+  wrapStringAsStream
 };
 //# sourceMappingURL=index.js.map

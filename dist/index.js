@@ -21,22 +21,10 @@ import {
   runActions
 } from "./chunk-TUTKA2JH.js";
 import {
-  beginBrowserLogin,
-  completeBrowserLogin,
-  createRefreshGuard,
-  decodeJwtPayload,
-  decodePKCEState,
-  encodePKCEState,
-  extractOrgIdFromClaims,
-  extractProfile,
-  generateChallenge,
-  generateVerifier,
-  login
-} from "./chunk-KBLN5CNP.js";
-import {
   BBApiError,
   authHeaders,
   createConversation,
+  createMessageStream,
   createNote,
   deleteConversation,
   discoverFrontendUrls,
@@ -46,11 +34,13 @@ import {
   fetchCapabilities,
   getAvailableWebSearchProviders,
   getConversationAttachments,
+  getConversationDetail,
   getConversationWebSearch,
   getMessageList,
   getTenantById,
   getTenantConfig,
   introspectApiKey,
+  invalidateConvoDetailCache,
   isBBApiError,
   listTenants,
   normalizeUrl,
@@ -63,8 +53,42 @@ import {
   setCustomAgentsEnabled,
   transcribeAudio,
   updateConversation,
-  uploadConversationAttachment
-} from "./chunk-T6SAEHFL.js";
+  uploadConversationAttachment,
+  wrapStringAsStream
+} from "./chunk-IRYT4XHZ.js";
+import {
+  beginBrowserLogin,
+  completeBrowserLogin,
+  createRefreshGuard,
+  decodeJwtPayload,
+  decodePKCEState,
+  encodePKCEState,
+  extractOrgIdFromClaims,
+  extractProfile,
+  generateChallenge,
+  generateVerifier,
+  login
+} from "./chunk-2EYRIOGI.js";
+import {
+  DEFAULTS,
+  getAuthContext,
+  hasUsableAuth,
+  inferAuthMode
+} from "./chunk-HEVQMFYJ.js";
+import {
+  computeExpiration,
+  exchangeCode,
+  isTokenExpired,
+  refreshTokens
+} from "./chunk-IS5FIW7M.js";
+import {
+  AGENTIC_BASE_URL,
+  AUTHORIZE_ENDPOINT,
+  AUTH_AUTHORITY,
+  AUTH_SCOPES,
+  OAUTH_BACKEND_URL,
+  TOKEN_ENDPOINT
+} from "./chunk-6GWCCXNN.js";
 import {
   buildEmailPrompt,
   buildNewEmailPrompt,
@@ -75,27 +99,9 @@ import {
 import {
   ACTION_SYSTEM_PROMPT
 } from "./chunk-C25NYCKP.js";
-import {
-  DEFAULTS,
-  getAuthContext,
-  hasUsableAuth,
-  inferAuthMode
-} from "./chunk-7DXZ3VJR.js";
-import {
-  computeExpiration,
-  exchangeCode,
-  isTokenExpired,
-  refreshTokens
-} from "./chunk-Y7K7A6MU.js";
-import {
-  AUTHORIZE_ENDPOINT,
-  AUTH_AUTHORITY,
-  AUTH_SCOPES,
-  OAUTH_BACKEND_URL,
-  TOKEN_ENDPOINT
-} from "./chunk-TGCXGCQH.js";
 export {
   ACTION_SYSTEM_PROMPT,
+  AGENTIC_BASE_URL,
   AUTHORIZE_ENDPOINT,
   AUTH_AUTHORITY,
   AUTH_SCOPES,
@@ -116,6 +122,7 @@ export {
   configureLogo,
   createConversation,
   createLock,
+  createMessageStream,
   createNote,
   createRefreshGuard,
   cycleTheme,
@@ -138,6 +145,7 @@ export {
   getAuthContext,
   getAvailableWebSearchProviders,
   getConversationAttachments,
+  getConversationDetail,
   getConversationWebSearch,
   getMessageList,
   getTenantById,
@@ -145,6 +153,7 @@ export {
   hasUsableAuth,
   inferAuthMode,
   introspectApiKey,
+  invalidateConvoDetailCache,
   isBBApiError,
   isTokenExpired,
   listTenants,
@@ -170,6 +179,7 @@ export {
   transcribeAudio,
   updateConversation,
   uploadConversationAttachment,
-  useTheme
+  useTheme,
+  wrapStringAsStream
 };
 //# sourceMappingURL=index.js.map
