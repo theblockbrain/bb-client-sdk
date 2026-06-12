@@ -480,6 +480,61 @@ async function* callAgenticStream(options) {
   }
 }
 
+// src/api/blocky-sse.ts
+async function* parseBlockySseStream(body) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let done = false;
+  try {
+    while (!done) {
+      const { done: streamDone, value } = await reader.read();
+      if (streamDone) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split(/\r\n\r\n|\n\n/);
+      buffer = parts.pop() ?? "";
+      for (const rawEvent of parts) {
+        const result = extractBlockyToken(rawEvent);
+        if (result.isDone) {
+          done = true;
+          break;
+        }
+        if (result.token !== null) yield result.token;
+      }
+    }
+    if (!done && buffer.trim()) {
+      const result = extractBlockyToken(buffer);
+      if (result.token !== null) yield result.token;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+function extractBlockyToken(rawEvent) {
+  const lines = rawEvent.split(/\r?\n/);
+  let eventType = null;
+  let dataPayload = null;
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      eventType = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataPayload = line.slice(5).trim();
+    }
+  }
+  if (eventType === "message_ready") {
+    return { token: null, isDone: true };
+  }
+  if (eventType === "new_token" && dataPayload !== null) {
+    try {
+      const parsed = JSON.parse(dataPayload);
+      const token = parsed.token ?? null;
+      if (token !== null) return { token, isDone: false };
+    } catch {
+    }
+  }
+  return { token: null, isDone: false };
+}
+
 // src/api/stream-result.ts
 function wrapStringAsStream(text) {
   async function* singleDelta() {
@@ -617,13 +672,13 @@ async function sendMessage(ctx, convoId, content, options = {}) {
     }
     throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
   }
+  if (streaming) {
+    if (!res.body) throw new Error("Blocky returned empty body for streaming request.");
+    return createMessageStream(parseBlockySseStream(res.body));
+  }
   const data = await res.json();
   if (!data?.body?.content) throw new Error("No response received from bot.");
-  const responseText = data.body.content;
-  if (streaming) {
-    return wrapStringAsStream(responseText);
-  }
-  return responseText;
+  return data.body.content;
 }
 async function getMessageList(ctx, convoId, options = {}) {
   const endpoint = "/cortex/message/list";
@@ -993,4 +1048,4 @@ export {
   getTenantConfig,
   setCustomAgentsEnabled
 };
-//# sourceMappingURL=chunk-IRYT4XHZ.js.map
+//# sourceMappingURL=chunk-LQE6KOIB.js.map

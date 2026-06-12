@@ -55,7 +55,7 @@ import {
   updateConversation,
   uploadConversationAttachment,
   wrapStringAsStream
-} from "./chunk-IRYT4XHZ.js";
+} from "./chunk-LQE6KOIB.js";
 import {
   beginBrowserLogin,
   completeBrowserLogin,
@@ -69,6 +69,16 @@ import {
   generateVerifier,
   login
 } from "./chunk-2EYRIOGI.js";
+import {
+  buildEmailPrompt,
+  buildNewEmailPrompt,
+  buildPagePrompt,
+  parseResponse,
+  parseSubjectAndBody
+} from "./chunk-EFKOQZLN.js";
+import {
+  ACTION_SYSTEM_PROMPT
+} from "./chunk-C25NYCKP.js";
 import {
   DEFAULTS,
   getAuthContext,
@@ -89,16 +99,6 @@ import {
   OAUTH_BACKEND_URL,
   TOKEN_ENDPOINT
 } from "./chunk-6GWCCXNN.js";
-import {
-  buildEmailPrompt,
-  buildNewEmailPrompt,
-  buildPagePrompt,
-  parseResponse,
-  parseSubjectAndBody
-} from "./chunk-EFKOQZLN.js";
-import {
-  ACTION_SYSTEM_PROMPT
-} from "./chunk-C25NYCKP.js";
 export {
   ACTION_SYSTEM_PROMPT,
   AGENTIC_BASE_URL,

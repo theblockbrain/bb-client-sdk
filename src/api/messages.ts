@@ -3,6 +3,7 @@ import { normalizeUrl } from "./url.js";
 import { BBApiError } from "./errors.js";
 import { getConversationDetail } from "./conversations.js";
 import { callAgenticStream } from "./agentic/client.js";
+import { parseBlockySseStream } from "./blocky-sse.js";
 import { createMessageStream, wrapStringAsStream } from "./stream-result.js";
 import type { MessageStream } from "./stream-result.js";
 import type { AuthContext } from "../settings/auth-mode.js";
@@ -166,19 +167,17 @@ export async function sendMessage(
     throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
   }
 
-  const data = (await res.json()) as SendMessageResponse;
-  if (!data?.body?.content) throw new Error("No response received from bot.");
-
-  const responseText = data.body.content;
-
   if (streaming) {
-    // Blocky does not return SSE at this endpoint regardless of the
-    // enableStreaming flag — it always responds with JSON. Wrap the
-    // string in a single-delta MessageStream so the return type is uniform.
-    return wrapStringAsStream(responseText);
+    // Blocky returns `text/event-stream` when enableStreaming is true.
+    // Parse the SSE format: `event: new_token` frames carry text deltas.
+    if (!res.body) throw new Error("Blocky returned empty body for streaming request.");
+    return createMessageStream(parseBlockySseStream(res.body));
   }
 
-  return responseText;
+  // Non-streaming: Blocky returns JSON with the full response in body.content.
+  const data = (await res.json()) as SendMessageResponse;
+  if (!data?.body?.content) throw new Error("No response received from bot.");
+  return data.body.content;
 }
 
 // ─── getMessageList ───────────────────────────────────────────────────────────

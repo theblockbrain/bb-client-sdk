@@ -62,8 +62,8 @@ const BOT_ID = process.env.BB_TEST_BOT_ID;
 const EXISTING_CONVO_ID = process.env.BB_TEST_CONVO_ID ?? null;
 
 // ── Imports from built dist ────────────────────────────────────────────────────
+import { getAuthContext } from "../dist/settings/index.js";
 import {
-  getAuthContext,
   createConversation,
   deleteConversation,
   getConversationDetail,
