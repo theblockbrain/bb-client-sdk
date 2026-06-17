@@ -24,6 +24,26 @@ export interface MarkdownOptions {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Decode the small set of HTML entities that marked emits in `escape.text`
+ * (e.g. `\&` → text `&amp;`). Uses a static map — never innerHTML — so it is
+ * XSS-safe. Result is passed to createTextNode which re-escapes on insertion.
+ */
+const MARKED_ENTITIES: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&apos;": "'",
+};
+
+const MARKED_ENTITY_RE = /&(?:amp|lt|gt|quot|#39|apos);/g;
+
+function decodeMarkedEntity(s: string): string {
+  return s.replace(MARKED_ENTITY_RE, (m) => MARKED_ENTITIES[m] ?? m);
+}
+
 function cls(opts: Required<MarkdownOptions>, suffix: string): string {
   return opts.classPrefix ? opts.classPrefix + suffix : "";
 }
@@ -58,7 +78,10 @@ function appendInlineToken(
       if (t.tokens && t.tokens.length > 0) {
         appendInlineTokens(parent, t.tokens, opts, doc);
       } else {
-        parent.appendChild(doc.createTextNode(t.text));
+        // Use t.raw instead of t.text: marked HTML-escapes t.text (& → &amp;, ' → &#39;, etc.)
+        // but createTextNode treats the string as literal text, not HTML — entities would show
+        // verbatim. t.raw is the original unescaped source for leaf text nodes.
+        parent.appendChild(doc.createTextNode(t.raw));
       }
       break;
     }
@@ -125,7 +148,10 @@ function appendInlineToken(
       break;
     }
     case "escape": {
-      parent.appendChild(doc.createTextNode((token as Tokens.Escape).text));
+      // marked HTML-escapes escape.text (\& → "&amp;", \< → "&lt;", etc.).
+      // raw contains the backslash ("\&") — not what we want either.
+      // Decode the entity back to the literal char before createTextNode.
+      parent.appendChild(doc.createTextNode(decodeMarkedEntity((token as Tokens.Escape).text)));
       break;
     }
     default: {
@@ -270,7 +296,9 @@ function appendBlockToken(
       if (t.tokens && t.tokens.length > 0) {
         appendInlineTokens(parent, t.tokens, opts, doc);
       } else {
-        parent.appendChild(doc.createTextNode(t.text));
+        // Same as inline case: use t.raw to avoid rendering marked's HTML-escaped t.text
+        // verbatim through createTextNode.
+        parent.appendChild(doc.createTextNode(t.raw));
       }
       break;
     }
@@ -331,4 +359,28 @@ export function renderMarkdownInto(
   const doc = container.ownerDocument ?? document;
   while (container.firstChild) container.removeChild(container.firstChild);
   container.appendChild(renderMarkdown(text, options, doc));
+}
+
+/**
+ * Render markdown to an HTML string.
+ *
+ * Builds on `renderMarkdown` (safe DOM construction via createTextNode/createElement,
+ * no innerHTML parsing of raw input) and serialises the resulting fragment to HTML.
+ * The serialisation step (`container.innerHTML`) is safe here — we read the property
+ * of a DOM we constructed ourselves, not parsing attacker-controlled HTML.
+ *
+ * Requires a browser/DOM context (`document` global must be available).
+ *
+ * @param text     Raw markdown string.
+ * @param options  Link safety / target / rel / classPrefix overrides.
+ * @param doc      Document for element creation. Defaults to globalThis.document.
+ */
+export function markdownToHtml(
+  text: string,
+  options?: MarkdownOptions,
+  doc: Document = document,
+): string {
+  const container = doc.createElement("div");
+  container.appendChild(renderMarkdown(text, options, doc));
+  return container.innerHTML;
 }

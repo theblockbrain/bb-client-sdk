@@ -1,4 +1,4 @@
-export { renderMarkdown, renderMarkdownInto } from "./markdown.js";
+export { renderMarkdown, renderMarkdownInto, markdownToHtml } from "./markdown.js";
 export type { MarkdownOptions } from "./markdown.js";
 
 export { applyTheme, cycleTheme, themeIcon, configureLogo } from "./theme.js";
