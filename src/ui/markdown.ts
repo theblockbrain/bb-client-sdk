@@ -109,7 +109,9 @@ function appendInlineToken(
     case "codespan": {
       const el = doc.createElement("code");
       setClass(el, cls(opts, "-code"));
-      el.textContent = (token as Tokens.Codespan).text;
+      // marked HTML-escapes codespan.text (`a & b` → "a &amp; b").
+      // textContent would render the entity string literally — decode first.
+      el.textContent = decodeMarkedEntity((token as Tokens.Codespan).text);
       parent.appendChild(el);
       break;
     }
@@ -212,7 +214,9 @@ function appendBlockToken(
         .filter(Boolean)
         .join(" ");
       if (combined) code.setAttribute("class", combined);
-      code.textContent = ct.text;
+      // marked does not HTML-escape code block text in current versions, but
+      // decodeMarkedEntity is idempotent on plain text — apply defensively.
+      code.textContent = decodeMarkedEntity(ct.text);
       pre.appendChild(code);
       parent.appendChild(pre);
       break;
@@ -235,7 +239,9 @@ function appendBlockToken(
         if (item.tokens && item.tokens.length > 0) {
           appendBlockTokens(li, item.tokens, opts, doc);
         } else {
-          li.textContent = item.text;
+          // Fallback for token-less items: item.text is not escaped by marked in
+          // current versions, but apply decodeMarkedEntity defensively.
+          li.textContent = decodeMarkedEntity(item.text);
         }
         list.appendChild(li);
       }
