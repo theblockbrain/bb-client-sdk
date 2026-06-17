@@ -214,9 +214,11 @@ function appendBlockToken(
         .filter(Boolean)
         .join(" ");
       if (combined) code.setAttribute("class", combined);
-      // marked does not HTML-escape code block text in current versions, but
-      // decodeMarkedEntity is idempotent on plain text — apply defensively.
-      code.textContent = decodeMarkedEntity(ct.text);
+      // marked does NOT HTML-escape fenced code block text — ct.text is verbatim.
+      // Do NOT apply decodeMarkedEntity here: a code block containing literal
+      // "&amp;amp;" or "&amp;lt;" (e.g. HTML/XML in a code fence) would be
+      // incorrectly decoded to "&amp;" / "&lt;", corrupting the content.
+      code.textContent = ct.text;
       pre.appendChild(code);
       parent.appendChild(pre);
       break;
@@ -239,9 +241,10 @@ function appendBlockToken(
         if (item.tokens && item.tokens.length > 0) {
           appendBlockTokens(li, item.tokens, opts, doc);
         } else {
-          // Fallback for token-less items: item.text is not escaped by marked in
-          // current versions, but apply decodeMarkedEntity defensively.
-          li.textContent = decodeMarkedEntity(item.text);
+          // marked does NOT HTML-escape item.text in the token-less fallback path —
+          // it is verbatim. Do NOT decode: same reason as code block (would corrupt
+          // literal entity strings). This branch is nearly dead in practice.
+          li.textContent = item.text;
         }
         list.appendChild(li);
       }
