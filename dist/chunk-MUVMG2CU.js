@@ -23,4 +23,4 @@ function subFromAccessToken(token) {
 export {
   subFromAccessToken
 };
-//# sourceMappingURL=chunk-GEERJDH5.js.map
+//# sourceMappingURL=chunk-MUVMG2CU.js.map

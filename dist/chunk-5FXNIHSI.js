@@ -2,6 +2,18 @@
 import { marked } from "marked";
 marked.use({ gfm: true });
 var DEFAULT_ALLOWED_PROTOCOLS = ["https:", "http:", "mailto:"];
+var MARKED_ENTITIES = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&apos;": "'"
+};
+var MARKED_ENTITY_RE = /&(?:amp|lt|gt|quot|#39|apos);/g;
+function decodeMarkedEntity(s) {
+  return s.replace(MARKED_ENTITY_RE, (m) => MARKED_ENTITIES[m] ?? m);
+}
 function cls(opts, suffix) {
   return opts.classPrefix ? opts.classPrefix + suffix : "";
 }
@@ -20,7 +32,7 @@ function appendInlineToken(parent, token, opts, doc) {
       if (t.tokens && t.tokens.length > 0) {
         appendInlineTokens(parent, t.tokens, opts, doc);
       } else {
-        parent.appendChild(doc.createTextNode(t.text));
+        parent.appendChild(doc.createTextNode(t.raw));
       }
       break;
     }
@@ -48,7 +60,7 @@ function appendInlineToken(parent, token, opts, doc) {
     case "codespan": {
       const el = doc.createElement("code");
       setClass(el, cls(opts, "-code"));
-      el.textContent = token.text;
+      el.textContent = decodeMarkedEntity(token.text);
       parent.appendChild(el);
       break;
     }
@@ -84,7 +96,7 @@ function appendInlineToken(parent, token, opts, doc) {
       break;
     }
     case "escape": {
-      parent.appendChild(doc.createTextNode(token.text));
+      parent.appendChild(doc.createTextNode(decodeMarkedEntity(token.text)));
       break;
     }
     default: {
@@ -206,7 +218,7 @@ function appendBlockToken(parent, token, opts, doc) {
       if (t.tokens && t.tokens.length > 0) {
         appendInlineTokens(parent, t.tokens, opts, doc);
       } else {
-        parent.appendChild(doc.createTextNode(t.text));
+        parent.appendChild(doc.createTextNode(t.raw));
       }
       break;
     }
@@ -238,6 +250,11 @@ function renderMarkdownInto(text, container, options) {
   const doc = container.ownerDocument ?? document;
   while (container.firstChild) container.removeChild(container.firstChild);
   container.appendChild(renderMarkdown(text, options, doc));
+}
+function markdownToHtml(text, options, doc = document) {
+  const container = doc.createElement("div");
+  container.appendChild(renderMarkdown(text, options, doc));
+  return container.innerHTML;
 }
 
 // src/ui/theme.ts
@@ -432,6 +449,7 @@ function MonitorIcon() {
 export {
   renderMarkdown,
   renderMarkdownInto,
+  markdownToHtml,
   configureLogo,
   applyTheme,
   cycleTheme,
@@ -440,4 +458,4 @@ export {
   useTheme,
   ThemeToggle
 };
-//# sourceMappingURL=chunk-QZ5YQ6RL.js.map
+//# sourceMappingURL=chunk-5FXNIHSI.js.map

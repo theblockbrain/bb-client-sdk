@@ -1,11 +1,4 @@
 /**
- * Derive a stable, query-param-free key from a URL.
- * e.g. "news.ycombinator.com/news" (lowercase hostname, no trailing slash, no query/hash).
- * Falls back to the raw string on parse error.
- */
-declare function siteKey(url: string): string;
-
-/**
  * Strip markdown code fences from LLM output.
  * Returns the raw string unchanged if no fence is found.
  */
@@ -65,9 +58,9 @@ declare function repairUnescapedQuotes(str: string): string;
  * - JWTs without a `sub` claim
  * - Malformed input
  *
- * This is oauth-only by design: callers must gate on `mode === "oauth"` before
- * calling, since API-key tokens are not JWTs.
+ * Returns `null` for non-JWT tokens such as `sk-` API keys, so callers need
+ * not gate on `mode === "oauth"` — the shape-check handles it gracefully.
  */
 declare function subFromAccessToken(token: string): string | null;
 
-export { createLock, extractCode, extractJson, repairUnescapedQuotes, siteKey, subFromAccessToken };
+export { createLock, extractCode, extractJson, repairUnescapedQuotes, subFromAccessToken };

@@ -1,6 +1,7 @@
 export {
   generateVerifier,
   generateChallenge,
+  generateStateNonce,
   encodePKCEState,
   decodePKCEState,
 } from "./pkce.js";

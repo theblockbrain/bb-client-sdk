@@ -1,8 +1,7 @@
 import {
   generateVerifier,
   generateChallenge,
-  encodePKCEState,
-  decodePKCEState,
+  generateStateNonce,
 } from "./pkce.js";
 import { exchangeCode, computeExpiration } from "./tokens.js";
 import { extractProfile } from "./jwt.js";
@@ -13,7 +12,14 @@ import {
 } from "../config.js";
 import type { LoginResult } from "./login.js";
 
-const STATE_KEY = "bb_pkce_state";
+/**
+ * sessionStorage key prefix for the per-nonce verifier entry.
+ * Key shape: `bb_pkce_verifier:<state-nonce>`
+ *
+ * Using a per-nonce key (rather than a single fixed key) means concurrent
+ * tabs each get their own isolated entry and don't clobber each other.
+ */
+const VERIFIER_KEY_PREFIX = "bb_pkce_verifier:";
 
 export interface BrowserRedirectOptions {
   /** OAuth client_id — must be provided by the caller; no SDK-level default. */
@@ -48,9 +54,11 @@ export async function beginBrowserLogin(
 
   const verifier = generateVerifier();
   const challenge = await generateChallenge(verifier);
-  const state = encodePKCEState({ verifier });
+  // State is an independent CSRF nonce — the verifier MUST NOT travel in the URL.
+  const state = generateStateNonce();
 
-  sessionStorage.setItem(STATE_KEY, state);
+  // Store the verifier keyed by the nonce so completeBrowserLogin can recover it.
+  sessionStorage.setItem(`${VERIFIER_KEY_PREFIX}${state}`, verifier);
 
   const url = new URL(authorizeEndpoint);
   url.searchParams.set("client_id", clientId);
@@ -89,7 +97,6 @@ export async function completeBrowserLogin(
   const oauthError = params.get("error");
 
   if (oauthError) {
-    sessionStorage.removeItem(STATE_KEY);
     const desc = params.get("error_description");
     throw new Error(
       `OAuth error: ${oauthError}${desc ? ` — ${desc}` : ""}`,
@@ -112,22 +119,20 @@ export async function completeBrowserLogin(
 
   const returnedState = params.get("state");
   if (!returnedState) {
-    sessionStorage.removeItem(STATE_KEY);
     throw new Error("Missing OAuth state in callback — possible CSRF.");
   }
 
-  const storedState = sessionStorage.getItem(STATE_KEY);
-  if (!storedState) {
+  const verifierKey = `${VERIFIER_KEY_PREFIX}${returnedState}`;
+  const verifier = sessionStorage.getItem(verifierKey);
+  if (!verifier) {
+    // No entry for this nonce: either a CSRF attempt or the user refreshed mid-auth.
     throw new Error(
-      "No stored PKCE state — user may have refreshed mid-auth.",
+      "No stored PKCE verifier for state nonce — user may have refreshed mid-auth or possible CSRF.",
     );
   }
-  if (storedState !== returnedState) {
-    sessionStorage.removeItem(STATE_KEY);
-    throw new Error("OAuth state mismatch — possible CSRF.");
-  }
 
-  const { verifier } = decodePKCEState(returnedState);
+  // Clear eagerly so the verifier cannot be read again after this point.
+  sessionStorage.removeItem(verifierKey);
 
   try {
     const tokens = await exchangeCode(
@@ -140,12 +145,10 @@ export async function completeBrowserLogin(
     const profile = extractProfile(tokens.id_token, tokens.access_token);
     const expiresAt = computeExpiration(tokens.expires_in);
 
-    sessionStorage.removeItem(STATE_KEY);
     window.history.replaceState({}, document.title, window.location.pathname);
 
     return { isCallback: true, ...tokens, expiresAt, profile, orgId: profile.orgId };
   } catch (err) {
-    sessionStorage.removeItem(STATE_KEY);
     throw err;
   }
 }

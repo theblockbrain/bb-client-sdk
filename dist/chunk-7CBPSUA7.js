@@ -22,6 +22,11 @@ function generateVerifier() {
   crypto.getRandomValues(bytes);
   return base64urlEncode(bytes.buffer);
 }
+function generateStateNonce() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return base64urlEncode(bytes.buffer);
+}
 async function generateChallenge(verifier) {
   const encoded = new TextEncoder().encode(verifier);
   const digest = await crypto.subtle.digest("SHA-256", encoded);
@@ -99,7 +104,7 @@ async function login(identity, options) {
   const redirectUri = identity.getRedirectUri();
   const verifier = generateVerifier();
   const challenge = await generateChallenge(verifier);
-  const state = encodePKCEState({ verifier });
+  const state = generateStateNonce();
   const authUrl = new URL(authorizeEndpoint);
   authUrl.searchParams.set("client_id", clientId);
   authUrl.searchParams.set("redirect_uri", redirectUri);
@@ -119,8 +124,7 @@ async function login(identity, options) {
   if (!code) throw new Error("No authorization code in redirect.");
   const returnedState = params.get("state");
   if (!returnedState) throw new Error("Missing state in redirect \u2014 possible CSRF.");
-  const decoded = decodePKCEState(returnedState);
-  if (decoded.verifier !== verifier) throw new Error("State mismatch \u2014 possible CSRF.");
+  if (returnedState !== state) throw new Error("State mismatch \u2014 possible CSRF.");
   const tokens = await exchangeCode(code, verifier, redirectUri, clientId, tokenEndpoint);
   const profile = extractProfile(tokens.id_token, tokens.access_token);
   const expiresAt = computeExpiration(tokens.expires_in);
@@ -150,15 +154,15 @@ function createRefreshGuard(refreshFn) {
 }
 
 // src/auth/browser-redirect.ts
-var STATE_KEY = "bb_pkce_state";
+var VERIFIER_KEY_PREFIX = "bb_pkce_verifier:";
 async function beginBrowserLogin(opts) {
   const clientId = opts.clientId;
   const scopes = opts.scopes ?? AUTH_SCOPES;
   const authorizeEndpoint = opts.authorizeEndpoint ?? AUTHORIZE_ENDPOINT;
   const verifier = generateVerifier();
   const challenge = await generateChallenge(verifier);
-  const state = encodePKCEState({ verifier });
-  sessionStorage.setItem(STATE_KEY, state);
+  const state = generateStateNonce();
+  sessionStorage.setItem(`${VERIFIER_KEY_PREFIX}${state}`, verifier);
   const url = new URL(authorizeEndpoint);
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", opts.redirectUri);
@@ -177,7 +181,6 @@ async function completeBrowserLogin(opts) {
   const params = new URLSearchParams(window.location.search);
   const oauthError = params.get("error");
   if (oauthError) {
-    sessionStorage.removeItem(STATE_KEY);
     const desc = params.get("error_description");
     throw new Error(
       `OAuth error: ${oauthError}${desc ? ` \u2014 ${desc}` : ""}`
@@ -197,20 +200,16 @@ async function completeBrowserLogin(opts) {
   }
   const returnedState = params.get("state");
   if (!returnedState) {
-    sessionStorage.removeItem(STATE_KEY);
     throw new Error("Missing OAuth state in callback \u2014 possible CSRF.");
   }
-  const storedState = sessionStorage.getItem(STATE_KEY);
-  if (!storedState) {
+  const verifierKey = `${VERIFIER_KEY_PREFIX}${returnedState}`;
+  const verifier = sessionStorage.getItem(verifierKey);
+  if (!verifier) {
     throw new Error(
-      "No stored PKCE state \u2014 user may have refreshed mid-auth."
+      "No stored PKCE verifier for state nonce \u2014 user may have refreshed mid-auth or possible CSRF."
     );
   }
-  if (storedState !== returnedState) {
-    sessionStorage.removeItem(STATE_KEY);
-    throw new Error("OAuth state mismatch \u2014 possible CSRF.");
-  }
-  const { verifier } = decodePKCEState(returnedState);
+  sessionStorage.removeItem(verifierKey);
   try {
     const tokens = await exchangeCode(
       code,
@@ -221,17 +220,16 @@ async function completeBrowserLogin(opts) {
     );
     const profile = extractProfile(tokens.id_token, tokens.access_token);
     const expiresAt = computeExpiration(tokens.expires_in);
-    sessionStorage.removeItem(STATE_KEY);
     window.history.replaceState({}, document.title, window.location.pathname);
     return { isCallback: true, ...tokens, expiresAt, profile, orgId: profile.orgId };
   } catch (err) {
-    sessionStorage.removeItem(STATE_KEY);
     throw err;
   }
 }
 
 export {
   generateVerifier,
+  generateStateNonce,
   generateChallenge,
   encodePKCEState,
   decodePKCEState,
@@ -243,4 +241,4 @@ export {
   beginBrowserLogin,
   completeBrowserLogin
 };
-//# sourceMappingURL=chunk-2EYRIOGI.js.map
+//# sourceMappingURL=chunk-7CBPSUA7.js.map

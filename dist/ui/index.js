@@ -3,17 +3,19 @@ import {
   applyTheme,
   configureLogo,
   cycleTheme,
+  markdownToHtml,
   renderMarkdown,
   renderMarkdownInto,
   themeIcon,
   timeAgo,
   useTheme
-} from "../chunk-QZ5YQ6RL.js";
+} from "../chunk-5FXNIHSI.js";
 export {
   ThemeToggle,
   applyTheme,
   configureLogo,
   cycleTheme,
+  markdownToHtml,
   renderMarkdown,
   renderMarkdownInto,
   themeIcon,
