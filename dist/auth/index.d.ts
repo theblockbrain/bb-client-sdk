@@ -10,15 +10,36 @@ import { I as IdentityAdapter } from '../identity-DyKDSltP.js';
  * NOT crypto.randomUUID() — that produces 36 chars with hyphens, which is non-compliant.
  */
 declare function generateVerifier(): string;
+/**
+ * Generate a cryptographically random CSRF state nonce.
+ * 32 random bytes → 43-char base64url string — same entropy as the verifier,
+ * but completely independent of it.
+ *
+ * This MUST be the value sent as the OAuth `state` parameter.
+ * The `code_verifier` must NEVER appear in the authorize URL (CWE-200).
+ */
+declare function generateStateNonce(): string;
 /** Derive the PKCE code challenge (S256) from the verifier. */
 declare function generateChallenge(verifier: string): Promise<string>;
-interface PKCEState {
+/**
+ * @deprecated The `state` parameter must NOT carry the `code_verifier` — doing so
+ * leaks the verifier into browser history and IdP logs, defeating PKCE's
+ * interception defence (CWE-200). Use `generateStateNonce()` for the state value
+ * and store the verifier separately in sessionStorage keyed by that nonce.
+ *
+ * This export is kept for backwards compatibility with existing consumers.
+ * Internal SDK code no longer calls it.
+ */
+declare function encodePKCEState(state: {
     verifier: string;
-}
-/** Encode PKCE state as base64url JSON for the OAuth state parameter. */
-declare function encodePKCEState(state: PKCEState): string;
-/** Decode PKCE state from the OAuth state parameter. Throws on malformed input. */
-declare function decodePKCEState(encoded: string): PKCEState;
+}): string;
+/**
+ * @deprecated Counterpart to the deprecated `encodePKCEState`. Kept for
+ * backwards compatibility; internal SDK code no longer calls it.
+ */
+declare function decodePKCEState(encoded: string): {
+    verifier: string;
+};
 
 /**
  * Client-side JWT utilities — no signature verification (server validates).
@@ -171,4 +192,4 @@ declare function beginBrowserLogin(opts: BrowserRedirectOptions): Promise<never>
  */
 declare function completeBrowserLogin(opts: BrowserRedirectOptions): Promise<BrowserLoginResult>;
 
-export { type BrowserLoginResult, type BrowserRedirectOptions, type LoginOptions, type LoginResult, type Profile, type TokenResult, beginBrowserLogin, completeBrowserLogin, computeExpiration, createRefreshGuard, decodeJwtPayload, decodePKCEState, encodePKCEState, exchangeCode, extractOrgIdFromClaims, extractProfile, generateChallenge, generateVerifier, isTokenExpired, login, refreshTokens };
+export { type BrowserLoginResult, type BrowserRedirectOptions, type LoginOptions, type LoginResult, type Profile, type TokenResult, beginBrowserLogin, completeBrowserLogin, computeExpiration, createRefreshGuard, decodeJwtPayload, decodePKCEState, encodePKCEState, exchangeCode, extractOrgIdFromClaims, extractProfile, generateChallenge, generateStateNonce, generateVerifier, isTokenExpired, login, refreshTokens };

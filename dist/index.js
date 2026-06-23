@@ -1,20 +1,25 @@
 import {
-  DEFAULTS,
-  getAuthContext,
-  hasUsableAuth,
-  inferAuthMode
-} from "./chunk-VSQ7WUQF.js";
+  ThemeToggle,
+  applyTheme,
+  configureLogo,
+  cycleTheme,
+  markdownToHtml,
+  renderMarkdown,
+  renderMarkdownInto,
+  themeIcon,
+  timeAgo,
+  useTheme
+} from "./chunk-5FXNIHSI.js";
 import {
   createLock,
   extractCode,
   extractJson,
-  repairUnescapedQuotes,
-  siteKey
-} from "./chunk-7RVOYF2S.js";
+  repairUnescapedQuotes
+} from "./chunk-FK6GSTNA.js";
 import {
   AVAILABLE_ACTIONS,
   runActions
-} from "./chunk-TUTKA2JH.js";
+} from "./chunk-QR24MRNH.js";
 import {
   BBApiError,
   authHeaders,
@@ -51,10 +56,7 @@ import {
   updateConversation,
   uploadConversationAttachment,
   wrapStringAsStream
-} from "./chunk-XMMBLJDB.js";
-import {
-  subFromAccessToken
-} from "./chunk-GEERJDH5.js";
+} from "./chunk-BXGGZHTX.js";
 import {
   beginBrowserLogin,
   completeBrowserLogin,
@@ -65,9 +67,22 @@ import {
   extractOrgIdFromClaims,
   extractProfile,
   generateChallenge,
+  generateStateNonce,
   generateVerifier,
   login
-} from "./chunk-2EYRIOGI.js";
+} from "./chunk-7CBPSUA7.js";
+import {
+  parseResponse
+} from "./chunk-RA424RNZ.js";
+import {
+  DEFAULTS,
+  getAuthContext,
+  hasUsableAuth,
+  inferAuthMode
+} from "./chunk-BBZJWEP7.js";
+import {
+  subFromAccessToken
+} from "./chunk-MUVMG2CU.js";
 import {
   computeExpiration,
   exchangeCode,
@@ -82,29 +97,7 @@ import {
   OAUTH_BACKEND_URL,
   TOKEN_ENDPOINT
 } from "./chunk-6GWCCXNN.js";
-import {
-  buildEmailPrompt,
-  buildNewEmailPrompt,
-  buildPagePrompt,
-  parseResponse,
-  parseSubjectAndBody
-} from "./chunk-EFKOQZLN.js";
-import {
-  ACTION_SYSTEM_PROMPT
-} from "./chunk-C25NYCKP.js";
-import {
-  ThemeToggle,
-  applyTheme,
-  configureLogo,
-  cycleTheme,
-  renderMarkdown,
-  renderMarkdownInto,
-  themeIcon,
-  timeAgo,
-  useTheme
-} from "./chunk-QZ5YQ6RL.js";
 export {
-  ACTION_SYSTEM_PROMPT,
   AGENTIC_BASE_URL,
   AUTHORIZE_ENDPOINT,
   AUTH_AUTHORITY,
@@ -118,9 +111,6 @@ export {
   applyTheme,
   authHeaders,
   beginBrowserLogin,
-  buildEmailPrompt,
-  buildNewEmailPrompt,
-  buildPagePrompt,
   completeBrowserLogin,
   computeExpiration,
   configureLogo,
@@ -146,6 +136,7 @@ export {
   fetchBotList,
   fetchCapabilities,
   generateChallenge,
+  generateStateNonce,
   generateVerifier,
   getAuthContext,
   getAvailableWebSearchProviders,
@@ -163,9 +154,9 @@ export {
   isTokenExpired,
   listTenants,
   login,
+  markdownToHtml,
   normalizeUrl,
   parseResponse,
-  parseSubjectAndBody,
   refreshTokens,
   renderMarkdown,
   renderMarkdownInto,
@@ -178,7 +169,6 @@ export {
   setCapabilityAvailability,
   setConversationWebSearch,
   setCustomAgentsEnabled,
-  siteKey,
   subFromAccessToken,
   themeIcon,
   timeAgo,

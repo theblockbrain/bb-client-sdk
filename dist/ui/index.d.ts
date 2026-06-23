@@ -30,6 +30,21 @@ declare function renderMarkdown(text: string, options?: MarkdownOptions, doc?: D
  * Clears the container's existing content first.
  */
 declare function renderMarkdownInto(text: string, container: Element, options?: MarkdownOptions): void;
+/**
+ * Render markdown to an HTML string.
+ *
+ * Builds on `renderMarkdown` (safe DOM construction via createTextNode/createElement,
+ * no innerHTML parsing of raw input) and serialises the resulting fragment to HTML.
+ * The serialisation step (`container.innerHTML`) is safe here — we read the property
+ * of a DOM we constructed ourselves, not parsing attacker-controlled HTML.
+ *
+ * Requires a browser/DOM context (`document` global must be available).
+ *
+ * @param text     Raw markdown string.
+ * @param options  Link safety / target / rel / classPrefix overrides.
+ * @param doc      Document for element creation. Defaults to globalThis.document.
+ */
+declare function markdownToHtml(text: string, options?: MarkdownOptions, doc?: Document): string;
 
 type ThemePref = "auto" | "light" | "dark";
 /** Set the base path for BlockBrain logo SVGs. Default: "icons/". */
@@ -89,4 +104,4 @@ interface ThemeToggleProps {
  */
 declare function ThemeToggle({ theme, mode, onToggle, variant, }: ThemeToggleProps): react_jsx_runtime.JSX.Element;
 
-export { type MarkdownOptions, type Theme, type ThemeMode, type ThemePref, ThemeToggle, type ThemeToggleProps, applyTheme, configureLogo, cycleTheme, renderMarkdown, renderMarkdownInto, themeIcon, timeAgo, useTheme };
+export { type MarkdownOptions, type Theme, type ThemeMode, type ThemePref, ThemeToggle, type ThemeToggleProps, applyTheme, configureLogo, cycleTheme, markdownToHtml, renderMarkdown, renderMarkdownInto, themeIcon, timeAgo, useTheme };

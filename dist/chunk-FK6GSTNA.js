@@ -1,13 +1,3 @@
-// src/utils/site-key.ts
-function siteKey(url) {
-  try {
-    const u = new URL(url);
-    return u.hostname.toLowerCase() + u.pathname.replace(/\/$/, "");
-  } catch {
-    return url;
-  }
-}
-
 // src/utils/code-fence.ts
 function extractCode(text) {
   const match = text.match(/```(?:javascript|js)?\s*\n([\s\S]*?)```/);
@@ -84,10 +74,9 @@ function repairUnescapedQuotes(str) {
 }
 
 export {
-  siteKey,
   extractCode,
   createLock,
   extractJson,
   repairUnescapedQuotes
 };
-//# sourceMappingURL=chunk-7RVOYF2S.js.map
+//# sourceMappingURL=chunk-FK6GSTNA.js.map

@@ -10,10 +10,4 @@ export { A as AVAILABLE_ACTIONS } from '../schema-BJs6_Xa5.js';
  */
 declare function runActions(steps: ActionStep[], doc?: Document): Promise<ActionResult>;
 
-/**
- * System-prompt fragment documenting the Action Library for LLM use.
- * Embed in the page-prompt when cspMode === "actions-only".
- */
-declare const ACTION_SYSTEM_PROMPT = "Available actions and their fields:\n- setStyle: selector, style (object with CSS property keys)\n- addClass / removeClass / toggleClass: selector, className\n- hideElement / showElement / removeElement: selector\n- setText: selector, text\n- setAttribute: selector, attr, value\n- click / scrollTo: selector\n- fill: selector, value (triggers input event)\n- queryText: selector, returnAs (captures element text into a named result)\n- waitFor: selector, timeout (ms, default 5000)\n- delay: ms\n\nRespond with a brief explanation, then a ```json block containing:\n{ \"type\": \"actions\", \"steps\": [...] }\n\nExample:\n```json\n{ \"type\": \"actions\", \"steps\": [{ \"action\": \"setStyle\", \"selector\": \"h1\", \"style\": { \"color\": \"red\" } }] }\n```";
-
-export { ACTION_SYSTEM_PROMPT, ActionResult, ActionStep, runActions };
+export { ActionResult, ActionStep, runActions };

@@ -4,7 +4,7 @@ import {
   AUTHORIZE_ENDPOINT,
   TOKEN_ENDPOINT,
 } from "../config.js";
-import { generateVerifier, generateChallenge, encodePKCEState, decodePKCEState } from "./pkce.js";
+import { generateVerifier, generateChallenge, generateStateNonce } from "./pkce.js";
 import { extractProfile } from "./jwt.js";
 import type { Profile } from "./jwt.js";
 import { exchangeCode, computeExpiration } from "./tokens.js";
@@ -50,7 +50,8 @@ export async function login(
 
   const verifier = generateVerifier();
   const challenge = await generateChallenge(verifier);
-  const state = encodePKCEState({ verifier });
+  // State is an independent CSRF nonce — the verifier MUST NOT travel in the URL.
+  const state = generateStateNonce();
 
   const authUrl = new URL(authorizeEndpoint);
   authUrl.searchParams.set("client_id", clientId);
@@ -77,9 +78,9 @@ export async function login(
   const returnedState = params.get("state");
   if (!returnedState) throw new Error("Missing state in redirect — possible CSRF.");
 
-  // Verify state round-trips correctly (decode to compare verifier identity)
-  const decoded = decodePKCEState(returnedState);
-  if (decoded.verifier !== verifier) throw new Error("State mismatch — possible CSRF.");
+  // Verify the nonce round-trips intact (CSRF check).
+  // The verifier is kept in local scope — it never appeared in the authorize URL.
+  if (returnedState !== state) throw new Error("State mismatch — possible CSRF.");
 
   const tokens = await exchangeCode(code, verifier, redirectUri, clientId, tokenEndpoint);
 
