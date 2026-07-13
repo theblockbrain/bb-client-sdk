@@ -23,7 +23,7 @@ export function decodeJwtPayload(token: string): Record<string, unknown> | null 
     // base64url → base64 → binary string → UTF-8
     const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     const binary = atob(base64);
-    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
     const json = new TextDecoder().decode(bytes);
     return JSON.parse(json) as Record<string, unknown>;
   } catch {
@@ -94,8 +94,7 @@ export function extractProfile(idToken: string, accessToken?: string): Profile {
     email: typeof idClaims.email === "string" ? idClaims.email : undefined,
     name: typeof idClaims.name === "string" ? idClaims.name : undefined,
     given_name: typeof idClaims.given_name === "string" ? idClaims.given_name : undefined,
-    family_name:
-      typeof idClaims.family_name === "string" ? idClaims.family_name : undefined,
+    family_name: typeof idClaims.family_name === "string" ? idClaims.family_name : undefined,
     orgId,
   };
 }

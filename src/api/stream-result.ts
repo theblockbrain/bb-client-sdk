@@ -64,9 +64,7 @@ export function wrapStringAsStream(text: string): MessageStream {
  * If the caller does not iterate `textDeltas`, the queue grows but is bounded
  * by the source length — acceptable for the typical chat-response size.
  */
-export function createMessageStream(
-  source: AsyncIterable<string>,
-): MessageStream {
+export function createMessageStream(source: AsyncIterable<string>): MessageStream {
   // ── Internal queue shared between drain task and textDeltas consumer ─────────
   const queue: string[] = [];
   let doneSignal = false;
@@ -129,7 +127,7 @@ export function createMessageStream(
         break;
       }
       // Wait for the drain task to push more items or signal done
-      await new Promise<void>((resolve) => {
+      await new Promise<void>(resolve => {
         notifyConsumer = resolve;
       });
     }

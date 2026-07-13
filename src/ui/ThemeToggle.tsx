@@ -23,12 +23,7 @@ export interface ThemeToggleProps {
  * Renders Sun / Moon / Monitor icons (SVG, no emoji).
  * Pair with `useTheme` from `@theblockbrain/bb-client-sdk/ui`.
  */
-export function ThemeToggle({
-  theme,
-  mode,
-  onToggle,
-  variant = "header",
-}: ThemeToggleProps) {
+export function ThemeToggle({ theme, mode, onToggle, variant = "header" }: ThemeToggleProps) {
   const label =
     mode === "light"
       ? "Zu Dunkel-Modus wechseln"
@@ -46,11 +41,7 @@ export function ThemeToggle({
     "inline-flex items-center justify-center w-8 h-8 rounded-lg border border-stone-300 hover:border-stone-500 bg-white/70 hover:bg-white text-stone-500 hover:text-stone-800 transition-all duration-150";
 
   const buttonClass =
-    variant === "login"
-      ? theme === "dark"
-        ? loginDarkClass
-        : loginLightClass
-      : headerClass;
+    variant === "login" ? (theme === "dark" ? loginDarkClass : loginLightClass) : headerClass;
 
   return (
     <button
@@ -60,13 +51,7 @@ export function ThemeToggle({
       title={label}
       className={buttonClass}
     >
-      {mode === "light" ? (
-        <MoonIcon />
-      ) : mode === "dark" ? (
-        <SunIcon />
-      ) : (
-        <MonitorIcon />
-      )}
+      {mode === "light" ? <MoonIcon /> : mode === "dark" ? <SunIcon /> : <MonitorIcon />}
     </button>
   );
 }

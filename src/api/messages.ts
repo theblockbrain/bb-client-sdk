@@ -1,14 +1,14 @@
-import { authHeaders } from "./headers.js";
-import { normalizeUrl } from "./url.js";
-import { BBApiError } from "./errors.js";
-import { getConversationDetail } from "./conversations.js";
+import type { AuthContext } from "../settings/auth-mode.js";
+import { subFromAccessToken } from "../utils/jwt.js";
+import type { ApprovalResolver } from "./agentic/client.js";
 import { callAgenticStream } from "./agentic/client.js";
 import { parseBlockySseStream } from "./blocky-sse.js";
-import { createMessageStream, wrapStringAsStream } from "./stream-result.js";
-import { subFromAccessToken } from "../utils/jwt.js";
+import { getConversationDetail } from "./conversations.js";
+import { BBApiError } from "./errors.js";
+import { authHeaders } from "./headers.js";
 import type { MessageStream } from "./stream-result.js";
-import type { AuthContext } from "../settings/auth-mode.js";
-import type { ApprovalResolver } from "./agentic/client.js";
+import { createMessageStream } from "./stream-result.js";
+import { normalizeUrl } from "./url.js";
 
 // ─── sendMessage ──────────────────────────────────────────────────────────────
 
@@ -42,10 +42,7 @@ interface CachedConvoDetail {
 const convoDetailCache = new Map<string, CachedConvoDetail>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-async function getCachedConvoAgent(
-  ctx: AuthContext,
-  convoId: string,
-): Promise<string | null> {
+async function getCachedConvoAgent(ctx: AuthContext, convoId: string): Promise<string | null> {
   const cached = convoDetailCache.get(convoId);
   if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
     return cached.agent;
@@ -127,9 +124,9 @@ export async function sendMessage(
     if (!resourceId) {
       throw new Error(
         "Agentic API requires a Zitadel user ID. " +
-        "Either pass `config.userId = profile.sub` to `getAuthContext`, or " +
-        "ensure the access token is a Zitadel OAuth JWT (not an API key). " +
-        "Agentic routing is not available in api-key mode.",
+          "Either pass `config.userId = profile.sub` to `getAuthContext`, or " +
+          "ensure the access token is a Zitadel OAuth JWT (not an API key). " +
+          "Agentic routing is not available in api-key mode.",
       );
     }
 
@@ -178,8 +175,15 @@ export async function sendMessage(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 
   if (streaming) {
@@ -244,8 +248,15 @@ export async function getMessageList(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 
   const data = (await res.json()) as { body: MessageListBody };

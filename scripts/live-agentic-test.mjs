@@ -44,7 +44,7 @@
 
 // ── Env validation ─────────────────────────────────────────────────────────────
 const required = ["BB_TEST_TOKEN", "BB_TEST_ORG_ID", "BB_TEST_USER_ID", "BB_TEST_BOT_ID"];
-const missing = required.filter((k) => !process.env[k]);
+const missing = required.filter(k => !process.env[k]);
 if (missing.length > 0) {
   console.error("Missing required env vars:", missing.join(", "));
   console.error("");
@@ -61,18 +61,23 @@ const USER_ID = process.env.BB_TEST_USER_ID;
 const BOT_ID = process.env.BB_TEST_BOT_ID;
 const EXISTING_CONVO_ID = process.env.BB_TEST_CONVO_ID ?? null;
 
-// ── Imports from built dist ────────────────────────────────────────────────────
-import { getAuthContext } from "../dist/settings/index.js";
 import {
   createConversation,
   deleteConversation,
   getConversationDetail,
   sendMessage,
 } from "../dist/api/index.js";
+// ── Imports from built dist ────────────────────────────────────────────────────
+import { getAuthContext } from "../dist/settings/index.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function pass(label) { console.log(`  ✓ ${label}`); }
-function fail(label, detail) { console.error(`  ✗ ${label}:`, detail); process.exitCode = 1; }
+function pass(label) {
+  console.log(`  ✓ ${label}`);
+}
+function fail(label, detail) {
+  console.error(`  ✗ ${label}:`, detail);
+  process.exitCode = 1;
+}
 
 // ── Build auth context ─────────────────────────────────────────────────────────
 // Simulate what a real app does after login: pass userId from Profile.sub.
@@ -81,10 +86,21 @@ const tokens = {
   accessToken: TOKEN,
   expirationMs: Date.now() + 60 * 60 * 1000, // treat as valid for test purposes
 };
-const settings = { bbOrgId: ORG_ID, bbToken: "", bbUrl: "", authMode: "oauth", bbBotId: "", bbBotName: "", useSystemPrompt: false };
+const settings = {
+  bbOrgId: ORG_ID,
+  bbToken: "",
+  bbUrl: "",
+  authMode: "oauth",
+  bbBotId: "",
+  bbBotName: "",
+  useSystemPrompt: false,
+};
 const ctx = getAuthContext(settings, tokens, { userId: USER_ID });
 
-if (!ctx) { console.error("Could not build AuthContext — check token/orgId"); process.exit(1); }
+if (!ctx) {
+  console.error("Could not build AuthContext — check token/orgId");
+  process.exit(1);
+}
 console.log("AuthContext built. mode:", ctx.mode, "userId present:", !!ctx.userId);
 
 // ── Step 1: create or reuse conversation ──────────────────────────────────────
@@ -131,7 +147,9 @@ try {
     pass(`Got string response (${text.length} chars): "${text.slice(0, 80).replace(/\n/g, " ")}"`);
     if (agentId) {
       pass("Routed via Agentic path (agent was set on convo)");
-      console.log("  CAVEAT RESULT: Agentic stream succeeded WITHOUT X-BLOCKBRAIN-ACTIVE-BOT-ID header ✓");
+      console.log(
+        "  CAVEAT RESULT: Agentic stream succeeded WITHOUT X-BLOCKBRAIN-ACTIVE-BOT-ID header ✓",
+      );
     } else {
       pass("Routed via Blocky path (no agent on convo)");
     }
@@ -142,7 +160,9 @@ try {
   fail("sendMessage buffered", err.message);
   if (err.statusCode) console.error("  HTTP status:", err.statusCode);
   if (agentId && err.statusCode === 400) {
-    console.error("  CAVEAT RESULT: Agentic stream REJECTED without X-BLOCKBRAIN-ACTIVE-BOT-ID (HTTP 400)");
+    console.error(
+      "  CAVEAT RESULT: Agentic stream REJECTED without X-BLOCKBRAIN-ACTIVE-BOT-ID (HTTP 400)",
+    );
     console.error("  → botId must be plumbed through sendMessage options to fix this.");
   }
 }
@@ -150,7 +170,9 @@ try {
 // ── Step 4: sendMessage streaming ─────────────────────────────────────────────
 console.log("\n[4] sendMessage (enableStreaming: true)");
 try {
-  const stream = await sendMessage(ctx, convoId, "Respond with exactly: STREAMING-OK", { enableStreaming: true });
+  const stream = await sendMessage(ctx, convoId, "Respond with exactly: STREAMING-OK", {
+    enableStreaming: true,
+  });
   const deltas = [];
   for await (const delta of stream.textDeltas) {
     deltas.push(delta);
@@ -159,7 +181,9 @@ try {
   console.log(""); // newline after dots
   const full = await stream.final;
   if (typeof full === "string" && full.length > 0) {
-    pass(`Got MessageStream — ${deltas.length} deltas, final: "${full.slice(0, 80).replace(/\n/g, " ")}"`);
+    pass(
+      `Got MessageStream — ${deltas.length} deltas, final: "${full.slice(0, 80).replace(/\n/g, " ")}"`,
+    );
     if (agentId && deltas.length > 1) {
       pass("Multiple deltas received — true SSE streaming confirmed on Agentic path");
     } else if (!agentId) {

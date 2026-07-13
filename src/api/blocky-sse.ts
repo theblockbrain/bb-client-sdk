@@ -45,7 +45,10 @@ export async function* parseBlockySseStream(
 
       for (const rawEvent of parts) {
         const result = extractBlockyToken(rawEvent);
-        if (result.isDone) { done = true; break; }
+        if (result.isDone) {
+          done = true;
+          break;
+        }
         if (result.token !== null) yield result.token;
       }
     }

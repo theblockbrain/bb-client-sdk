@@ -1,14 +1,10 @@
 import type { IdentityAdapter } from "../adapters/identity.js";
-import {
-  AUTH_SCOPES,
-  AUTHORIZE_ENDPOINT,
-  TOKEN_ENDPOINT,
-} from "../config.js";
-import { generateVerifier, generateChallenge, generateStateNonce } from "./pkce.js";
-import { extractProfile } from "./jwt.js";
+import { AUTH_SCOPES, AUTHORIZE_ENDPOINT, TOKEN_ENDPOINT } from "../config.js";
 import type { Profile } from "./jwt.js";
-import { exchangeCode, computeExpiration } from "./tokens.js";
+import { extractProfile } from "./jwt.js";
+import { generateChallenge, generateStateNonce, generateVerifier } from "./pkce.js";
 import type { TokenResult } from "./tokens.js";
+import { computeExpiration, exchangeCode } from "./tokens.js";
 
 export interface LoginResult extends TokenResult {
   /** Unix timestamp (ms) when access_token expires. */

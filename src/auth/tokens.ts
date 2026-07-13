@@ -1,4 +1,4 @@
-import { AUTH_SCOPES, TOKEN_ENDPOINT } from "../config.js";
+import { TOKEN_ENDPOINT } from "../config.js";
 
 export interface TokenResult {
   access_token: string;
