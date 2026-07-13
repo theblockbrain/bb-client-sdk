@@ -33,7 +33,7 @@ export async function discoverFrontendUrls(
       (raw as { content?: string[] }).content ??
       (raw as { body?: string[] }).body ??
       (Array.isArray(raw) ? raw : null);
-    if (Array.isArray(domains) && domains.length > 0) return domains as string[];
+    if (Array.isArray(domains) && domains.length > 0) return domains;
     return null;
   } catch {
     return null;

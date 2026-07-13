@@ -73,7 +73,7 @@ export async function fetchBotList(ctx: AuthContext): Promise<Bot[]> {
   } else if (Array.isArray(data.body)) {
     bots = data.body;
   } else if (Array.isArray(data)) {
-    bots = data as unknown as RawBot[];
+    bots = data;
   }
 
   if (bots.length === 0) throw new Error("No bots found.");

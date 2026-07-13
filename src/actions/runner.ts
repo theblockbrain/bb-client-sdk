@@ -86,13 +86,13 @@ export async function runActions(
           });
           break;
         case "click":
-          (doc.querySelector(step.selector) as HTMLElement | null)?.click();
+          doc.querySelector<HTMLElement>(step.selector)?.click();
           break;
         case "scrollTo":
           doc.querySelector(step.selector)?.scrollIntoView({ behavior: "smooth" });
           break;
         case "fill": {
-          const el = doc.querySelector(step.selector) as HTMLInputElement | null;
+          const el = doc.querySelector<HTMLInputElement>(step.selector);
           if (el) {
             el.value = step.value;
             el.dispatchEvent(new Event("input", { bubbles: true }));

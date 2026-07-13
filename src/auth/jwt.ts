@@ -58,7 +58,7 @@ export function extractOrgIdFromClaims(claims: Record<string, unknown>): string 
   if (roles !== null && typeof roles === "object") {
     const firstRole = Object.values(roles as Record<string, unknown>)[0];
     if (firstRole !== null && typeof firstRole === "object") {
-      const firstOrgKey = Object.keys(firstRole as Record<string, unknown>)[0];
+      const firstOrgKey = Object.keys(firstRole)[0];
       if (firstOrgKey) return firstOrgKey;
     }
   }
