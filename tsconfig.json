@@ -11,7 +11,7 @@
     "outDir": "dist",
     "rootDir": "src",
     "skipLibCheck": true,
-    "esModuleInterop": false,
+    "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true
   },
   "include": ["src/**/*"],
