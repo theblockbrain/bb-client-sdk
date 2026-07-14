@@ -14,8 +14,7 @@ Build       success               npm run build      (tsup → dist/react/index.
 Peers       externalized          react / @tanstack/react-query are NOT bundled
 ```
 
-Run locally: `cd ~/Documents/Glassbox/bb-client-sdk && npm test`
-(npm is under the nvm bin — `~/.nvm/versions/node/v24.14.1/bin`; the `proto` shim does not expose npm.)
+Run locally: `npm test` (from the repo root, on the Node version pinned in `.nvmrc`).
 
 ## Honest gaps — deliberate, for the next pass
 
