@@ -17,7 +17,8 @@ export default defineConfig({
   format: ["esm"],
   // Declarations are emitted by `tsc -p tsconfig.build.json` in the build script.
   // tsup's dts builder hardcodes a deprecated `baseUrl` that TS 6 rejects, so we
-  // let tsc (which reads tsconfig.json — no baseUrl) generate .d.ts instead.
+  // let tsc (via tsconfig.build.json, which extends tsconfig.json — no baseUrl)
+  // generate .d.ts instead.
   dts: false,
   clean: true,
   sourcemap: true,
