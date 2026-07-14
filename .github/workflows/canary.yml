@@ -84,6 +84,9 @@ jobs:
     needs: canary
     if: ${{ vars.CONSUMER_DISPATCH_ENABLED == 'true' }}
     runs-on: ubuntu-latest
+    # Uses only the App token (GH_TOKEN below), never the default GITHUB_TOKEN, and has
+    # no checkout — so the automatic token needs zero scopes.
+    permissions: {}
     steps:
       - name: Dispatch sdk-canary event to each consumer
         env:
@@ -94,6 +97,6 @@ jobs:
           CONSUMERS="${CONSUMERS:-ms-outlook-addin}"
           for repo in ${CONSUMERS//,/ }; do
             echo "→ dispatch sdk-canary to theblockbrain/${repo} (version ${VERSION})"
-            gh api "repos/theblockbrain/${repo}/dispatches" \
+            gh api --method POST "repos/theblockbrain/${repo}/dispatches" \
               --input <(jq -nc --arg v "$VERSION" '{event_type:"sdk-canary",client_payload:{version:$v}}')
           done
