@@ -1,0 +1,51 @@
+# Git hooks (managed by lefthook). Structure mirrors the botticelli repo, adapted
+# for this package: npm instead of bun, and Conventional Commit scopes enforced as Jira
+# ticket keys (feat(PDEV-123):, fix(FRON-45): …) rather than free-form scopes like feat(sdk):.
+#
+# Kept intentionally fast: pre-commit only runs Biome (format + base lint) on staged
+# files. The heavier type-aware gate (eslint, typecheck, tests, publint, attw) runs in
+# CI, which is the real merge gate together with branch protection.
+
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{js,jsx,ts,tsx,css,json,jsonc}"
+      run: npx biome check --write --no-errors-on-unmatched {staged_files}
+      stage_fixed: true
+
+commit-msg:
+  commands:
+    conventional-commit:
+      run: |
+        MSG=$(head -n 1 {1})
+        # Allow auto-generated merge and revert commits
+        if echo "$MSG" | grep -qE '^(Merge |Revert )'; then
+          exit 0
+        fi
+        # Conventional Commit scoped by a Jira ticket key: feat(PDEV-123): …, fix(FRON-45): …
+        if echo "$MSG" | grep -qE '^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)\([A-Z][A-Z0-9]+-[0-9]+\)!?: .+'; then
+          exit 0
+        fi
+        echo "❌ Commit rejected: message must be a Conventional Commit scoped by a ticket."
+        echo "   Expected: feat(PDEV-123): add streaming helper   /   fix(PDEV-45): correct token refresh"
+        echo "   Got: $MSG"
+        exit 1
+
+pre-push:
+  commands:
+    branch-name:
+      run: |
+        BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+        # Allow the default branch and automated release branches
+        if [ "$BRANCH" = "main" ] || echo "$BRANCH" | grep -qE '^(release|release-please)'; then
+          exit 0
+        fi
+        # Require type/TICKET-123/description, e.g. feat/PDEV-123/react-query-layer
+        if echo "$BRANCH" | grep -qE '^(feat|fix|chore|docs|style|refactor|perf|test|build|ci)/[A-Z][A-Z0-9]+-[0-9]+/[a-z0-9._/-]+$'; then
+          exit 0
+        fi
+        echo "❌ Push rejected: branch must follow type/TICKET-123/description format."
+        echo "   Expected: feat/PDEV-123/react-query-layer   /   fix/PDEV-45/token-refresh"
+        echo "   Got: $BRANCH"
+        exit 1
