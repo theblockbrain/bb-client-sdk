@@ -7,44 +7,44 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./auth": {
-      "import": "./dist/auth/index.js",
-      "types": "./dist/auth/index.d.ts"
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth/index.js"
     },
     "./api": {
-      "import": "./dist/api/index.js",
-      "types": "./dist/api/index.d.ts"
+      "types": "./dist/api/index.d.ts",
+      "import": "./dist/api/index.js"
     },
     "./settings": {
-      "import": "./dist/settings/index.js",
-      "types": "./dist/settings/index.d.ts"
+      "types": "./dist/settings/index.d.ts",
+      "import": "./dist/settings/index.js"
     },
     "./utils": {
-      "import": "./dist/utils/index.js",
-      "types": "./dist/utils/index.d.ts"
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js"
     },
     "./adapters": {
-      "import": "./dist/adapters/index.js",
-      "types": "./dist/adapters/index.d.ts"
+      "types": "./dist/adapters/index.d.ts",
+      "import": "./dist/adapters/index.js"
     },
     "./config": {
-      "import": "./dist/config.js",
-      "types": "./dist/config.d.ts"
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
     },
     "./prompt": {
-      "import": "./dist/prompt/index.js",
-      "types": "./dist/prompt/index.d.ts"
+      "types": "./dist/prompt/index.d.ts",
+      "import": "./dist/prompt/index.js"
     },
     "./actions": {
-      "import": "./dist/actions/index.js",
-      "types": "./dist/actions/index.d.ts"
+      "types": "./dist/actions/index.d.ts",
+      "import": "./dist/actions/index.js"
     },
     "./ui": {
-      "import": "./dist/ui/index.js",
-      "types": "./dist/ui/index.d.ts"
+      "types": "./dist/ui/index.d.ts",
+      "import": "./dist/ui/index.js"
     },
     "./ui/theme-base.css": "./dist/ui/theme-base.css"
   },
@@ -75,6 +75,7 @@
     "lint:biome": "biome check .",
     "lint:types": "eslint src",
     "lint:fix": "biome check --write .",
+    "check:package": "publint && attw --pack . --profile esm-only --exclude-entrypoints ui/theme-base.css",
     "dev": "tsup --watch",
     "clean": "rm -rf dist",
     "prepare": "if [ -e .git ] && [ -z \"$CI\" ]; then lefthook install; fi",
@@ -82,11 +83,13 @@
     "prepublishOnly": "npm run build"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
     "@biomejs/biome": "2.4.6",
     "@tanstack/eslint-plugin-query": "^5.101.2",
+    "publint": "0.3.21",
     "eslint": "^10.7.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "lefthook": "^2.1.10",
