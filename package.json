@@ -94,7 +94,7 @@
     "prepublishOnly": "npm run build"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
