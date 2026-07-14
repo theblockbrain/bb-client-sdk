@@ -65,15 +65,15 @@ export async function fetchBotList(ctx: AuthContext): Promise<Bot[]> {
     });
   }
 
-  const data = (await res.json()) as BotListResponse;
+  const data = (await res.json()) as BotListResponse | RawBot[];
 
   let bots: RawBot[] = [];
-  if (data.body?.data && Array.isArray(data.body.data)) {
+  if (Array.isArray(data)) {
+    bots = data;
+  } else if (data.body?.data && Array.isArray(data.body.data)) {
     bots = data.body.data;
   } else if (Array.isArray(data.body)) {
     bots = data.body;
-  } else if (Array.isArray(data)) {
-    bots = data as unknown as RawBot[];
   }
 
   if (bots.length === 0) throw new Error("No bots found.");

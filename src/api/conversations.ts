@@ -372,7 +372,7 @@ export async function getConversationAttachments(
   }
 
   // Response may be a plain array or wrapped in a CommonResponseDTO envelope
-  const raw = await res.json();
+  const raw: unknown = await res.json();
   if (Array.isArray(raw)) return raw as AttachmentUploadResult[];
   const envelope = raw as ConversationAttachmentsEnvelope;
   return Array.isArray(envelope.body) ? envelope.body : [];

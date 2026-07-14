@@ -69,11 +69,11 @@ export interface ApprovalResolver {
 
 /** Default resolver: auto-approves all tool calls and returns empty answers. */
 export const autoApproveResolver: ApprovalResolver = {
-  async resolveApproval(_ctx: ApprovalContext): Promise<ApprovalResult> {
-    return { approved: true };
+  resolveApproval(_ctx: ApprovalContext): Promise<ApprovalResult> {
+    return Promise.resolve({ approved: true });
   },
-  async resolveSuspend(_ctx: SuspendContext): Promise<SuspendResult> {
-    return { answers: {} };
+  resolveSuspend(_ctx: SuspendContext): Promise<SuspendResult> {
+    return Promise.resolve({ answers: {} });
   },
 };
 

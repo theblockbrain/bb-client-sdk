@@ -35,6 +35,9 @@ export interface MessageStream {
  * Blocky endpoint returns a JSON response (no actual SSE).
  */
 export function wrapStringAsStream(text: string): MessageStream {
+  // `async` is required so the generator is an AsyncIterable (a plain generator
+  // would only be Iterable and wouldn't satisfy MessageStream.textDeltas).
+  // eslint-disable-next-line @typescript-eslint/require-await
   async function* singleDelta(): AsyncIterable<string> {
     yield text;
   }
@@ -123,6 +126,8 @@ export function createMessageStream(source: AsyncIterable<string>): MessageStrea
       }
       // If drain is complete, check for error then stop
       if (doneSignal) {
+        // Re-throw the original error captured from the source stream (line ~109).
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
         if (drainError !== null) throw drainError;
         break;
       }
