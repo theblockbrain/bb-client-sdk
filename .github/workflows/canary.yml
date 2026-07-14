@@ -47,9 +47,22 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish under the `canary` dist-tag
-        run: npm publish --tag canary
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          # Idempotent publish: the version is derived from the commit SHA, so a re-run,
+          # re-label, or manual dispatch on the same commit would otherwise try to
+          # republish an existing version and fail (409). Skip when this exact version is
+          # already on the registry — the `canary` dist-tag still points at it from the
+          # earlier successful run. Test for non-empty output (not exit code): `npm view`
+          # on an existing package but missing version commonly exits 0 with no output.
+          EXISTING="$(npm view "@theblockbrain/bb-client-sdk@${VERSION}" version 2>/dev/null || true)"
+          if [ -n "$EXISTING" ]; then
+            echo "Version ${VERSION} already published; skipping publish."
+          else
+            npm publish --tag canary
+          fi
 
       - name: Comment install instructions on the PR
         if: ${{ github.event_name == 'pull_request' }}
