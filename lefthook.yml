@@ -1,6 +1,6 @@
 # Git hooks (managed by lefthook). Structure mirrors the botticelli repo, adapted
-# for this package: npm instead of bun, and free-form Conventional Commit scopes
-# (feat(sdk):, fix(auth): …) instead of Jira PDEV keys.
+# for this package: npm instead of bun, and Conventional Commit scopes enforced as Jira
+# ticket keys (feat(PDEV-123):, fix(FRON-45): …) rather than free-form scopes like feat(sdk):.
 #
 # Kept intentionally fast: pre-commit only runs Biome (format + base lint) on staged
 # files. The heavier type-aware gate (eslint, typecheck, tests, publint, attw) runs in
