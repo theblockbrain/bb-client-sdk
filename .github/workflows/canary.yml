@@ -1,0 +1,86 @@
+name: Canary release
+
+# Publishes a pre-release build under the `canary` dist-tag so consumers (e.g. the
+# Outlook add-in) can test an SDK change BEFORE it's cut as a real `latest` release.
+#
+# Trigger: add the `release:canary` label to a PR (or run manually via the Actions tab).
+# It never touches `latest` — real consumers on the stable tag are unaffected.
+# Uses the built-in GITHUB_TOKEN (packages:write) — no personal token / admin needed.
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+
+jobs:
+  canary:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'release:canary' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@theblockbrain"
+
+      - run: npm ci
+
+      # Quick gate so we never publish a broken canary
+      - run: npm run typecheck
+      - run: npm run build
+
+      - name: Set canary version (0.0.0-canary.<sha>, not committed)
+        id: ver
+        run: |
+          SHA="$(git rev-parse --short HEAD)"
+          VERSION="0.0.0-canary.${SHA}"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish under the `canary` dist-tag
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          # Idempotent publish: the version is derived from the commit SHA, so a re-run,
+          # re-label, or manual dispatch on the same commit would otherwise try to
+          # republish an existing version and fail (409). Skip when this exact version is
+          # already on the registry — the `canary` dist-tag still points at it from the
+          # earlier successful run. Test for non-empty output (not exit code): `npm view`
+          # on an existing package but missing version commonly exits 0 with no output.
+          EXISTING="$(npm view "@theblockbrain/bb-client-sdk@${VERSION}" version 2>/dev/null || true)"
+          if [ -n "$EXISTING" ]; then
+            echo "Version ${VERSION} already published; skipping publish."
+          else
+            npm publish --tag canary
+          fi
+
+      - name: Comment install instructions on the PR
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = "${{ steps.ver.outputs.version }}";
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                "🐤 **Canary published** — test this change in a consumer without a real release:",
+                "```bash",
+                `npm install @theblockbrain/bb-client-sdk@${version}`,
+                "# …or the moving tag that always points at the newest canary:",
+                "npm install @theblockbrain/bb-client-sdk@canary",
+                "```",
+                "This build is under the `canary` dist-tag and never becomes `latest`.",
+              ].join("\n"),
+            });
