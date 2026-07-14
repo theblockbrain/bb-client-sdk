@@ -20,6 +20,8 @@ jobs:
       contents: read
       packages: write
       pull-requests: write
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,3 +86,30 @@ jobs:
                 "This build is under the `canary` dist-tag and never becomes `latest`.",
               ].join("\n"),
             });
+
+  # Notify consumer repos so their CI installs @canary and builds against it.
+  # DORMANT until an org GitHub App is wired up (needs admin): the default
+  # GITHUB_TOKEN cannot trigger workflows in another repo, so this job only runs
+  # once `vars.CONSUMER_DISPATCH_ENABLED == 'true'` and uses the App token in
+  # `secrets.CONSUMER_DISPATCH_TOKEN`. See PDEV-6806 (GitHub App setup).
+  notify-consumers:
+    name: Notify consumer repos
+    needs: canary
+    if: ${{ vars.CONSUMER_DISPATCH_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    # Uses only the App token (GH_TOKEN below), never the default GITHUB_TOKEN, and has
+    # no checkout — so the automatic token needs zero scopes.
+    permissions: {}
+    steps:
+      - name: Dispatch sdk-canary event to each consumer
+        env:
+          GH_TOKEN: ${{ secrets.CONSUMER_DISPATCH_TOKEN }}
+          VERSION: ${{ needs.canary.outputs.version }}
+          CONSUMERS: ${{ vars.CONSUMER_REPOS }}
+        run: |
+          CONSUMERS="${CONSUMERS:-ms-outlook-addin}"
+          for repo in ${CONSUMERS//,/ }; do
+            echo "→ dispatch sdk-canary to theblockbrain/${repo} (version ${VERSION})"
+            gh api --method POST "repos/theblockbrain/${repo}/dispatches" \
+              --input <(jq -nc --arg v "$VERSION" '{event_type:"sdk-canary",client_payload:{version:$v}}')
+          done
