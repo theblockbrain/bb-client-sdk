@@ -1,5 +1,5 @@
 import { type InfiniteData, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type MessageItem,
   type MessageListBody,
@@ -65,7 +65,8 @@ export function useChatStream({
 }: UseChatStreamArgs): UseChatStreamResult {
   const { getAuthContext, orgId } = useBBContext();
   const qc = useQueryClient();
-  const liveKey = bbKeys(orgId).messages.list(convoId); // keyword "" = the live chat list
+  // Memoized so `send`/`stop` keep a stable identity across renders.
+  const liveKey = useMemo(() => bbKeys(orgId).messages.list(convoId), [orgId, convoId]);
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
@@ -76,6 +77,9 @@ export function useChatStream({
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const runIdRef = useRef(0);
+  // Synchronous active-stream guard — `isStreaming` state lags a render, so two
+  // synchronous send() calls could otherwise both start a stream.
+  const streamingRef = useRef(false);
 
   const clearFlush = useCallback(() => {
     if (flushTimerRef.current) {
@@ -104,9 +108,13 @@ export function useChatStream({
   const stop = useCallback(() => {
     abortRef.current?.abort();
     runIdRef.current += 1; // any late `final` for the aborted run becomes a no-op
+    streamingRef.current = false;
     clearFlush();
+    // Reconcile the cache: without this the optimistic (pending) user message would stay
+    // pending forever, since the SDK request can't be aborted yet — refetch the server truth.
+    void qc.invalidateQueries({ queryKey: bbKeys(orgId).messages.forConvo(convoId) });
     if (mountedRef.current) setIsStreaming(false);
-  }, [clearFlush]);
+  }, [clearFlush, qc, orgId, convoId]);
 
   const reset = useCallback(() => {
     bufferRef.current = "";
@@ -118,28 +126,35 @@ export function useChatStream({
 
   const send = useCallback(
     async (content: string) => {
-      if (isStreaming) return; // one active stream per hook instance
+      // Synchronous guard — `isStreaming` state lags a render, so gate on the ref to keep
+      // two synchronous send() calls from starting concurrent streams.
+      if (streamingRef.current) return;
+      streamingRef.current = true;
       const runId = ++runIdRef.current;
       const controller = new AbortController();
       abortRef.current = controller;
 
-      // Optimistic user message straight into the cache.
-      await qc.cancelQueries({ queryKey: liveKey });
-      const previous = qc.getQueryData<MessagesCache>(liveKey);
-      const optimisticUser: MessageItem = {
-        role: "user",
-        content,
-        id: `optimistic-${crypto.randomUUID()}`,
-        pending: true,
-      };
-      qc.setQueryData<MessagesCache>(liveKey, prev => insertLiveMessage(prev, optimisticUser));
-
-      bufferRef.current = "";
-      setError(null);
-      setStreamingText("");
-      setIsStreaming(true);
-
+      let previous: MessagesCache | undefined;
       try {
+        // Optimistic user message straight into the cache — only when the list is already
+        // loaded; otherwise the post-stream invalidate fetches it fresh (no phantom entry).
+        await qc.cancelQueries({ queryKey: liveKey });
+        previous = qc.getQueryData<MessagesCache>(liveKey);
+        if (previous) {
+          const optimisticUser: MessageItem = {
+            role: "user",
+            content,
+            id: `optimistic-${crypto.randomUUID()}`,
+            pending: true,
+          };
+          qc.setQueryData<MessagesCache>(liveKey, prev => insertLiveMessage(prev, optimisticUser));
+        }
+
+        bufferRef.current = "";
+        setError(null);
+        setStreamingText("");
+        setIsStreaming(true);
+
         const stream = await sendMessage(getAuthContext(), convoId, content, {
           enableStreaming: true,
           approvalResolver,
@@ -152,8 +167,11 @@ export function useChatStream({
           scheduleFlush();
         }
 
+        // Bail before awaiting `final` if the run was stopped/superseded — the SDK request
+        // can't be aborted yet, so awaiting would keep send() pending needlessly.
+        if (controller.signal.aborted || runId !== runIdRef.current) return;
         const finalText = await stream.final; // resolves independent of iteration
-        if (runId !== runIdRef.current || controller.signal.aborted) return;
+        if (controller.signal.aborted || runId !== runIdRef.current) return;
 
         const assistant: MessageItem = { role: "assistant", content: finalText };
         qc.setQueryData<MessagesCache>(liveKey, prev => insertLiveMessage(prev, assistant));
@@ -174,19 +192,12 @@ export function useChatStream({
           setError(err instanceof Error ? err : new Error(String(err)));
           setIsStreaming(false);
         }
+      } finally {
+        // Release the guard only if this run is still current — a later stop()/send() owns it otherwise.
+        if (runId === runIdRef.current) streamingRef.current = false;
       }
     },
-    [
-      isStreaming,
-      qc,
-      liveKey,
-      getAuthContext,
-      convoId,
-      approvalResolver,
-      scheduleFlush,
-      clearFlush,
-      orgId,
-    ],
+    [qc, liveKey, getAuthContext, convoId, approvalResolver, scheduleFlush, clearFlush, orgId],
   );
 
   return { send, isStreaming, streamingText, error, stop, reset };
