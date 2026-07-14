@@ -9,7 +9,7 @@
 import { createMessageStream } from "../dist/api/index.js";
 
 const unhandled = [];
-process.on("unhandledRejection", (reason) => {
+process.on("unhandledRejection", reason => {
   unhandled.push(reason);
 });
 
@@ -38,7 +38,7 @@ try {
 }
 
 // Give microtasks + one event-loop tick for any unhandledRejection to fire
-await new Promise((r) => setTimeout(r, 50));
+await new Promise(r => setTimeout(r, 50));
 
 if (unhandled.length > 0) {
   console.error("FAIL: unhandledRejection fired:", unhandled);

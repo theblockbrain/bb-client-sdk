@@ -1,5 +1,5 @@
-import { normalizeUrl } from "./url.js";
 import { BBApiError } from "./errors.js";
+import { normalizeUrl } from "./url.js";
 
 export interface IntrospectResponse {
   active: boolean;
@@ -28,8 +28,15 @@ export async function introspectApiKey(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 
   const data = (await res.json()) as IntrospectResponse;

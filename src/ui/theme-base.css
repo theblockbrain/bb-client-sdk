@@ -19,8 +19,14 @@
 /* ── Animations ─────────────────────────────────────────────────────── */
 
 @keyframes bb-fade-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-fade-in {
@@ -54,11 +60,26 @@
 
 /* ── Scrollbar ───────────────────────────────────────────────────────── */
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #fafaf9; }
-::-webkit-scrollbar-thumb { background: #a8a29e; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #78716c; }
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #fafaf9;
+}
+::-webkit-scrollbar-thumb {
+  background: #a8a29e;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #78716c;
+}
 
-.dark ::-webkit-scrollbar-track { background: #262626; }
-.dark ::-webkit-scrollbar-thumb { background: #525252; }
-.dark ::-webkit-scrollbar-thumb:hover { background: #737373; }
+.dark ::-webkit-scrollbar-track {
+  background: #262626;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #525252;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #737373;
+}

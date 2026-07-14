@@ -1,7 +1,7 @@
+import type { AuthContext } from "../settings/auth-mode.js";
+import { BBApiError } from "./errors.js";
 import { authHeaders } from "./headers.js";
 import { normalizeUrl } from "./url.js";
-import { BBApiError } from "./errors.js";
-import type { AuthContext } from "../settings/auth-mode.js";
 
 /**
  * Discover frontend URLs available for the authenticated tenant.
@@ -33,7 +33,7 @@ export async function discoverFrontendUrls(
       (raw as { content?: string[] }).content ??
       (raw as { body?: string[] }).body ??
       (Array.isArray(raw) ? raw : null);
-    if (Array.isArray(domains) && domains.length > 0) return domains as string[];
+    if (Array.isArray(domains) && domains.length > 0) return domains;
     return null;
   } catch {
     return null;
@@ -110,11 +110,26 @@ export async function listTenants(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`Tenant list failed: ${res.status}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`Tenant list failed: ${res.status}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 
-  type RawTenant = { _id?: string; id?: string; tenantName: string; database: string; activePlan?: string; domain: string; acceptSuffix: string[] };
+  type RawTenant = {
+    _id?: string;
+    id?: string;
+    tenantName: string;
+    database: string;
+    activePlan?: string;
+    domain: string;
+    acceptSuffix: string[];
+  };
   type RawList = { totalCount: number; currentPage: number; data: RawTenant[] };
   const json = (await res.json()) as { body?: RawList } | RawList;
   const payload = (json as { body?: RawList }).body ?? (json as RawList);
@@ -122,7 +137,7 @@ export async function listTenants(
   return {
     totalCount: payload.totalCount,
     currentPage: payload.currentPage,
-    data: payload.data.map((t) => ({
+    data: payload.data.map(t => ({
       id: t._id ?? t.id ?? "",
       tenantName: t.tenantName,
       database: t.database,
@@ -140,10 +155,7 @@ export async function listTenants(
  * Use this after listTenants when you need the zitadelOrgId to make
  * tenant-scoped API calls (x-zitadel-org-id header).
  */
-export async function getTenantById(
-  ctx: AuthContext,
-  tenantId: string,
-): Promise<TenantDetail> {
+export async function getTenantById(ctx: AuthContext, tenantId: string): Promise<TenantDetail> {
   const endpoint = `/tenant/${tenantId}`;
   const res = await fetch(`${normalizeUrl(ctx.baseUrl)}${endpoint}`, {
     method: "GET",
@@ -152,11 +164,27 @@ export async function getTenantById(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`Tenant detail failed: ${res.status}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`Tenant detail failed: ${res.status}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 
-  type RawDetail = { _id?: string; id?: string; tenantName?: string; database: string; activePlan?: string; domain: string; acceptSuffix?: string[]; zitadelOrgId: string };
+  type RawDetail = {
+    _id?: string;
+    id?: string;
+    tenantName?: string;
+    database: string;
+    activePlan?: string;
+    domain: string;
+    acceptSuffix?: string[];
+    zitadelOrgId: string;
+  };
   const json = (await res.json()) as { body?: RawDetail } | RawDetail;
   const t = (json as { body?: RawDetail }).body ?? (json as RawDetail);
 

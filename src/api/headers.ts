@@ -6,10 +6,7 @@
  * for multipart/form-data (see uploadConversationAttachment) it must NOT be set
  * manually — the runtime derives the boundary from the FormData body automatically.
  */
-export function authHeaders(
-  token: string,
-  orgId?: string | null,
-): Record<string, string> {
+export function authHeaders(token: string, orgId?: string | null): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     Authorization: `Bearer ${token}`,

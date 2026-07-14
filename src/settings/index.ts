@@ -1,8 +1,8 @@
-export type { Settings } from "./schema.js";
-export { DEFAULTS } from "./schema.js";
+export type { AuthContext, AuthMode, OAuthTokens } from "./auth-mode.js";
 export {
-  inferAuthMode,
   getAuthContext,
   hasUsableAuth,
+  inferAuthMode,
 } from "./auth-mode.js";
-export type { AuthMode, AuthContext, OAuthTokens } from "./auth-mode.js";
+export type { Settings } from "./schema.js";
+export { DEFAULTS } from "./schema.js";

@@ -16,8 +16,8 @@
  * Expected: all PASS, exit 0.
  */
 
-import { subFromAccessToken } from "../dist/utils/index.js";
 import { getAuthContext } from "../dist/settings/index.js";
+import { subFromAccessToken } from "../dist/utils/index.js";
 
 let passed = 0;
 let failed = 0;
@@ -45,8 +45,14 @@ function eq(actual, expected, label) {
  * NOT cryptographically signed — just three base64url-encoded segments.
  */
 function makeJwt(payload) {
-  const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-  const body = btoa(JSON.stringify(payload)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+  const body = btoa(JSON.stringify(payload))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
   const sig = "fakesig";
   return `${header}.${body}.${sig}`;
 }
@@ -137,7 +143,9 @@ console.log("\n[7] getAuthContext — api-key mode: userId absent");
 }
 
 // ── Test 8: sendMessage Agentic — derives resourceId from token sub ──────────
-console.log("\n[8] sendMessage — Agentic path derives resourceId from token sub when ctx.userId absent");
+console.log(
+  "\n[8] sendMessage — Agentic path derives resourceId from token sub when ctx.userId absent",
+);
 {
   // Build an AuthContext manually (as chrome-addon does) without userId
   const sub = "derived-sub-user";
