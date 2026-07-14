@@ -9,9 +9,7 @@ export type Theme = "light" | "dark";
 const DEFAULT_STORAGE_KEY = "bb-theme";
 
 function getSystemTheme(): Theme {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 function readStoredMode(storageKey: string): ThemeMode {
@@ -45,20 +43,13 @@ function applyClassTheme(theme: Theme): void {
  *   Pass a per-tool key (e.g. "bb-dashboard-theme") to avoid collisions
  *   when multiple tools share the same origin. Default: "bb-theme".
  */
-export function useTheme(
-  storageKey: string = DEFAULT_STORAGE_KEY,
-): [Theme, ThemeMode, () => void] {
-  const [mode, setModeState] = useState<ThemeMode>(() =>
-    readStoredMode(storageKey),
-  );
-  const [theme, setThemeState] = useState<Theme>(() =>
-    resolveTheme(readStoredMode(storageKey)),
-  );
+export function useTheme(storageKey: string = DEFAULT_STORAGE_KEY): [Theme, ThemeMode, () => void] {
+  const [mode, setModeState] = useState<ThemeMode>(() => readStoredMode(storageKey));
+  const [theme, setThemeState] = useState<Theme>(() => resolveTheme(readStoredMode(storageKey)));
 
   const cycleTheme = useCallback(() => {
-    setModeState((prev) => {
-      const next: ThemeMode =
-        prev === "light" ? "dark" : prev === "dark" ? "auto" : "light";
+    setModeState(prev => {
+      const next: ThemeMode = prev === "light" ? "dark" : prev === "dark" ? "auto" : "light";
       if (next === "auto") {
         localStorage.removeItem(storageKey);
       } else {
@@ -72,6 +63,7 @@ export function useTheme(
   }, [storageKey]);
 
   // Sync DOM on initial mount
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional one-shot mount effect; theme is already initialized from storage
   useEffect(() => {
     applyClassTheme(theme);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot
@@ -81,7 +73,7 @@ export function useTheme(
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     function handleChange(e: MediaQueryListEvent) {
-      setModeState((currentMode) => {
+      setModeState(currentMode => {
         if (currentMode === "auto") {
           const resolved: Theme = e.matches ? "dark" : "light";
           applyClassTheme(resolved);

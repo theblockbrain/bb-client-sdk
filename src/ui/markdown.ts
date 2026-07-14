@@ -1,5 +1,5 @@
-import { marked } from "marked";
 import type { Token, Tokens } from "marked";
+import { marked } from "marked";
 
 // Enable GFM (tables, strikethrough) globally — idempotent, safe to call multiple times
 marked.use({ gfm: true });
@@ -41,7 +41,7 @@ const MARKED_ENTITIES: Record<string, string> = {
 const MARKED_ENTITY_RE = /&(?:amp|lt|gt|quot|#39|apos);/g;
 
 function decodeMarkedEntity(s: string): string {
-  return s.replace(MARKED_ENTITY_RE, (m) => MARKED_ENTITIES[m] ?? m);
+  return s.replace(MARKED_ENTITY_RE, m => MARKED_ENTITIES[m] ?? m);
 }
 
 function cls(opts: Required<MarkdownOptions>, suffix: string): string {

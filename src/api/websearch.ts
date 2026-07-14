@@ -1,7 +1,7 @@
+import type { AuthContext } from "../settings/auth-mode.js";
+import { BBApiError } from "./errors.js";
 import { authHeaders } from "./headers.js";
 import { normalizeUrl } from "./url.js";
-import { BBApiError } from "./errors.js";
-import type { AuthContext } from "../settings/auth-mode.js";
 
 export type WebSearchProvider =
   | "linkup_normal_web_search"
@@ -55,8 +55,15 @@ export async function getAvailableWebSearchProviders(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 
   return (await res.json()) as WebSearchProviderStatus[];
@@ -86,8 +93,15 @@ export async function setConversationWebSearch(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 }
 
@@ -108,11 +122,20 @@ export async function getConversationWebSearch(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 
-  const data = (await res.json()) as { body?: ConversationWebSearchSettings } & ConversationWebSearchSettings;
+  const data = (await res.json()) as {
+    body?: ConversationWebSearchSettings;
+  } & ConversationWebSearchSettings;
   // Botticelli wraps in ResponseEntity { body: ... } or returns flat shape
   const payload = data.body ?? data;
   return {

@@ -19,10 +19,9 @@ export function configureLogo(basePath: string): void {
  */
 export function applyTheme(pref: ThemePref): void {
   const dark =
-    pref === "dark" ||
-    (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
-  document.documentElement.dataset["theme"] = dark ? "dark" : "light";
-  document.querySelectorAll("img.logo").forEach((img) => {
+    pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  document.querySelectorAll("img.logo").forEach(img => {
     (img as HTMLImageElement).src = `${logoBasePath}blockbrain_logo_${dark ? "dark" : "light"}.svg`;
   });
 }

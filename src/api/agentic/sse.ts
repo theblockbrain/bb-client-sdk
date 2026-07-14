@@ -14,7 +14,7 @@
  * - `[DONE]` data lines are skipped; the stream ends when the underlying
  *   ReadableStream closes.
  */
-import { parseSseDataLine, type AgenticSseFrame } from "./types.js";
+import { type AgenticSseFrame, parseSseDataLine } from "./types.js";
 
 /**
  * Parse a `ReadableStream<Uint8Array>` of Server-Sent Events into a typed async
@@ -100,9 +100,10 @@ export async function collectTextFromStream(
   for await (const frame of frames) {
     if (frame.type === "text-delta") {
       // textDelta is the primary AI SDK v6 field; delta is an observed fallback alias.
-      const delta = (frame as { type: "text-delta"; textDelta?: string; delta?: string }).textDelta
-        ?? (frame as { type: "text-delta"; textDelta?: string; delta?: string }).delta
-        ?? "";
+      const delta =
+        (frame as { type: "text-delta"; textDelta?: string; delta?: string }).textDelta ??
+        (frame as { type: "text-delta"; textDelta?: string; delta?: string }).delta ??
+        "";
       text += delta;
     }
   }

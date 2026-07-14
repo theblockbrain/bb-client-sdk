@@ -1,7 +1,7 @@
+import type { AuthContext } from "../settings/auth-mode.js";
+import { BBApiError } from "./errors.js";
 import { authHeaders } from "./headers.js";
 import { normalizeUrl } from "./url.js";
-import { BBApiError } from "./errors.js";
-import type { AuthContext } from "../settings/auth-mode.js";
 
 interface TranscribeResponse {
   body?: { text?: string; content?: string };
@@ -28,7 +28,7 @@ export async function transcribeAudio(
 
   // Build headers without Accept — browser manages Content-Type for multipart
   const headers = authHeaders(ctx.token, ctx.orgId);
-  delete headers["Accept"];
+  delete headers.Accept;
 
   const res = await fetch(`${url}${endpoint}`, {
     method: "POST",
@@ -38,8 +38,15 @@ export async function transcribeAudio(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 
   const data = (await res.json()) as TranscribeResponse;

@@ -1,4 +1,4 @@
-import type { ActionStep, ActionResult } from "./schema.js";
+import type { ActionResult, ActionStep } from "./schema.js";
 
 /**
  * Execute a list of Action-Library steps against a DOM document.
@@ -41,47 +41,49 @@ export async function runActions(
     try {
       switch (step.action) {
         case "setStyle":
-          doc.querySelectorAll(step.selector).forEach((el) =>
-            Object.assign((el as HTMLElement).style, step.style),
-          );
+          doc.querySelectorAll(step.selector).forEach(el => {
+            Object.assign((el as HTMLElement).style, step.style);
+          });
           break;
         case "addClass":
-          doc.querySelectorAll(step.selector).forEach((el) =>
-            el.classList.add(step.className),
-          );
+          doc.querySelectorAll(step.selector).forEach(el => {
+            el.classList.add(step.className);
+          });
           break;
         case "removeClass":
-          doc.querySelectorAll(step.selector).forEach((el) =>
-            el.classList.remove(step.className),
-          );
+          doc.querySelectorAll(step.selector).forEach(el => {
+            el.classList.remove(step.className);
+          });
           break;
         case "toggleClass":
-          doc.querySelectorAll(step.selector).forEach((el) =>
-            el.classList.toggle(step.className),
-          );
+          doc.querySelectorAll(step.selector).forEach(el => {
+            el.classList.toggle(step.className);
+          });
           break;
         case "hideElement":
-          doc.querySelectorAll(step.selector).forEach((el) => {
+          doc.querySelectorAll(step.selector).forEach(el => {
             (el as HTMLElement).style.display = "none";
           });
           break;
         case "showElement":
-          doc.querySelectorAll(step.selector).forEach((el) => {
+          doc.querySelectorAll(step.selector).forEach(el => {
             (el as HTMLElement).style.display = "";
           });
           break;
         case "removeElement":
-          doc.querySelectorAll(step.selector).forEach((el) => el.remove());
+          doc.querySelectorAll(step.selector).forEach(el => {
+            el.remove();
+          });
           break;
         case "setText":
-          doc.querySelectorAll(step.selector).forEach((el) => {
+          doc.querySelectorAll(step.selector).forEach(el => {
             el.textContent = step.text;
           });
           break;
         case "setAttribute":
-          doc.querySelectorAll(step.selector).forEach((el) =>
-            el.setAttribute(step.attr, step.value),
-          );
+          doc.querySelectorAll(step.selector).forEach(el => {
+            el.setAttribute(step.attr, step.value);
+          });
           break;
         case "click":
           (doc.querySelector(step.selector) as HTMLElement | null)?.click();
@@ -108,7 +110,7 @@ export async function runActions(
           await waitForEl(step.selector, step.timeout ?? 5000);
           break;
         case "delay":
-          await new Promise<void>((r) => setTimeout(r, step.ms));
+          await new Promise<void>(r => setTimeout(r, step.ms));
           break;
         default: {
           // Exhaustiveness guard — TypeScript will error if a new ActionStep variant is added

@@ -1,6 +1,6 @@
-import { normalizeUrl } from "./url.js";
-import { bbApiAuthHeaders, throwIfNotOk } from "./_auth-headers.js";
 import type { AuthContext } from "../settings/auth-mode.js";
+import { bbApiAuthHeaders, throwIfNotOk } from "./_auth-headers.js";
+import { normalizeUrl } from "./url.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,7 +21,10 @@ export interface TenantConfig {
  *   For cross-tenant admin calls, pass the target's orgId while ctx.orgId
  *   remains the user's home org (used for x-zitadel-org-id header auth).
  */
-export async function getTenantConfig(ctx: AuthContext, targetOrgId?: string): Promise<TenantConfig> {
+export async function getTenantConfig(
+  ctx: AuthContext,
+  targetOrgId?: string,
+): Promise<TenantConfig> {
   const endpoint = "tenants";
   const base = normalizeUrl(ctx.baseUrl);
   const params = new URLSearchParams({ orgId: targetOrgId ?? ctx.orgId });
@@ -33,7 +36,11 @@ export async function getTenantConfig(ctx: AuthContext, targetOrgId?: string): P
   });
   await throwIfNotOk(res, endpoint);
 
-  const data = (await res.json()) as { id: string; name: string; config: { customAgentsEnabled: boolean } | null };
+  const data = (await res.json()) as {
+    id: string;
+    name: string;
+    config: { customAgentsEnabled: boolean } | null;
+  };
   return { customAgentsEnabled: data.config?.customAgentsEnabled ?? false };
 }
 
@@ -43,7 +50,11 @@ export async function getTenantConfig(ctx: AuthContext, targetOrgId?: string): P
  *
  * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
  */
-export async function setCustomAgentsEnabled(ctx: AuthContext, enabled: boolean, targetOrgId?: string): Promise<void> {
+export async function setCustomAgentsEnabled(
+  ctx: AuthContext,
+  enabled: boolean,
+  targetOrgId?: string,
+): Promise<void> {
   const endpoint = "tenants/config";
   const base = normalizeUrl(ctx.baseUrl);
   const params = new URLSearchParams({ orgId: targetOrgId ?? ctx.orgId });

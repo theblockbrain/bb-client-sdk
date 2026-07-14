@@ -4,14 +4,18 @@
  * CWE-200: the verifier travelling in the `state` parameter would leak it into
  * browser history and IdP logs, defeating PKCE's interception defence.
  */
-import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 // --- minimal sessionStorage stub (not available in Bun's default env) ------
 const _store: Record<string, string> = {};
 const sessionStorageStub = {
   getItem: (key: string) => _store[key] ?? null,
-  setItem: (key: string, value: string) => { _store[key] = value; },
-  removeItem: (key: string) => { delete _store[key]; },
+  setItem: (key: string, value: string) => {
+    _store[key] = value;
+  },
+  removeItem: (key: string) => {
+    delete _store[key];
+  },
 };
 
 // Provide Web APIs that browser-redirect.ts expects.
@@ -45,8 +49,8 @@ mock.module("../../src/config.js", () => ({
   TOKEN_ENDPOINT: "https://auth.example.com/token",
 }));
 
-import { generateVerifier, generateStateNonce } from "../../src/auth/pkce.js";
 import { beginBrowserLogin, completeBrowserLogin } from "../../src/auth/browser-redirect.js";
+import { generateStateNonce, generateVerifier } from "../../src/auth/pkce.js";
 
 // ---------------------------------------------------------------------------
 
@@ -82,8 +86,12 @@ describe("beginBrowserLogin — verifier is NOT in the authorize URL", () => {
     // Capture the URL the code would navigate to
     (globalThis as unknown as Record<string, unknown>).window = {
       location: {
-        get href() { return capturedUrl; },
-        set href(v: string) { capturedUrl = v; },
+        get href() {
+          return capturedUrl;
+        },
+        set href(v: string) {
+          capturedUrl = v;
+        },
       },
       history: { replaceState: () => {} },
     };
@@ -97,7 +105,7 @@ describe("beginBrowserLogin — verifier is NOT in the authorize URL", () => {
     });
 
     // Give the async work a tick to run before the page-navigation promise hangs.
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
 
     const url = new URL(capturedUrl);
     const stateParam = url.searchParams.get("state") ?? "";
@@ -170,7 +178,9 @@ describe("completeBrowserLogin — full round-trip", () => {
   it("clears the verifier entry even when token exchange throws", async () => {
     // Override the mock to throw for this test
     mock.module("../../src/auth/tokens.js", () => ({
-      exchangeCode: async () => { throw new Error("token exchange failed"); },
+      exchangeCode: async () => {
+        throw new Error("token exchange failed");
+      },
       computeExpiration: (exp: number) => Date.now() + exp * 1000,
     }));
 

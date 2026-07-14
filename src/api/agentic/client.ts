@@ -15,13 +15,13 @@ import { normalizeUrl } from "../url.js";
 import { agenticHeaders } from "./headers.js";
 import { parseAgenticStream } from "./sse.js";
 import {
-  isTextDeltaFrame,
-  isToolCallApprovalFrame,
-  isToolCallSuspendedFrame,
   type AgenticRequestBody,
   type AgenticResumeData,
   type AgenticSseFrame,
   type AgenticUIMessage,
+  isTextDeltaFrame,
+  isToolCallApprovalFrame,
+  isToolCallSuspendedFrame,
 } from "./types.js";
 
 // ─── ApprovalResolver ─────────────────────────────────────────────────────────
@@ -146,12 +146,15 @@ async function postAgenticStream(
 
   if (!res.ok || !res.body) {
     let responseBody: unknown;
-    try { responseBody = await res.json(); } catch { /* non-JSON error body */ }
-    throw new BBApiError(
-      `Agentic API ${res.status} at ${url}`,
-      res.status,
-      { endpoint: url, responseBody },
-    );
+    try {
+      responseBody = await res.json();
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new BBApiError(`Agentic API ${res.status} at ${url}`, res.status, {
+      endpoint: url,
+      responseBody,
+    });
   }
 
   return parseAgenticStream(res.body);
@@ -170,9 +173,7 @@ async function postAgenticStream(
  *
  * Callers receive a clean `AsyncIterable<string>` of text deltas.
  */
-export async function* callAgenticStream(
-  options: AgenticCallOptions,
-): AsyncIterable<string> {
+export async function* callAgenticStream(options: AgenticCallOptions): AsyncIterable<string> {
   const {
     token,
     orgId,
@@ -231,7 +232,6 @@ export async function* callAgenticStream(
 
       if (isToolCallSuspendedFrame(frame)) {
         suspendData = frame.data;
-        continue;
       }
 
       // All other frames (tool-input-start, message-start/stop, custom data events, unknown) — ignored
