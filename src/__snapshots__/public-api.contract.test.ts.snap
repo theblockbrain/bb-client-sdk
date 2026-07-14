@@ -7,11 +7,61 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "AUTH_AUTHORITY",
   "AUTH_SCOPES",
   "AVAILABLE_ACTIONS",
+  "ActionResult",
+  "ActionStep",
+  "Agent",
+  "AgentsResponse",
+  "ApiResponse",
+  "AttachmentUploadResult",
+  "AuthContext",
+  "AuthMode",
   "BBApiError",
+  "Bot",
+  "BotDetail",
+  "BrowserLoginResult",
+  "BrowserRedirectOptions",
+  "CapabilitiesResponse",
+  "Capability",
+  "ConversationDetail",
+  "ConversationWebSearchSettings",
+  "CreateNoteParams",
   "DEFAULTS",
+  "GetMessageListOptions",
+  "IdentityAdapter",
+  "IntrospectResponse",
+  "ListTenantsOptions",
+  "ListTenantsResponse",
+  "LoginOptions",
+  "LoginResult",
+  "MarkdownOptions",
+  "MessageItem",
+  "MessageListBody",
+  "MessageStream",
+  "NoteResult",
   "OAUTH_BACKEND_URL",
+  "OAuthTokens",
+  "ParsedResponse",
+  "Profile",
+  "SendMessageOptions",
+  "SendMessageStreamOptions",
+  "Settings",
+  "StorageAdapter",
   "TOKEN_ENDPOINT",
+  "TenantConfig",
+  "TenantDetail",
+  "TenantSummary",
+  "Theme",
+  "ThemeMode",
+  "ThemePref",
   "ThemeToggle",
+  "ThemeToggleProps",
+  "TokenResult",
+  "UpdateConversationPatch",
+  "UploadAttachmentOptions",
+  "WebSearchConfig",
+  "WebSearchProvider",
+  "WebSearchProviderStatus",
+  "WebSearchType",
   "applyTheme",
   "authHeaders",
   "beginBrowserLogin",
@@ -87,15 +137,52 @@ exports[`public API surface > exports of "." are stable 1`] = `
 exports[`public API surface > exports of "./actions" are stable 1`] = `
 [
   "AVAILABLE_ACTIONS",
+  "ActionResult",
+  "ActionStep",
   "runActions",
 ]
 `;
 
-exports[`public API surface > exports of "./adapters" are stable 1`] = `[]`;
+exports[`public API surface > exports of "./adapters" are stable 1`] = `
+[
+  "IdentityAdapter",
+  "StorageAdapter",
+]
+`;
 
 exports[`public API surface > exports of "./api" are stable 1`] = `
 [
+  "Agent",
+  "AgentsResponse",
+  "ApiResponse",
+  "AttachmentUploadResult",
   "BBApiError",
+  "Bot",
+  "BotDetail",
+  "CapabilitiesResponse",
+  "Capability",
+  "ConversationDetail",
+  "ConversationWebSearchSettings",
+  "CreateNoteParams",
+  "GetMessageListOptions",
+  "IntrospectResponse",
+  "ListTenantsOptions",
+  "ListTenantsResponse",
+  "MessageItem",
+  "MessageListBody",
+  "MessageStream",
+  "NoteResult",
+  "SendMessageOptions",
+  "SendMessageStreamOptions",
+  "TenantConfig",
+  "TenantDetail",
+  "TenantSummary",
+  "UpdateConversationPatch",
+  "UploadAttachmentOptions",
+  "WebSearchConfig",
+  "WebSearchProvider",
+  "WebSearchProviderStatus",
+  "WebSearchType",
   "authHeaders",
   "createConversation",
   "createMessageStream",
@@ -135,6 +222,12 @@ exports[`public API surface > exports of "./api" are stable 1`] = `
 
 exports[`public API surface > exports of "./auth" are stable 1`] = `
 [
+  "BrowserLoginResult",
+  "BrowserRedirectOptions",
+  "LoginOptions",
+  "LoginResult",
+  "Profile",
+  "TokenResult",
   "beginBrowserLogin",
   "completeBrowserLogin",
   "computeExpiration",
@@ -167,6 +260,7 @@ exports[`public API surface > exports of "./config" are stable 1`] = `
 
 exports[`public API surface > exports of "./prompt" are stable 1`] = `
 [
+  "ParsedResponse",
   "parseResponse",
 ]
 `;
@@ -174,6 +268,11 @@ exports[`public API surface > exports of "./prompt" are stable 1`] = `
 exports[`public API surface > exports of "./react" are stable 1`] = `
 [
   "BBClientProvider",
+  "BBClientProviderProps",
+  "BBKeys",
+  "CreateBBQueryClientOptions",
+  "UseChatStreamArgs",
+  "UseChatStreamResult",
   "agentsQueryOptions",
   "bbKeys",
   "bbShouldRetryQuery",
@@ -210,7 +309,11 @@ exports[`public API surface > exports of "./react" are stable 1`] = `
 
 exports[`public API surface > exports of "./settings" are stable 1`] = `
 [
+  "AuthContext",
+  "AuthMode",
   "DEFAULTS",
+  "OAuthTokens",
+  "Settings",
   "getAuthContext",
   "hasUsableAuth",
   "inferAuthMode",
@@ -219,7 +322,12 @@ exports[`public API surface > exports of "./settings" are stable 1`] = `
 
 exports[`public API surface > exports of "./ui" are stable 1`] = `
 [
+  "MarkdownOptions",
+  "Theme",
+  "ThemeMode",
+  "ThemePref",
   "ThemeToggle",
+  "ThemeToggleProps",
   "applyTheme",
   "configureLogo",
   "cycleTheme",
