@@ -1,0 +1,243 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`public API surface > exports of "." are stable 1`] = `
+[
+  "AGENTIC_BASE_URL",
+  "AUTHORIZE_ENDPOINT",
+  "AUTH_AUTHORITY",
+  "AUTH_SCOPES",
+  "AVAILABLE_ACTIONS",
+  "BBApiError",
+  "DEFAULTS",
+  "OAUTH_BACKEND_URL",
+  "TOKEN_ENDPOINT",
+  "ThemeToggle",
+  "applyTheme",
+  "authHeaders",
+  "beginBrowserLogin",
+  "completeBrowserLogin",
+  "computeExpiration",
+  "configureLogo",
+  "createConversation",
+  "createLock",
+  "createMessageStream",
+  "createNote",
+  "createRefreshGuard",
+  "cycleTheme",
+  "decodeJwtPayload",
+  "decodePKCEState",
+  "deleteConversation",
+  "discoverFrontendUrls",
+  "encodePKCEState",
+  "exchangeCode",
+  "extractCode",
+  "extractJson",
+  "extractOrgIdFromClaims",
+  "extractOrgIdFromIntrospect",
+  "extractProfile",
+  "fetchAgents",
+  "fetchBotDetail",
+  "fetchBotList",
+  "fetchCapabilities",
+  "generateChallenge",
+  "generateStateNonce",
+  "generateVerifier",
+  "getAuthContext",
+  "getAvailableWebSearchProviders",
+  "getConversationAttachments",
+  "getConversationDetail",
+  "getConversationWebSearch",
+  "getMessageList",
+  "getTenantById",
+  "getTenantConfig",
+  "hasUsableAuth",
+  "inferAuthMode",
+  "introspectApiKey",
+  "invalidateConvoDetailCache",
+  "isBBApiError",
+  "isTokenExpired",
+  "listTenants",
+  "login",
+  "markdownToHtml",
+  "normalizeUrl",
+  "parseResponse",
+  "refreshTokens",
+  "renderMarkdown",
+  "renderMarkdownInto",
+  "repairUnescapedQuotes",
+  "runActions",
+  "sendMessage",
+  "setAgentActive",
+  "setAgentAvailability",
+  "setCapabilityActive",
+  "setCapabilityAvailability",
+  "setConversationWebSearch",
+  "setCustomAgentsEnabled",
+  "subFromAccessToken",
+  "themeIcon",
+  "timeAgo",
+  "transcribeAudio",
+  "updateConversation",
+  "uploadConversationAttachment",
+  "useTheme",
+  "wrapStringAsStream",
+]
+`;
+
+exports[`public API surface > exports of "./actions" are stable 1`] = `
+[
+  "AVAILABLE_ACTIONS",
+  "runActions",
+]
+`;
+
+exports[`public API surface > exports of "./adapters" are stable 1`] = `[]`;
+
+exports[`public API surface > exports of "./api" are stable 1`] = `
+[
+  "BBApiError",
+  "authHeaders",
+  "createConversation",
+  "createMessageStream",
+  "createNote",
+  "deleteConversation",
+  "discoverFrontendUrls",
+  "extractOrgIdFromIntrospect",
+  "fetchAgents",
+  "fetchBotDetail",
+  "fetchBotList",
+  "fetchCapabilities",
+  "getAvailableWebSearchProviders",
+  "getConversationAttachments",
+  "getConversationDetail",
+  "getConversationWebSearch",
+  "getMessageList",
+  "getTenantById",
+  "getTenantConfig",
+  "introspectApiKey",
+  "invalidateConvoDetailCache",
+  "isBBApiError",
+  "listTenants",
+  "normalizeUrl",
+  "sendMessage",
+  "setAgentActive",
+  "setAgentAvailability",
+  "setCapabilityActive",
+  "setCapabilityAvailability",
+  "setConversationWebSearch",
+  "setCustomAgentsEnabled",
+  "transcribeAudio",
+  "updateConversation",
+  "uploadConversationAttachment",
+  "wrapStringAsStream",
+]
+`;
+
+exports[`public API surface > exports of "./auth" are stable 1`] = `
+[
+  "beginBrowserLogin",
+  "completeBrowserLogin",
+  "computeExpiration",
+  "createRefreshGuard",
+  "decodeJwtPayload",
+  "decodePKCEState",
+  "encodePKCEState",
+  "exchangeCode",
+  "extractOrgIdFromClaims",
+  "extractProfile",
+  "generateChallenge",
+  "generateStateNonce",
+  "generateVerifier",
+  "isTokenExpired",
+  "login",
+  "refreshTokens",
+]
+`;
+
+exports[`public API surface > exports of "./config" are stable 1`] = `
+[
+  "AGENTIC_BASE_URL",
+  "AUTHORIZE_ENDPOINT",
+  "AUTH_AUTHORITY",
+  "AUTH_SCOPES",
+  "OAUTH_BACKEND_URL",
+  "TOKEN_ENDPOINT",
+]
+`;
+
+exports[`public API surface > exports of "./prompt" are stable 1`] = `
+[
+  "parseResponse",
+]
+`;
+
+exports[`public API surface > exports of "./react" are stable 1`] = `
+[
+  "BBClientProvider",
+  "agentsQueryOptions",
+  "bbKeys",
+  "bbShouldRetryQuery",
+  "botDetailQueryOptions",
+  "botsQueryOptions",
+  "capabilitiesQueryOptions",
+  "conversationDetailQueryOptions",
+  "createBBQueryClient",
+  "messagesInfiniteOptions",
+  "tenantConfigQueryOptions",
+  "useAgents",
+  "useBBContext",
+  "useBotDetail",
+  "useBots",
+  "useCapabilities",
+  "useChatStream",
+  "useConversationAttachments",
+  "useConversationDetail",
+  "useConversationWebSearch",
+  "useCreateConversation",
+  "useCreateNote",
+  "useDeleteConversation",
+  "useMessages",
+  "useSetAgentActive",
+  "useSetAgentAvailability",
+  "useSetCapabilityActive",
+  "useSetCapabilityAvailability",
+  "useSetCustomAgentsEnabled",
+  "useTenantConfig",
+  "useUpdateConversation",
+  "useWebSearchProviders",
+]
+`;
+
+exports[`public API surface > exports of "./settings" are stable 1`] = `
+[
+  "DEFAULTS",
+  "getAuthContext",
+  "hasUsableAuth",
+  "inferAuthMode",
+]
+`;
+
+exports[`public API surface > exports of "./ui" are stable 1`] = `
+[
+  "ThemeToggle",
+  "applyTheme",
+  "configureLogo",
+  "cycleTheme",
+  "markdownToHtml",
+  "renderMarkdown",
+  "renderMarkdownInto",
+  "themeIcon",
+  "timeAgo",
+  "useTheme",
+]
+`;
+
+exports[`public API surface > exports of "./utils" are stable 1`] = `
+[
+  "createLock",
+  "extractCode",
+  "extractJson",
+  "repairUnescapedQuotes",
+  "subFromAccessToken",
+]
+`;

@@ -1,11 +1,11 @@
 import { defineConfig } from "vitest/config";
 
-// Scoped to the new ./react layer's tests. The legacy test/auth/*.test.ts file
-// still imports `bun:test` and is migrated separately (WS1); excluding it here
-// keeps this suite green without coupling the two workstreams.
+// Runs the vitest suites under src/ (the ./react layer tests + the public-API
+// contract test). The legacy test/auth/*.test.ts file still imports `bun:test`
+// and lives outside src/, so this include never picks it up.
 export default defineConfig({
   test: {
     environment: "jsdom",
-    include: ["src/react/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 });
