@@ -29,7 +29,7 @@ import { fetchBotList, sendMessage }  from "@theblockbrain/bb-client-sdk/api";
 import { getAuthContext, Settings }   from "@theblockbrain/bb-client-sdk/settings";
 import { siteKey, createLock }        from "@theblockbrain/bb-client-sdk/utils";
 import type { StorageAdapter, IdentityAdapter } from "@theblockbrain/bb-client-sdk/adapters";
-import { AUTH_CLIENT_ID, TOKEN_ENDPOINT }       from "@theblockbrain/bb-client-sdk/config";
+import { AUTH_AUTHORITY, TOKEN_ENDPOINT }       from "@theblockbrain/bb-client-sdk/config";
 ```
 
 ## Adapter pattern
@@ -62,6 +62,12 @@ npm install
 npm run build     # outputs dist/
 npm run typecheck # strict TS, 0 errors
 ```
+
+> **Consuming this SDK via a local `file:` link** (e.g. the Chrome add-in): `dist/` is
+> git-ignored (it's built fresh on publish), and npm does **not** run build scripts for
+> symlinked `file:` dependencies — a `prepare` script won't cover it. So after a fresh
+> clone or pull of this SDK, run `npm run build` here **once** before building the linked
+> consumer, otherwise its import of `dist/` resolves to nothing.
 
 ## Error handling
 

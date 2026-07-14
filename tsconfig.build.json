@@ -1,0 +1,12 @@
+{
+  // Declaration-only build config. tsup bundles the JS; tsc emits the .d.ts here
+  // (reading tsconfig.json, which has no baseUrl, so it's clean under TypeScript 6).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "emitDeclarationOnly": true,
+    // src is not published (package.json "files"), so declaration maps would be
+    // dangling references. Disable them for the shipped .d.ts.
+    "declarationMap": false
+  },
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/*.test.tsx"]
+}
