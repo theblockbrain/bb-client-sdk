@@ -14,7 +14,7 @@ export function createLock(): {
     withLock<T>(fn: () => Promise<T>): Promise<T> {
       // Chain onto the queue; forward both resolve and reject so a failing
       // operation does not permanently stall subsequent enqueued calls.
-      const next = queue.then(fn, fn) as Promise<T>;
+      const next = queue.then(fn, fn);
       queue = next.catch(() => {});
       return next;
     },

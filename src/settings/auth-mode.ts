@@ -1,5 +1,5 @@
-import { OAUTH_BACKEND_URL } from "../config.js";
 import { isTokenExpired } from "../auth/tokens.js";
+import { OAUTH_BACKEND_URL } from "../config.js";
 import { subFromAccessToken } from "../utils/jwt.js";
 import type { Settings } from "./schema.js";
 

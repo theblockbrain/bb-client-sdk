@@ -1,16 +1,8 @@
-import {
-  generateVerifier,
-  generateChallenge,
-  generateStateNonce,
-} from "./pkce.js";
-import { exchangeCode, computeExpiration } from "./tokens.js";
+import { AUTH_SCOPES, AUTHORIZE_ENDPOINT, TOKEN_ENDPOINT } from "../config.js";
 import { extractProfile } from "./jwt.js";
-import {
-  AUTH_SCOPES,
-  AUTHORIZE_ENDPOINT,
-  TOKEN_ENDPOINT,
-} from "../config.js";
 import type { LoginResult } from "./login.js";
+import { generateChallenge, generateStateNonce, generateVerifier } from "./pkce.js";
+import { computeExpiration, exchangeCode } from "./tokens.js";
 
 /**
  * sessionStorage key prefix for the per-nonce verifier entry.
@@ -45,9 +37,7 @@ export interface BrowserLoginResult extends LoginResult {
  * Stores PKCE state in sessionStorage and navigates window.location to the
  * Zitadel authorize URL. Never returns — the page is unloaded.
  */
-export async function beginBrowserLogin(
-  opts: BrowserRedirectOptions,
-): Promise<never> {
+export async function beginBrowserLogin(opts: BrowserRedirectOptions): Promise<never> {
   const clientId = opts.clientId;
   const scopes = opts.scopes ?? AUTH_SCOPES;
   const authorizeEndpoint = opts.authorizeEndpoint ?? AUTHORIZE_ENDPOINT;
@@ -98,9 +88,7 @@ export async function completeBrowserLogin(
 
   if (oauthError) {
     const desc = params.get("error_description");
-    throw new Error(
-      `OAuth error: ${oauthError}${desc ? ` — ${desc}` : ""}`,
-    );
+    throw new Error(`OAuth error: ${oauthError}${desc ? ` — ${desc}` : ""}`);
   }
 
   const code = params.get("code");
@@ -133,22 +121,11 @@ export async function completeBrowserLogin(
 
   // Clear eagerly so the verifier cannot be read again after this point.
   sessionStorage.removeItem(verifierKey);
+  const tokens = await exchangeCode(code, verifier, opts.redirectUri, clientId, tokenEndpoint);
+  const profile = extractProfile(tokens.id_token, tokens.access_token);
+  const expiresAt = computeExpiration(tokens.expires_in);
 
-  try {
-    const tokens = await exchangeCode(
-      code,
-      verifier,
-      opts.redirectUri,
-      clientId,
-      tokenEndpoint,
-    );
-    const profile = extractProfile(tokens.id_token, tokens.access_token);
-    const expiresAt = computeExpiration(tokens.expires_in);
+  window.history.replaceState({}, document.title, window.location.pathname);
 
-    window.history.replaceState({}, document.title, window.location.pathname);
-
-    return { isCallback: true, ...tokens, expiresAt, profile, orgId: profile.orgId };
-  } catch (err) {
-    throw err;
-  }
+  return { isCallback: true, ...tokens, expiresAt, profile, orgId: profile.orgId };
 }

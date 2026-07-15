@@ -51,9 +51,7 @@ export interface AgenticAskUserQuestionResumeData {
   __cancelled?: true;
 }
 
-export type AgenticResumeData =
-  | AgenticApprovalResumeData
-  | AgenticAskUserQuestionResumeData;
+export type AgenticResumeData = AgenticApprovalResumeData | AgenticAskUserQuestionResumeData;
 
 // ─── SSE Frame unions ──────────────────────────────────────────────────────────
 

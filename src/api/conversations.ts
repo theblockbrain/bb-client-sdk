@@ -1,9 +1,9 @@
+import type { AuthContext } from "../settings/auth-mode.js";
+import { fetchBotDetail } from "./bots.js";
+import { BBApiError } from "./errors.js";
 import { authHeaders } from "./headers.js";
 import { normalizeUrl } from "./url.js";
-import { BBApiError } from "./errors.js";
-import { fetchBotDetail } from "./bots.js";
-import type { AuthContext } from "../settings/auth-mode.js";
-import type { WebSearchType, WebSearchConfig } from "./websearch.js";
+import type { WebSearchConfig, WebSearchType } from "./websearch.js";
 
 // ─── getConversationDetail ─────────────────────────────────────────────────────
 
@@ -64,8 +64,15 @@ export async function getConversationDetail(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 
   const envelope = (await res.json()) as ConvoGeneralInfoResponse;
@@ -126,8 +133,15 @@ export async function createConversation(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 
   const data = (await res.json()) as ConversationResponse;
@@ -141,10 +155,7 @@ export async function createConversation(
  *
  * DELETE /cortex/conversation/:convoId
  */
-export async function deleteConversation(
-  ctx: AuthContext,
-  convoId: string,
-): Promise<void> {
+export async function deleteConversation(ctx: AuthContext, convoId: string): Promise<void> {
   const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}`;
   const url = normalizeUrl(ctx.baseUrl);
   const res = await fetch(`${url}${endpoint}`, {
@@ -154,8 +165,15 @@ export async function deleteConversation(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 }
 
@@ -286,15 +304,25 @@ export async function uploadConversationAttachment(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 
   // Backend wraps in CommonResponseDTO: { code, key, body: AttachedFilesDTO }
   const envelope = (await res.json()) as AttachmentUploadEnvelope;
   const data = envelope.body;
   if (!data?._id || !data?.name) {
-    throw new BBApiError("Attachment upload response missing required fields", res.status, { endpoint, responseBody: envelope });
+    throw new BBApiError("Attachment upload response missing required fields", res.status, {
+      endpoint,
+      responseBody: envelope,
+    });
   }
   return data;
 }
@@ -332,12 +360,19 @@ export async function getConversationAttachments(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 
   // Response may be a plain array or wrapped in a CommonResponseDTO envelope
-  const raw = await res.json();
+  const raw: unknown = await res.json();
   if (Array.isArray(raw)) return raw as AttachmentUploadResult[];
   const envelope = raw as ConversationAttachmentsEnvelope;
   return Array.isArray(envelope.body) ? envelope.body : [];
@@ -413,7 +448,14 @@ export async function updateConversation(
 
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 }

@@ -35,6 +35,9 @@ export interface MessageStream {
  * Blocky endpoint returns a JSON response (no actual SSE).
  */
 export function wrapStringAsStream(text: string): MessageStream {
+  // `async` is required so the generator is an AsyncIterable (a plain generator
+  // would only be Iterable and wouldn't satisfy MessageStream.textDeltas).
+  // eslint-disable-next-line @typescript-eslint/require-await
   async function* singleDelta(): AsyncIterable<string> {
     yield text;
   }
@@ -64,9 +67,7 @@ export function wrapStringAsStream(text: string): MessageStream {
  * If the caller does not iterate `textDeltas`, the queue grows but is bounded
  * by the source length — acceptable for the typical chat-response size.
  */
-export function createMessageStream(
-  source: AsyncIterable<string>,
-): MessageStream {
+export function createMessageStream(source: AsyncIterable<string>): MessageStream {
   // ── Internal queue shared between drain task and textDeltas consumer ─────────
   const queue: string[] = [];
   let doneSignal = false;
@@ -125,11 +126,13 @@ export function createMessageStream(
       }
       // If drain is complete, check for error then stop
       if (doneSignal) {
+        // Re-throw the original error captured from the source stream (line ~109).
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
         if (drainError !== null) throw drainError;
         break;
       }
       // Wait for the drain task to push more items or signal done
-      await new Promise<void>((resolve) => {
+      await new Promise<void>(resolve => {
         notifyConsumer = resolve;
       });
     }

@@ -1,7 +1,7 @@
-import { normalizeUrl } from "./url.js";
-import { bbApiAuthHeaders, throwIfNotOk } from "./_auth-headers.js";
 import type { AuthContext } from "../settings/auth-mode.js";
+import { bbApiAuthHeaders, throwIfNotOk } from "./_auth-headers.js";
 import type { ApiResponse } from "./agents.js";
+import { normalizeUrl } from "./url.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -50,7 +50,10 @@ export async function fetchCapabilities(
   targetOrgId?: string,
 ): Promise<CapabilitiesResponse> {
   const endpoint = "capabilities";
-  const url = buildUrl(ctx, endpoint, targetOrgId, { includeInactive: "true", includeUnavailable: "true" });
+  const url = buildUrl(ctx, endpoint, targetOrgId, {
+    includeInactive: "true",
+    includeUnavailable: "true",
+  });
   const res = await fetch(url, {
     method: "GET",
     headers: bbApiAuthHeaders(ctx),

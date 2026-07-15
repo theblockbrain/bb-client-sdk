@@ -1,5 +1,5 @@
-import { BBApiError } from "./errors.js";
 import type { AuthContext } from "../settings/auth-mode.js";
+import { BBApiError } from "./errors.js";
 
 /**
  * Build auth headers for integrations.theblockbrain.ai (agents, capabilities, tenant-config).
@@ -23,7 +23,14 @@ export function bbApiAuthHeaders(ctx: AuthContext): Record<string, string> {
 export async function throwIfNotOk(res: Response, endpoint: string): Promise<void> {
   if (!res.ok) {
     let body: unknown;
-    try { body = await res.json(); } catch { /* response may not be JSON */ }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, { endpoint, responseBody: body });
+    try {
+      body = await res.json();
+    } catch {
+      /* response may not be JSON */
+    }
+    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+      endpoint,
+      responseBody: body,
+    });
   }
 }

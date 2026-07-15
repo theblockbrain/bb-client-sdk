@@ -1,37 +1,64 @@
-export { authHeaders } from "./headers.js";
-export { normalizeUrl } from "./url.js";
-export { BBApiError, isBBApiError } from "./errors.js";
-export { introspectApiKey, extractOrgIdFromIntrospect } from "./introspect.js";
-export type { IntrospectResponse } from "./introspect.js";
-export { fetchBotList, fetchBotDetail } from "./bots.js";
-export type { Bot, BotDetail } from "./bots.js";
-export { createConversation, deleteConversation, uploadConversationAttachment, getConversationAttachments, updateConversation, getConversationDetail } from "./conversations.js";
-export type { AttachmentUploadResult, UploadAttachmentOptions, UpdateConversationPatch, ConversationDetail } from "./conversations.js";
-export { createNote } from "./notes.js";
-export type { CreateNoteParams, NoteResult } from "./notes.js";
-export { sendMessage, getMessageList, invalidateConvoDetailCache } from "./messages.js";
-export type { SendMessageOptions, SendMessageStreamOptions, MessageItem, MessageListBody, GetMessageListOptions } from "./messages.js";
-export type { MessageStream } from "./stream-result.js";
-export { wrapStringAsStream, createMessageStream } from "./stream-result.js";
-export { transcribeAudio } from "./transcribe.js";
-export { discoverFrontendUrls, listTenants, getTenantById } from "./tenant.js";
-export type { TenantSummary, TenantDetail, ListTenantsResponse, ListTenantsOptions } from "./tenant.js";
-export {
-  getAvailableWebSearchProviders,
-  setConversationWebSearch,
-  getConversationWebSearch,
-} from "./websearch.js";
-export type {
-  WebSearchProvider,
-  WebSearchType,
-  WebSearchConfig,
-  WebSearchProviderStatus,
-  ConversationWebSearchSettings,
-} from "./websearch.js";
+export type { Agent, AgentsResponse, ApiResponse } from "./agents.js";
 // ── Feature-switches / admin config ──────────────────────────────────────────
 export { fetchAgents, setAgentActive, setAgentAvailability } from "./agents.js";
-export type { Agent, AgentsResponse, ApiResponse } from "./agents.js";
-export { fetchCapabilities, setCapabilityActive, setCapabilityAvailability } from "./capabilities.js";
-export type { Capability, CapabilitiesResponse } from "./capabilities.js";
-export { getTenantConfig, setCustomAgentsEnabled } from "./tenant-config.js";
+export type { Bot, BotDetail } from "./bots.js";
+export { fetchBotDetail, fetchBotList } from "./bots.js";
+export type { CapabilitiesResponse, Capability } from "./capabilities.js";
+export {
+  fetchCapabilities,
+  setCapabilityActive,
+  setCapabilityAvailability,
+} from "./capabilities.js";
+export type {
+  AttachmentUploadResult,
+  ConversationDetail,
+  UpdateConversationPatch,
+  UploadAttachmentOptions,
+} from "./conversations.js";
+export {
+  createConversation,
+  deleteConversation,
+  getConversationAttachments,
+  getConversationDetail,
+  updateConversation,
+  uploadConversationAttachment,
+} from "./conversations.js";
+export { BBApiError, isBBApiError } from "./errors.js";
+export { authHeaders } from "./headers.js";
+export type { IntrospectResponse } from "./introspect.js";
+export { extractOrgIdFromIntrospect, introspectApiKey } from "./introspect.js";
+export type {
+  GetMessageListOptions,
+  MessageItem,
+  MessageListBody,
+  SendMessageOptions,
+  SendMessageStreamOptions,
+} from "./messages.js";
+export { getMessageList, invalidateConvoDetailCache, sendMessage } from "./messages.js";
+export type { CreateNoteParams, NoteResult } from "./notes.js";
+export { createNote } from "./notes.js";
+export type { MessageStream } from "./stream-result.js";
+export { createMessageStream, wrapStringAsStream } from "./stream-result.js";
+export type {
+  ListTenantsOptions,
+  ListTenantsResponse,
+  TenantDetail,
+  TenantSummary,
+} from "./tenant.js";
+export { discoverFrontendUrls, getTenantById, listTenants } from "./tenant.js";
 export type { TenantConfig } from "./tenant-config.js";
+export { getTenantConfig, setCustomAgentsEnabled } from "./tenant-config.js";
+export { transcribeAudio } from "./transcribe.js";
+export { normalizeUrl } from "./url.js";
+export type {
+  ConversationWebSearchSettings,
+  WebSearchConfig,
+  WebSearchProvider,
+  WebSearchProviderStatus,
+  WebSearchType,
+} from "./websearch.js";
+export {
+  getAvailableWebSearchProviders,
+  getConversationWebSearch,
+  setConversationWebSearch,
+} from "./websearch.js";

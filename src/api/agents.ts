@@ -1,6 +1,6 @@
-import { normalizeUrl } from "./url.js";
-import { bbApiAuthHeaders, throwIfNotOk } from "./_auth-headers.js";
 import type { AuthContext } from "../settings/auth-mode.js";
+import { bbApiAuthHeaders, throwIfNotOk } from "./_auth-headers.js";
+import { normalizeUrl } from "./url.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -50,10 +50,7 @@ function buildUrl(
  *   For cross-tenant admin calls, pass the target's orgId while ctx.orgId
  *   remains the user's home org (used for x-zitadel-org-id header auth).
  */
-export async function fetchAgents(
-  ctx: AuthContext,
-  targetOrgId?: string,
-): Promise<AgentsResponse> {
+export async function fetchAgents(ctx: AuthContext, targetOrgId?: string): Promise<AgentsResponse> {
   const endpoint = "agents";
   const url = buildUrl(ctx, endpoint, targetOrgId, {
     includeInactive: "true",
