@@ -32,8 +32,8 @@ export interface AnalyticsIdentity {
 export interface AnalyticsEventMap {
   auth_started: { mode: "oauth" | "api-key" };
   auth_success: { mode: "oauth" | "api-key"; latencyMs?: number };
-  /** `stage` is a coarse phase label ("launch" | "parse" | "exchange") — never error detail. */
-  auth_failed: { mode: "oauth" | "api-key"; stage?: string };
+  /** `stage` is a coarse phase label — never error detail. */
+  auth_failed: { mode: "oauth" | "api-key"; stage?: "launch" | "parse" | "exchange" };
   token_refresh: { ok: boolean; latencyMs?: number };
   message_send: { conversationId?: string; backend?: "blocky" | "agentic"; streaming: boolean };
   stream_start: { backend?: "blocky" | "agentic" };
@@ -48,11 +48,15 @@ export interface AnalyticsEventMap {
 export type AnalyticsEventName = keyof AnalyticsEventMap;
 export type AnalyticsEventProps<K extends AnalyticsEventName> = AnalyticsEventMap[K];
 
-/** Extra context for `captureError`. Keep it PII/secret-free. */
+/**
+ * Extra context for `captureError`. Keep it PII/secret-free. Values are
+ * restricted to primitives so whole objects (e.g. raw response bodies) can't
+ * be attached by accident.
+ */
 export interface AnalyticsErrorContext extends AnalyticsIdentity {
   /** Coarse tag for where the error happened, e.g. "auth", "stream", "api". */
   scope?: string;
-  [key: string]: unknown;
+  [key: string]: string | number | boolean | null | undefined;
 }
 
 export interface AnalyticsAdapter {
