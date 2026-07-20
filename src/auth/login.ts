@@ -39,7 +39,7 @@ export async function login(
   const startedAt = Date.now();
   trackEvent("auth_started", { mode: "oauth" });
   // Coarse failure phase for telemetry only — never carries error detail (no PII/secrets).
-  let stage = "launch";
+  let stage: "launch" | "parse" | "exchange" = "launch";
   try {
     const {
       clientId,
@@ -66,9 +66,11 @@ export async function login(
 
     const resultUrl = await identity.launchOAuthFlow(authUrl.toString());
 
-    stage = "parse";
+    // A missing redirect URL is a launch-phase failure — only advance to "parse"
+    // once we actually have a URL to parse.
     if (!resultUrl) throw new Error("No redirect URL returned from auth flow.");
 
+    stage = "parse";
     const params = new URL(resultUrl).searchParams;
     const error = params.get("error");
     if (error) {
