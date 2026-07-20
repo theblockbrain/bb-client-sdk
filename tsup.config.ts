@@ -13,6 +13,7 @@ export default defineConfig({
     "src/actions/index.ts",
     "src/ui/index.ts",
     "src/react/index.ts",
+    "src/analytics/index.ts",
   ],
   format: ["esm"],
   // Declarations are emitted by `tsc -p tsconfig.build.json` in the build script.

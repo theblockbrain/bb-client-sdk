@@ -11,6 +11,12 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "ActionStep",
   "Agent",
   "AgentsResponse",
+  "AnalyticsAdapter",
+  "AnalyticsErrorContext",
+  "AnalyticsEventMap",
+  "AnalyticsEventName",
+  "AnalyticsEventProps",
+  "AnalyticsIdentity",
   "ApiResponse",
   "AttachmentUploadResult",
   "AuthContext",
@@ -65,6 +71,7 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "applyTheme",
   "authHeaders",
   "beginBrowserLogin",
+  "captureError",
   "completeBrowserLogin",
   "computeExpiration",
   "configureLogo",
@@ -89,9 +96,11 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "fetchBotDetail",
   "fetchBotList",
   "fetchCapabilities",
+  "flushAnalytics",
   "generateChallenge",
   "generateStateNonce",
   "generateVerifier",
+  "getAnalyticsAdapter",
   "getAuthContext",
   "getAvailableWebSearchProviders",
   "getConversationAttachments",
@@ -115,10 +124,12 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "renderMarkdown",
   "renderMarkdownInto",
   "repairUnescapedQuotes",
+  "resetAnalyticsAdapter",
   "runActions",
   "sendMessage",
   "setAgentActive",
   "setAgentAvailability",
+  "setAnalyticsAdapter",
   "setCapabilityActive",
   "setCapabilityAvailability",
   "setConversationWebSearch",
@@ -126,6 +137,8 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "subFromAccessToken",
   "themeIcon",
   "timeAgo",
+  "trackApiError",
+  "trackEvent",
   "transcribeAudio",
   "updateConversation",
   "uploadConversationAttachment",
@@ -145,8 +158,32 @@ exports[`public API surface > exports of "./actions" are stable 1`] = `
 
 exports[`public API surface > exports of "./adapters" are stable 1`] = `
 [
+  "AnalyticsAdapter",
+  "AnalyticsErrorContext",
+  "AnalyticsEventMap",
+  "AnalyticsEventName",
+  "AnalyticsEventProps",
+  "AnalyticsIdentity",
   "IdentityAdapter",
   "StorageAdapter",
+]
+`;
+
+exports[`public API surface > exports of "./analytics" are stable 1`] = `
+[
+  "AnalyticsAdapter",
+  "AnalyticsErrorContext",
+  "AnalyticsEventMap",
+  "AnalyticsEventName",
+  "AnalyticsEventProps",
+  "AnalyticsIdentity",
+  "captureError",
+  "flushAnalytics",
+  "getAnalyticsAdapter",
+  "resetAnalyticsAdapter",
+  "setAnalyticsAdapter",
+  "trackApiError",
+  "trackEvent",
 ]
 `;
 
