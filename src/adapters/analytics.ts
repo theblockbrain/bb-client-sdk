@@ -10,7 +10,8 @@
  *
  * Contract:
  * - Implementations MUST NOT throw and SHOULD be non-blocking (fire-and-forget).
- *   The sink guards every call too, but a throwing adapter is a defect.
+ *   The sink guards the calls it makes (`trackEvent`/`captureError`/`trackApiError`/
+ *   `flushAnalytics`); direct `identify`/`group` calls are not — a throwing adapter is a defect.
  * - NEVER send PII or secrets. Identify users by the Zitadel `sub`
  *   (pseudonymous); group by org id. Never pass access/refresh tokens, emails,
  *   names, or raw `BBApiError.responseBody`.
