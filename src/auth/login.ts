@@ -1,4 +1,5 @@
 import type { IdentityAdapter } from "../adapters/identity.js";
+import { trackEvent } from "../analytics/index.js";
 import { AUTH_SCOPES, AUTHORIZE_ENDPOINT, TOKEN_ENDPOINT } from "../config.js";
 import type { Profile } from "./jwt.js";
 import { extractProfile } from "./jwt.js";
@@ -35,58 +36,78 @@ export async function login(
   identity: IdentityAdapter,
   options: LoginOptions,
 ): Promise<LoginResult> {
-  const {
-    clientId,
-    scopes = AUTH_SCOPES,
-    authorizeEndpoint = AUTHORIZE_ENDPOINT,
-    tokenEndpoint = TOKEN_ENDPOINT,
-  } = options;
+  const startedAt = Date.now();
+  trackEvent("auth_started", { mode: "oauth" });
+  // Coarse failure phase for telemetry only — never carries error detail (no PII/secrets).
+  let stage: "launch" | "parse" | "exchange" = "launch";
+  try {
+    const {
+      clientId,
+      scopes = AUTH_SCOPES,
+      authorizeEndpoint = AUTHORIZE_ENDPOINT,
+      tokenEndpoint = TOKEN_ENDPOINT,
+    } = options;
 
-  const redirectUri = identity.getRedirectUri();
+    const redirectUri = identity.getRedirectUri();
 
-  const verifier = generateVerifier();
-  const challenge = await generateChallenge(verifier);
-  // State is an independent CSRF nonce — the verifier MUST NOT travel in the URL.
-  const state = generateStateNonce();
+    const verifier = generateVerifier();
+    const challenge = await generateChallenge(verifier);
+    // State is an independent CSRF nonce — the verifier MUST NOT travel in the URL.
+    const state = generateStateNonce();
 
-  const authUrl = new URL(authorizeEndpoint);
-  authUrl.searchParams.set("client_id", clientId);
-  authUrl.searchParams.set("redirect_uri", redirectUri);
-  authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("scope", [...scopes].join(" "));
-  authUrl.searchParams.set("code_challenge", challenge);
-  authUrl.searchParams.set("code_challenge_method", "S256");
-  authUrl.searchParams.set("state", state);
+    const authUrl = new URL(authorizeEndpoint);
+    authUrl.searchParams.set("client_id", clientId);
+    authUrl.searchParams.set("redirect_uri", redirectUri);
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("scope", [...scopes].join(" "));
+    authUrl.searchParams.set("code_challenge", challenge);
+    authUrl.searchParams.set("code_challenge_method", "S256");
+    authUrl.searchParams.set("state", state);
 
-  const resultUrl = await identity.launchOAuthFlow(authUrl.toString());
+    const resultUrl = await identity.launchOAuthFlow(authUrl.toString());
 
-  if (!resultUrl) throw new Error("No redirect URL returned from auth flow.");
+    // A missing redirect URL is a launch-phase failure — only advance to "parse"
+    // once we actually have a URL to parse.
+    if (!resultUrl) throw new Error("No redirect URL returned from auth flow.");
 
-  const params = new URL(resultUrl).searchParams;
-  const error = params.get("error");
-  if (error) {
-    throw new Error(`Auth error: ${error} — ${params.get("error_description") ?? ""}`);
+    stage = "parse";
+    const params = new URL(resultUrl).searchParams;
+    const error = params.get("error");
+    if (error) {
+      throw new Error(`Auth error: ${error} — ${params.get("error_description") ?? ""}`);
+    }
+
+    const code = params.get("code");
+    if (!code) throw new Error("No authorization code in redirect.");
+
+    const returnedState = params.get("state");
+    if (!returnedState) throw new Error("Missing state in redirect — possible CSRF.");
+
+    // Verify the nonce round-trips intact (CSRF check).
+    // The verifier is kept in local scope — it never appeared in the authorize URL.
+    if (returnedState !== state) throw new Error("State mismatch — possible CSRF.");
+
+    stage = "exchange";
+    const tokens = await exchangeCode(code, verifier, redirectUri, clientId, tokenEndpoint);
+
+    const profile = extractProfile(tokens.id_token, tokens.access_token);
+    const expiresAt = computeExpiration(tokens.expires_in);
+
+    trackEvent(
+      "auth_success",
+      { mode: "oauth", latencyMs: Date.now() - startedAt },
+      { distinctId: profile.sub, orgId: profile.orgId ?? undefined },
+    );
+
+    return {
+      ...tokens,
+      expiresAt,
+      profile,
+      orgId: profile.orgId,
+    };
+  } catch (err) {
+    // Fire-and-forget health signal; the original error is re-thrown unchanged.
+    trackEvent("auth_failed", { mode: "oauth", stage });
+    throw err;
   }
-
-  const code = params.get("code");
-  if (!code) throw new Error("No authorization code in redirect.");
-
-  const returnedState = params.get("state");
-  if (!returnedState) throw new Error("Missing state in redirect — possible CSRF.");
-
-  // Verify the nonce round-trips intact (CSRF check).
-  // The verifier is kept in local scope — it never appeared in the authorize URL.
-  if (returnedState !== state) throw new Error("State mismatch — possible CSRF.");
-
-  const tokens = await exchangeCode(code, verifier, redirectUri, clientId, tokenEndpoint);
-
-  const profile = extractProfile(tokens.id_token, tokens.access_token);
-  const expiresAt = computeExpiration(tokens.expires_in);
-
-  return {
-    ...tokens,
-    expiresAt,
-    profile,
-    orgId: profile.orgId,
-  };
 }
