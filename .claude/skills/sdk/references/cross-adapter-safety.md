@@ -7,7 +7,7 @@ description: Use when about to merge, publish, or review ANY change to @theblock
 
 > **Inherits from**: `/sdk` — see that skill for the adapter matrix, invariants, and the verification loop. This doc is the **pre-merge gate**; do not duplicate the base content, follow the links.
 >
-> **Reference docs**: adapter matrix → [`./adapters.md`](./adapters.md) · invariants A–E → the base `/sdk` skill. Baseline code style (import order, no `any`, early returns, error handling) → [`/Users/chihebhmida/Documents/Glassbox/SKILL.md`](/Users/chihebhmida/Documents/Glassbox/SKILL.md) — link, don't restate.
+> **Reference docs**: adapter matrix → [`./adapters.md`](./adapters.md) · invariants A–E → the base `/sdk` skill. Baseline code style (import order, no `any`, early returns, error handling) → **Code Cleanup & Refactoring** standard — link, don't restate.
 >
 > **Dual audience.** SDK maintainers run this before merging to `main`/cutting a tag. Adapter (consumer) developers run the **Phase 5 quick pass** + **Phase 4 canary install** before bumping their SDK range.
 
@@ -86,7 +86,7 @@ Expect **zero** matches. React may appear only under `src/react` and `src/ui`. `
 
 ## Phase 3 — Public-API contract test workflow
 
-`src/public-api.contract.test.ts` snapshots the exported **names — values and types** — of all 12 JS entry points (derived from `package.json` `"exports"`, not hard-coded), against `src/__snapshots__/public-api.contract.test.ts.snap`. An undeclared surface change fails CI.
+`src/public-api.contract.test.ts` snapshots the exported **names — values and types** — of all JS entry points (derived from `package.json` `"exports"`, not hard-coded — 11 today; 12 once `./analytics` lands), against `src/__snapshots__/public-api.contract.test.ts.snap`. An undeclared surface change fails CI.
 
 **When `npm test` reports a contract-snapshot diff:**
 
@@ -166,6 +166,6 @@ A change is done only when **all** boxes are checked:
 - [ ] **Contract test resolved** (Phase 3) — snapshot diff is intentional, `-u`'d **in this PR**, reviewed, and semver classified (breaking → Phase 4 mandatory + notify pinned consumers).
 - [ ] **Canary smoke-tested** (Phase 4) for public/streaming changes — Outlook first, plus one non-React consumer if the core changed; consumer builds and the touched path works. **Not yet on `latest`.**
 - [ ] **Security invariants hold** (invariant D) — tokens never logged (scrub `BBApiError.responseBody`), storage only via `StorageAdapter`, orgId vs `targetOrgId` discipline (0 cross-tenant), OAuth audience pinning intact, `extractJson` still never throws, markdown output sanitized.
-- [ ] **Telemetry release-gate acknowledged** (invariant E) — no surface ships to production without **both** product analytics (Mixpanel: Zitadel `sub` as distinct id, org as group, no PII) **and** health telemetry (Sentry + Grafana Faro RUM). The `AnalyticsAdapter` seam is **shipped** (**WS9**): register an adapter via `setAnalyticsAdapter` from `@theblockbrain/bb-client-sdk/analytics` and forward the standard event taxonomy (`auth_success`/`auth_failed`, `message_send`, `stream_start`/`stream_first_token`/`stream_complete`/`stream_dropped`, `api_error{statusCode,endpoint}` — the typed `AnalyticsEventMap` in [`./telemetry-release-gate.md`](./telemetry-release-gate.md) §1) to Mixpanel + Sentry/Faro; wiring it stays a per-surface release-checklist item.
+- [ ] **Telemetry release-gate acknowledged** (invariant E) — no surface ships to production without **both** product analytics (Mixpanel: Zitadel `sub` as distinct id, org as group, no PII) **and** health telemetry (Sentry + Grafana Faro RUM). The `AnalyticsAdapter` seam is **planned** (**WS9** — not yet on `main`); once it lands, register an adapter via `setAnalyticsAdapter` from `@theblockbrain/bb-client-sdk/analytics` and forward the standard event taxonomy (`auth_success`/`auth_failed`, `message_send`, `stream_start`/`stream_first_token`/`stream_complete`/`stream_dropped`, `api_error{statusCode,endpoint}` — the typed `AnalyticsEventMap` in [`./telemetry-release-gate.md`](./telemetry-release-gate.md) §1) to Mixpanel + Sentry/Faro; wiring it stays a per-surface release-checklist item.
 - [ ] **Conventional Commit + branch name** pass lefthook — `type(TICKET-123): …` and `type/TICKET-123/description`.
 - [ ] **STATUS/roadmap honesty** — if the change touches a known gap (best-effort cancellation WS2, device-code auth, transport seam WS2/WS7, publish-gate SLO E2, bun:test legacy WS1), update `src/react/STATUS.md` rather than silently papering over it.

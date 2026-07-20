@@ -18,7 +18,7 @@ description: >-
 >
 > Baseline code-style rules (import order, no `any`, early returns, **error handling**,
 > the **verification checklist**) live in the org standard at
-> `/Users/chihebhmida/Documents/Glassbox/SKILL.md` — follow it; this doc only adds the
+> the org **Code Cleanup & Refactoring** standard — follow it; this doc only adds the
 > security-specific rules on top.
 
 **Dual audience.** Every rule below binds BOTH the SDK maintainer who writes core code AND
@@ -152,7 +152,7 @@ Never `dangerouslySetInnerHTML` / `.innerHTML =` on model output.
 | **ESLint (type-aware)** | `lint:types` (`eslint src`) | typescript-eslint + react-hooks + `@tanstack/eslint-plugin-query`; catches unsafe patterns inference can't |
 | **publint** | `check:package` | Package/export-map correctness (ESM resolution) |
 | **attw** (`@arethetypeswrong/cli`) | `check:package` (`--profile esm-only`) | Types resolve on every entry point → **no React leaks into `./api`/`./auth`** |
-| **Public-API contract test** | `src/public-api.contract.test.ts` (+ snapshot) | Anti-breakage tripwire — an undeclared change across the 12 entry points fails the test |
+| **Public-API contract test** | `src/public-api.contract.test.ts` (+ snapshot) | Anti-breakage tripwire — an undeclared change across the entry points (11 today; 12 once `./analytics` lands) fails the test |
 | **PKCE state-separation test** | `test/auth/pkce-state-separation.test.ts` | Verifier never in authorize URL (CWE-200). **NOTE: `bun:test`, excluded from CI (WS1)** — run manually |
 | **npm audit / Dependabot** | dependency PRs | Known-vuln deps |
 | **gitleaks (secret-scan)** | target — **not in CI yet** | Committed tokens/keys |
@@ -161,8 +161,8 @@ Never `dangerouslySetInnerHTML` / `.innerHTML =` on model output.
 | **Mixpanel** | per-surface | Product analytics — **identity = Zitadel `sub`, org as group, NO PII** (no email/name in events) |
 | **CodeQL / SAST** | optional | Deeper static analysis — enable per repo risk |
 
-**Telemetry seam is shipped (WS9).** The `AnalyticsAdapter` (peer of `StorageAdapter`/
-`IdentityAdapter`) is exported as types from `./adapters`, with the runtime sink at `./analytics`
+**Telemetry seam is planned (WS9 — not yet on `main`).** The `AnalyticsAdapter` (peer of `StorageAdapter`/
+`IdentityAdapter`) will be exported as types from `./adapters`, with the runtime sink at `./analytics`
 (`setAnalyticsAdapter`, `trackEvent`, `trackApiError`, …). Its taxonomy is the typed
 **`AnalyticsEventMap`** (`AnalyticsEventName = keyof AnalyticsEventMap`) — `auth_started`,
 `auth_success`, `auth_failed`, `token_refresh`, `message_send`, `stream_start`,
@@ -187,7 +187,7 @@ safety net. Factor this in when cutting a release from a security-sensitive chan
 
 Run this before requesting review on a change that touches auth, tokens, refresh, headers, or
 tenant scoping. (Complements — does not replace — the org **Verification Checklist** in
-`/Users/chihebhmida/Documents/Glassbox/SKILL.md`.)
+the org **Code Cleanup & Refactoring** standard.)
 
 - [ ] **No token in logs.** No `console.*` of `ctx`, headers, tokens, or a full `BBApiError`. Auth-route `responseBody` is scrubbed before any logging.
 - [ ] **No token in the bundle.** No `NEXT_PUBLIC_`/build-time inlining of a secret; tokens only via `StorageAdapter` (recall the `bb-integration-example` defect).

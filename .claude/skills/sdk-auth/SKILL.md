@@ -12,7 +12,7 @@ Auth is the highest-blast-radius area of the SDK. It fans out to **every** surfa
 
 **Dual audience.** SDK maintainers editing `src/auth/**` and `src/settings/**`, AND adapter (consumer) developers wiring an `IdentityAdapter` / `StorageAdapter` and deciding which auth flow to use. Consumer-facing notes are marked **[consumer]**.
 
-Baseline code style (import order, no `any`, early returns, error handling, verification): `/Users/chihebhmida/Documents/Glassbox/SKILL.md`. Follow it; this file adds only the auth-specific rules.
+Baseline code style (import order, no `any`, early returns, error handling, verification): the org **Code Cleanup & Refactoring** standard. Follow it; this file adds only the auth-specific rules.
 
 **Follow these phases exactly.**
 

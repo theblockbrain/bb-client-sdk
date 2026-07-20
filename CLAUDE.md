@@ -11,7 +11,7 @@ a change that breaks any one adapter is a defect.
 
 Before doing **any** work in this repo, load the base skill:
 [`.claude/skills/sdk/SKILL.md`](.claude/skills/sdk/SKILL.md). It is the authoritative
-entry point: the layer map (12 entry points), the five prime invariants, the adapter
+entry point: the layer map (11 entry points today; `./analytics` planned → 12), the five prime invariants, the adapter
 matrix, and the per-change verification loop. Then load the task sub-skill:
 
 - [`sdk-auth`](.claude/skills/sdk-auth/SKILL.md) — PKCE / tokens / refresh / `AuthContext` (security-critical)
@@ -39,9 +39,15 @@ Reference docs (under `sdk/references/`):
    `targetOrgId` discipline; **0 cross-tenant leakage**; `extractJson` never throws; minimal deps.
 5. **Instrument every surface (hard release gate)** — nothing ships to production without both
    product analytics (Mixpanel) **and** health telemetry (Sentry + Grafana Faro). Emit via the
-   `AnalyticsAdapter` seam → [`@theblockbrain/bb-client-sdk/analytics`](src/analytics/index.ts).
+   `AnalyticsAdapter` seam (the `./analytics` subpath — **planned**, landing with the telemetry
+   workstream; see the section below).
 
-## Telemetry seam (`./analytics`)
+## Telemetry seam (`./analytics`) — **planned**
+
+> **Not yet on `main`.** The `AnalyticsAdapter` seam, the `./analytics` subpath, and the
+> `login()` instrumentation land with the telemetry workstream (PDEV-6854 / PDEV-6855 — PRs #19/#20,
+> consolidated for `main` in PR #22). The snippet below is the **target** API; the `./analytics`
+> import will not resolve until that ships.
 
 The `AnalyticsAdapter` seam is a peer of `StorageAdapter` / `IdentityAdapter`. Each surface
 implements it once and registers it at startup; the SDK emits a typed, PII-free event taxonomy
@@ -61,8 +67,8 @@ setAnalyticsAdapter(analytics);
 ```
 
 The sink is safe by construction: it **no-ops when no adapter is registered and never throws**
-into a product flow. `login()` already emits `auth_started` / `auth_success` / `auth_failed`;
-other events (`api_error` via `trackApiError`, streaming, `token_refresh`) are wired
+into a product flow. Once the seam lands, `login()` will emit `auth_started` / `auth_success` /
+`auth_failed`; other events (`api_error` via `trackApiError`, streaming, `token_refresh`) are wired
 incrementally at each call site. See
 [`references/telemetry-release-gate.md`](.claude/skills/sdk/references/telemetry-release-gate.md).
 

@@ -19,7 +19,7 @@ description: Use when adding, wiring, or reviewing telemetry for any BlockBrain 
 We have shipped Apps surfaces **blind** — no funnel, no crash-free number, no error-rate baseline — so we could not tell activation from churn, or a bad release from a quiet one. Objective **O2** ("ship measurable, healthy surfaces") makes instrumentation a precondition of release rather than a follow-up. Concretely:
 
 - Mixpanel is being adopted **org-wide as core product**; Apps adopts the **same** foundation and identity model so Apps data joins the org's, rather than forking a second analytics universe.
-- The SLO catalog's **"Part B" telemetry SLOs were *unmeasurable*** while the SDK exposed no telemetry seam; that seam is now **shipped (WS9)**. This doc specifies that seam **and** makes wiring it a checklist item, so Part B becomes measurable the moment a surface adopts it. Targets (crash-free %, error-rate %, activation) live in [`./slo-catalog.md`](./slo-catalog.md) — reference it, don't restate the numbers here.
+- The SLO catalog's **"Part B" telemetry SLOs were *unmeasurable*** while the SDK exposed no telemetry seam; that seam is **planned (WS9 — not yet on `main`)**. This doc specifies that seam **and** makes wiring it a checklist item, so Part B becomes measurable the moment the seam lands and a surface adopts it. Targets (crash-free %, error-rate %, activation) live in [`./slo-catalog.md`](./slo-catalog.md) — reference it, don't restate the numbers here.
 
 **Dual audience.** The gate **binds every adapter (consumer) developer** — you cannot promote without it. The **SDK's** job is to make compliance cheap: provide the `AnalyticsAdapter` **seam** + a **standard event taxonomy** so a surface wires telemetry once and gets the whole event set for free. If a surface has to hand-roll event names, the SDK has failed its half.
 
@@ -27,13 +27,13 @@ We have shipped Apps surfaces **blind** — no funnel, no crash-free number, no 
 
 ## 1. The `AnalyticsAdapter` seam (SDK side)
 
-**Status: SHIPPED (WS9).** The seam lives in `src/adapters/analytics.ts` (the types) and `src/analytics/index.ts` (the runtime sink); register an adapter at surface startup with `setAnalyticsAdapter` from `@theblockbrain/bb-client-sdk/analytics`. Each surface still supplies the concrete implementation that forwards to Mixpanel/Sentry/Faro — that is the one injected seam, and wiring it stays a release-gate obligation (see the [Definition of Done](#4-the-release-gate--definition-of-done)).
+**Status: PLANNED (WS9 — not yet on `main`).** Once it lands, the seam will live in `src/adapters/analytics.ts` (the types) and `src/analytics/index.ts` (the runtime sink); register an adapter at surface startup with `setAnalyticsAdapter` from `@theblockbrain/bb-client-sdk/analytics`. Each surface still supplies the concrete implementation that forwards to Mixpanel/Sentry/Faro — that is the one injected seam, and wiring it stays a release-gate obligation (see the [Definition of Done](#4-the-release-gate--definition-of-done)).
 
 `AnalyticsAdapter` is a **peer of `StorageAdapter` and `IdentityAdapter`** (both verified in `src/adapters/`, exported as **types only** from `src/adapters/index.ts` and re-exported via `./adapters` + the root barrel `src/index.ts`). It follows the same injection pattern: **a pure interface, zero runtime, zero React, zero DOM** — the SDK calls it; the surface supplies the concrete implementation.
 
 ```ts
-// Shipped (WS9): types in src/adapters/analytics.ts (exported via ./adapters);
-// runtime sink + these type re-exports in src/analytics/index.ts (exported via ./analytics).
+// Planned (WS9): types in src/adapters/analytics.ts (to be exported via ./adapters);
+// runtime sink + these type re-exports in src/analytics/index.ts (to be exported via ./analytics).
 
 /** Typed taxonomy — a keyed interface, NOT a closed union. Keys are event names;
  *  values are the (PII-free) prop shape. Extend deliberately. See §2. */
@@ -161,7 +161,7 @@ The SDK emits **one** standard event set through the seam so every surface repor
 
 - **bb-slack-integrations** — Node backend, no DOM: **no Faro, no browser RUM**. Server-side Mixpanel + Sentry Node. Respect the 3-second ack — telemetry is fire-and-forget, never on the ack path.
 - **b2b-webcomponents / blocky-chat** — Lit, not React: `./react` and `./ui` are irrelevant; only the framework-agnostic core (incl. this seam) applies. Size-sensitive (~3.5 MB CDN bundle) — the concrete analytics SDK is the surface's cost to bear, not the core's.
-- **ms-outlook-addin** — the reference adopter and **canary target**; now that WS9 has shipped it should be first to wire the seam (mind its stale `^0.7.3` pin — see Invariant C).
+- **ms-outlook-addin** — the reference adopter and **canary target**; once WS9 lands it should be first to wire the seam (mind its stale `^0.7.3` pin — see Invariant C).
 
 ---
 
@@ -190,4 +190,4 @@ Merge is gated by **`ci.yml`** on `main` (lint:biome → lint:types → typechec
 - [`./adapters.md`](./adapters.md) — the adapter matrix (runtimes / frameworks / auth / storage / CSP) to check on every change (**Invariant C**).
 - [`./slo-catalog.md`](./slo-catalog.md) — the SLO targets (crash-free %, error rate %, activation, TTFT) this gate makes measurable; Part A vs Part B.
 - [`../SKILL.md`](../SKILL.md) — the base `/sdk` skill: invariants, verification loop, canary-before-latest.
-- Org coding standard — [`/Users/chihebhmida/Documents/Glassbox/SKILL.md`](/Users/chihebhmida/Documents/Glassbox/SKILL.md) (import order, no `any`, early returns, error handling, verification checklist). The seam and event props follow it; don't restate it here.
+- Org coding standard — **Code Cleanup & Refactoring** standard (import order, no `any`, early returns, error handling, verification checklist). The seam and event props follow it; don't restate it here.

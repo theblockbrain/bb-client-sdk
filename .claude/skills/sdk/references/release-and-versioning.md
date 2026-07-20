@@ -17,7 +17,7 @@ description: >-
 > repeat them; it covers only the release/versioning mechanics and links back.
 >
 > - Adapter matrix (which runtimes/auth/storage a change touches): [`./adapters.md`](./adapters.md)
-> - Org code-style baseline (import order, no `any`, verification checklist): [`/Users/chihebhmida/Documents/Glassbox/SKILL.md`](/Users/chihebhmida/Documents/Glassbox/SKILL.md)
+> - Org code-style baseline (import order, no `any`, verification checklist): **Code Cleanup & Refactoring** standard
 
 **The core fact that governs everything here:** this package fans out to ~11+
 surfaces (Outlook/Word/PowerPoint/Excel add-ins, SharePoint SPFx, Slack backend,
@@ -30,10 +30,11 @@ once — treat it that way.
 
 ## 1. The SemVer contract for a fan-out package
 
-The public surface is the **12 JS entry points** declared in `package.json`
-`"exports"` (`.`, `./auth`, `./api`, `./settings`, `./utils`, `./adapters`,
-`./analytics`, `./config`, `./prompt`, `./actions`, `./ui`, `./react` — the `./ui/theme-base.css`
-asset subpath is not a module surface). Anything reachable through those
+The public surface is the JS entry points declared in `package.json`
+`"exports"` — **11 today** (`.`, `./auth`, `./api`, `./settings`, `./utils`, `./adapters`,
+`./config`, `./prompt`, `./actions`, `./ui`, `./react`; the `./ui/theme-base.css`
+asset subpath is not a module surface), with **`./analytics` planned** (telemetry workstream — brings
+the target to 12). Anything reachable through those
 subpaths — every exported value **and type** — is the contract. Internal files
 not re-exported from an entry `index.ts` are not.
 

@@ -10,7 +10,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob
 
 The streaming layer is the hottest path in the SDK: it fans out to every chat surface and is the one place where the "no runtime assumptions" invariant (see `/sdk`, invariant **B**) bites hardest — `fetch`/`ReadableStream` behave differently in a browser, in Node (Slack), in a Lit CDN bundle, and in React Native. A regression here is a cross-adapter defect. Follow these phases exactly.
 
-Baseline code-style rules (import order, no `any`, early returns, error handling, verification checklist) live in the org standard at `/Users/chihebhmida/Documents/Glassbox/SKILL.md` — obey it; don't restate it.
+Baseline code-style rules (import order, no `any`, early returns, error handling, verification checklist) live in the org **Code Cleanup & Refactoring** standard — obey it; don't restate it.
 
 ---
 
@@ -77,7 +77,7 @@ Any change must keep every row true for **both** parsers and **all three transpo
 
 ## Phase 4 — Telemetry hooks (hard release gate)
 
-Streaming is where the health-telemetry invariant (`/sdk`, invariant **E**) is most measurable. The **AnalyticsAdapter** seam is now **shipped** (**WS9** — a peer of `StorageAdapter`/`IdentityAdapter`), so the mechanism is real: emit through `trackEvent(...)` from `@theblockbrain/bb-client-sdk/analytics`. The `stream_*` events are **not yet auto-emitted by the core** — they are wired incrementally at their call sites — so when you add or move streaming logic, wire these events (or leave a clearly-marked seam for them). Every name below is a key of the typed `AnalyticsEventMap` defined in the telemetry reference — emit them **verbatim** (no shorthand); the seam's types reject anything else:
+Streaming is where the health-telemetry invariant (`/sdk`, invariant **E**) is most measurable. The **AnalyticsAdapter** seam is **planned** (**WS9** — a peer of `StorageAdapter`/`IdentityAdapter`, not yet on `main`); once it lands, emit through `trackEvent(...)` from `@theblockbrain/bb-client-sdk/analytics`. The `stream_*` events are **not auto-emitted by the core** — they are wired incrementally at their call sites — so when you add or move streaming logic, wire these events (or leave a clearly-marked seam for them). Every name below is a key of the typed `AnalyticsEventMap` defined in the telemetry reference — emit them **verbatim** (no shorthand); the seam's types reject anything else:
 
 | Event | Emit at | Notes |
 | --- | --- | --- |
@@ -113,5 +113,5 @@ Commit with a Jira-scoped Conventional Commit on a `type/PDEV-xxx/desc` branch (
 
 ### Dual-audience note
 
-- **SDK maintainers**: you own the parsers, `createMessageStream`, routing, the transport seam (WS2), and the now-shipped analytics seam (WS9). Keep the core transport-agnostic and the run-id/`final` contracts intact.
-- **Adapter developers**: you consume `sendMessage(..., { enableStreaming: true })` → `MessageStream`, or `useChatStream` in React. Iterate `textDeltas` for live text and `await final` for the committed result (safe to do either or both). On non-fetch transports (Lit/RN) you are the transport until WS2 — do not assume the SDK will abort your request for you; wire your own cancel, and emit your `stream_*` telemetry via `trackEvent(...)` through your registered adapter (the analytics seam is shipped — WS9).
+- **SDK maintainers**: you own the parsers, `createMessageStream`, routing, the transport seam (WS2), and the planned analytics seam (WS9). Keep the core transport-agnostic and the run-id/`final` contracts intact.
+- **Adapter developers**: you consume `sendMessage(..., { enableStreaming: true })` → `MessageStream`, or `useChatStream` in React. Iterate `textDeltas` for live text and `await final` for the committed result (safe to do either or both). On non-fetch transports (Lit/RN) you are the transport until WS2 — do not assume the SDK will abort your request for you; wire your own cancel, and emit your `stream_*` telemetry via `trackEvent(...)` through your registered adapter (the analytics seam is planned — WS9).

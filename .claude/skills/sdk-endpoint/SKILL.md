@@ -8,7 +8,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob
 
 > **Inherits from**: `/sdk` — see that skill for the adapter matrix, invariants, and verification loop. This sub-skill does not restate them; it links.
 >
-> Base code style is the org standard at `/Users/chihebhmida/Documents/Glassbox/SKILL.md` (import order, no `any`, early returns, error handling, verification checklist). Follow it; don't restate it.
+> Base code style is the org **Code Cleanup & Refactoring** standard (import order, no `any`, early returns, error handling, verification checklist). Follow it; don't restate it.
 
 **Dual audience.** SDK maintainers author these modules. Adapter (consumer) developers read this to understand the contract they call and why a change might reach them. A change here fans out to **every** surface in `../sdk/references/adapters.md` — treat that as the blast radius.
 
@@ -50,7 +50,7 @@ The non-2xx block is boilerplate you copy verbatim (bots.ts lines 55–66); on t
 
 - Export only the types the surfaces actually need (`interface`/`type` for request options, response body, and any enum union). No `any`; model the raw envelope with a local `Raw*` interface and map it (see `RawBot` → `Bot` in `bots.ts`, `RawTenant` in `tenant.ts`). Backends wrap payloads inconsistently (`{ body }`, `{ content }`, `{ data }`, flat array) — normalize defensively like the siblings do.
 - Re-export new public symbols from `src/api/index.ts` (values and `export type` separately, alphabetized — match the existing file).
-- **Any added/renamed/removed public export changes the public-API snapshot.** `src/public-api.contract.test.ts` snapshots the exported names (values AND types) of all 12 entry points; an undeclared change fails CI.
+- **Any added/renamed/removed public export changes the public-API snapshot.** `src/public-api.contract.test.ts` snapshots the exported names (values AND types) of all entry points (11 today; 12 once `./analytics` lands); an undeclared change fails CI.
   - Additive export → snapshot grows → intentional **minor**.
   - Rename/removal → this is a **breaking** fan-out change. Semver + consumer range-pinning means it breaks surfaces silently (the Outlook add-in pinned a stale `^0.7.3` — the cautionary tale). Requires an intentional bump and a canary pass in a real consumer before `latest` (see `../sdk/references/cross-adapter-safety.md`).
   - To land an intentional change: update the snapshot with `vitest -u` **in the same PR** and call it out in the description.
@@ -93,7 +93,7 @@ This is invariant D and a zero-tolerance isolation boundary. See `../sdk/referen
 
 Invariant E: nothing ships without product analytics **and** health telemetry. The SDK's job is the seam, wired per surface.
 
-- The `AnalyticsAdapter` seam is **shipped** (**WS9**) — emit via `trackEvent(...)` / `trackApiError(err)` from `@theblockbrain/bb-client-sdk/analytics` (the surface registers the adapter). `api_error` is **not yet auto-emitted by the core** — it is wired incrementally per call site — so your obligation in this phase is still to keep the endpoint *instrumentable*:
+- The `AnalyticsAdapter` seam is **planned** (**WS9** — not yet on `main`); once it lands, emit via `trackEvent(...)` / `trackApiError(err)` from `@theblockbrain/bb-client-sdk/analytics` (the surface registers the adapter). `api_error` is **not auto-emitted by the core** — it is wired incrementally per call site — so your obligation in this phase is still to keep the endpoint *instrumentable*:
   - Every non-2xx throws `BBApiError` carrying **`statusCode` and `endpoint`** (Phase 1) — that is exactly the payload `trackApiError(err)` forwards to the `api_error{ statusCode, endpoint }` event (call it in a catch block, then re-throw). A bare `Error` or a swallowed failure is un-instrumentable and blocks the gate.
   - **Never** log the token or put `responseBody` into a thrown `message` — `responseBody` may echo secrets. `trackApiError` forwards only `statusCode` + `endpoint` (never `responseBody`); scrub before any surface forwards it to Sentry.
 - If your endpoint is a new streamed turn, note the taxonomy it must emit (`stream_start` / `stream_first_token` / `stream_complete` / `stream_dropped`), wired via `trackEvent(...)`, so the surface wiring is unambiguous.
