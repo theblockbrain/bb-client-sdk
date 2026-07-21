@@ -1,3 +1,5 @@
 node_modules/
 *.tsbuildinfo
 dist
+# Claude Code local (per-user) settings — not shared
+.claude/settings.local.json
