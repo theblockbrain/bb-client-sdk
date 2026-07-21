@@ -50,6 +50,10 @@
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js"
     },
+    "./analytics": {
+      "types": "./dist/analytics/index.d.ts",
+      "import": "./dist/analytics/index.js"
+    },
     "./ui/theme-base.css": "./dist/ui/theme-base.css"
   },
   "files": [
