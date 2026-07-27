@@ -43,11 +43,11 @@ Reference docs (under `sdk/references/`):
 
 ## Telemetry seam (`./analytics`)
 
-> **The seam is on `main`, not yet published; the instrumentation is on neither.** The
+> **The seam and the `login()` instrumentation are both on `main`, neither is published.** The
 > `AnalyticsAdapter` seam and the `./analytics` subpath landed via PDEV-6854 (PR #19, consolidated
-> for `main` in PR #22). The last published tag is `v0.17.0`, which predates them: a consumer on
-> npm/GitHub Packages cannot import `./analytics` until the next release; `file:`-linked or canary
-> consumers can. The `login()` instrumentation (PDEV-6855) is a separate matter — see below.
+> for `main` in PR #22); the `auth_*` instrumentation landed via PDEV-6855 (recovered from a dead
+> branch). The last published tag is `v0.17.0`, which predates them: a consumer on npm/GitHub
+> Packages cannot import `./analytics` until the next release; `file:`-linked or canary consumers can.
 
 The `AnalyticsAdapter` seam is a peer of `StorageAdapter` / `IdentityAdapter`. Each surface
 implements it once and registers it at startup; the SDK emits a typed, PII-free event taxonomy
@@ -67,12 +67,15 @@ setAnalyticsAdapter(analytics);
 ```
 
 The sink is safe by construction: it **no-ops when no adapter is registered and never throws**
-into a product flow. **No SDK call site emits through it yet** — `grep -rn "trackEvent" src/`
-returns only the sink itself. The `login()` instrumentation (PDEV-6855) exists on
-`feat/PDEV-6855/instrument-auth-telemetry` but **never reached `main`**: PR #20 was merged into
-`feat/PDEV-6854/telemetry-adapter` at 09:18 on 2026-07-20, 17 minutes *after* that base branch had
-already merged to `main` in PR #19 — so the child landed on a dead branch. Re-merging it (plus its
-`src/auth/login.test.ts`, also absent from `main`) is outstanding work, not a done ticket.
+into a product flow. **`src/auth/login.ts` is the one wired call site** (PDEV-6855): it emits
+`auth_started` / `auth_success{latencyMs}` / `auth_failed{stage}` — `stage` a coarse
+`launch|parse|exchange` label, never error detail — and binds the analytics identity on success via
+`identifyUser(profile.sub)` + `setAnalyticsGroup(profile.orgId)`, so every *later* event is
+attributed to that user + tenant instead of an anonymous device id. `login()`'s signature and
+success/error behaviour are unchanged; the original error is always re-thrown.
+Because `identify`/`group` bind **process-wide**, a multi-tenant server adapter (Slack) must omit
+them and rely on per-event identity — both sink helpers then no-op. Still unwired:
+`token_refresh`, `message_send`, `stream_*`, and `api_error` (via `trackApiError`).
 
 A ready-made Mixpanel implementation ships as an **opt-in leaf** at `./analytics/mixpanel`
 (`createMixpanelAdapter`) — typed structurally against `mixpanel-browser`, so the SDK still has

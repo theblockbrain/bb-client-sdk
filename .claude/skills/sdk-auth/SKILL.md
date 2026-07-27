@@ -25,7 +25,7 @@ Read the file(s) you intend to touch before writing anything. Do not edit from m
 | File | Owns | Key symbols | Runtime constraint |
 |------|------|-------------|--------------------|
 | `src/auth/pkce.ts` | PKCE primitives (RFC 7636, S256) | `generateVerifier`, `generateStateNonce`, `generateChallenge`; **deprecated** `encodePKCEState`/`decodePKCEState` | Web Crypto: `crypto.getRandomValues`, `crypto.subtle.digest("SHA-256")`. Needs a polyfill in RN. No DOM. |
-| `src/auth/login.ts` | Adapter-driven PKCE flow | `login(identity, options)` → `LoginResult`; `LoginOptions.clientId` (required, no default) | DOM-free; delegates the browser hop to `IdentityAdapter.launchOAuthFlow`. |
+| `src/auth/login.ts` | Adapter-driven PKCE flow **+ the auth telemetry funnel** | `login(identity, options)` → `LoginResult`; `LoginOptions.clientId` (required, no default). Emits `auth_started` / `auth_success{latencyMs}` / `auth_failed{stage}` and binds identity via `identifyUser`/`setAnalyticsGroup` (PDEV-6855) | DOM-free; delegates the browser hop to `IdentityAdapter.launchOAuthFlow`. Telemetry is fire-and-forget through the sink — it must stay unable to alter `login()`'s behaviour. |
 | `src/auth/browser-redirect.ts` | Full-page-redirect PKCE | `beginBrowserLogin`, `completeBrowserLogin`; `BrowserRedirectOptions`, `BrowserLoginResult` | **BROWSER-ONLY**: touches `window.location`, `sessionStorage`, `window.history`, `document.title`. |
 | `src/auth/tokens.ts` | Code exchange + refresh + expiry | `exchangeCode`, `refreshTokens`, `computeExpiration`, `isTokenExpired(expMs, leadMs=60_000)`; `TokenResult` | Uses global `fetch` directly (no transport seam here yet). Browsers + Node 18+; plain POST works in RN. |
 | `src/auth/refresh-singleton.ts` | Single-flight refresh guard | `createRefreshGuard(refreshFn)` → `{ refresh(), isInflight() }` | Pure; shares one in-flight promise. Do not bypass. |
@@ -51,6 +51,7 @@ Check every one against your diff. A "no" is a defect, not a tradeoff.
 - **`orgId` vs `targetOrgId`.** `AuthContext.orgId` = the user's **HOME** org (`settings.bbOrgId`), sent as `x-zitadel-org-id`. Cross-tenant admin operations pass a **separate** `targetOrgId` to individual `./api` functions (→ `?orgId=`). **Never** put a target tenant's org into `AuthContext.orgId`. This is a zero-tolerance isolation boundary (0 cross-tenant leakage).
 - **`userId` (sub) presence.** OAuth mode populates `userId` from `config.userId` or `subFromAccessToken(accessToken)` — required for the Agentic path (`resourceId`). api-key mode has **no** `userId`, so Agentic is unavailable there. Do not fabricate a `userId` in api-key mode.
 - **Decode ≠ verify.** `jwt.ts` / `utils/jwt.ts` decode without signature verification (server verifies). Never make a trust/authorization decision client-side on a decoded claim; `sub` is only a server-checkable hint.
+- **Auth telemetry stays PII-free and non-behavioural** (invariant E + D). `login()` emits only the coarse `stage` label (`launch`/`parse`/`exchange`) on failure — **never** the error message, `error_description`, `code`, `state`, `verifier`, or a token. Identity is the Zitadel `sub` + org id, nothing else. Emission goes through the sink (`trackEvent` / `identifyUser` / `setAnalyticsGroup`), which no-ops without an adapter and swallows adapter faults, so a broken adapter can never change `login()`'s result or the error it re-throws. Keep it that way: no `await` on telemetry, no branching on it, and the original error re-thrown unchanged. → [`../sdk/references/telemetry-release-gate.md`](../sdk/references/telemetry-release-gate.md) §1.
 
 ---
 
@@ -104,7 +105,7 @@ npm run check:package      # publint + attw (esm-only) — proves ./auth & ./set
 
 **Auth test reality — read this before you claim "tests pass":**
 
-- `npm test` runs `vitest run` with `include: ["src/**/*.test.{ts,tsx}"]`. There are currently **no vitest tests for the auth core** (only `src/react/**` + the contract test). Changing `login.ts` / `tokens.ts` / `pkce.ts` / `browser-redirect.ts` / `jwt.ts` / `auth-mode.ts` is therefore **not** covered by `npm test` unless you add coverage. **Co-locate a `src/auth/<file>.test.ts` (vitest)** for your change so CI actually guards it.
+- `npm test` runs `vitest run` with `include: ["src/**/*.test.{ts,tsx}"]`. The **only** vitest coverage of the auth core is `src/auth/login.test.ts` (telemetry emission, `stage` accuracy, identity binding, error re-throw — it exercises the happy path end-to-end with a stubbed `fetch`, so it does catch gross `login()` regressions). `tokens.ts` / `pkce.ts` / `browser-redirect.ts` / `jwt.ts` / `auth-mode.ts` have **no** vitest tests — changing them is **not** covered by `npm test` unless you add coverage. **Co-locate a `src/auth/<file>.test.ts` (vitest)** for your change so CI actually guards it.
 - The CSRF regression test `test/auth/pkce-state-separation.test.ts` (verifier-must-not-appear-in-URL) still imports `bun:test`, lives **outside** `src/`, and is **excluded** from the vitest run (WS1 roadmap: migrate to vitest). It does **not** run in CI today. Until migrated, run it explicitly and keep it green:
 
   ```bash

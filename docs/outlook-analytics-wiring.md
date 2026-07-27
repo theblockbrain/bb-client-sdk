@@ -12,13 +12,14 @@ the SDK cannot see. The SDK's own catalog (`auth_*`, `message_send`, `stream_*`,
 > build (`npm i @theblockbrain/bb-client-sdk@canary`, published by adding the
 > `release:canary` label to an SDK PR), or a local **`file:` link** to a built SDK checkout.
 >
-> **Blocker 2 — the SDK emits nothing yet.** ⚠️ No SDK call site currently emits through the
-> seam: `grep -rn "trackEvent(" src/` in the SDK matches only `src/analytics/` itself. The
-> `login()` `auth_*` instrumentation (PDEV-6855) never reached `main` — PR #20 merged into an
-> already-merged base branch. So registering an adapter today gives you **only the four surface
-> events below**, not the funnel. The min-event-set in §4 and the DoD in §5 cannot be satisfied
-> until PDEV-6855 is re-merged and `message_send` / `stream_*` / `api_error` are wired at their
-> call sites. Sequence that work before this pilot, or scope the pilot to surface events only.
+> **Blocker 2 — the SDK emits only the auth funnel.** The `login()` `auth_*` instrumentation
+> (PDEV-6855) is on `main`: `grep -rn "trackEvent(" src/` matches `src/analytics/` plus
+> `src/auth/login.ts`, which also binds identity/group on success — so registering an adapter
+> today gives you the auth funnel *and* correct user/tenant attribution for the four surface
+> events below. ⚠️ Still missing: `token_refresh`, `message_send` / `stream_*`, and `api_error`,
+> which are unwired at their call sites. The min-event-set in §4 and the DoD in §5 cannot be
+> fully satisfied until those land — sequence that work before this pilot, or scope the pilot to
+> the auth funnel + surface events.
 
 ---
 
@@ -37,8 +38,9 @@ The SDK itself needs nothing added — `createMixpanelAdapter` is typed structur
 ```ts
 import mixpanel from "mixpanel-browser";
 import {
+  identifyUser,
   setAnalyticsAdapter,
-  getAnalyticsAdapter,
+  setAnalyticsGroup,
 } from "@theblockbrain/bb-client-sdk/analytics";
 import { createMixpanelAdapter } from "@theblockbrain/bb-client-sdk/analytics/mixpanel";
 
@@ -88,11 +90,14 @@ export function initAnalytics(consentGranted: boolean): void {
   );
 }
 
-/** Call right after a successful SDK login (identity is pseudonymous — never PII). */
-export function identifyUser(profile: { sub: string; orgId?: string | null }): void {
-  const a = getAnalyticsAdapter();
-  a?.identify?.(profile.sub);            // Zitadel `sub`
-  if (profile.orgId) a?.group?.(profile.orgId); // tenant roll-up
+/**
+ * Bind identity for a session RESTORED from storage. After `login()` this is
+ * unnecessary — the SDK binds it itself on `auth_success` (PDEV-6855). Both SDK
+ * helpers are guarded no-ops when no adapter is registered.
+ */
+export function bindRestoredSession(profile: { sub: string; orgId?: string | null }): void {
+  identifyUser(profile.sub);                         // Zitadel `sub` — pseudonymous, never PII
+  if (profile.orgId) setAnalyticsGroup(profile.orgId); // tenant roll-up
 }
 
 // ---- surface-only events (the SDK can't see these) -------------------------

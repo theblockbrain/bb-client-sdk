@@ -42,12 +42,12 @@ The SDK already wraps auth, the API client, streaming, and error typing — so i
 
 **Privacy (hard):** pseudonymous id only; no email/name/subject/body ever; EU residency (`api-eu.mixpanel.com`); consent/opt-out gate (a disabled adapter is a silent no-op).
 
-## 4. What the SDK counts (core catalog) — **target, not yet emitting**
+## 4. What the SDK counts (core catalog) — **auth wired, the rest still target**
 
 To be emitted from SDK internals, identical across surfaces. The typed names live in
-`AnalyticsEventMap` (which *is* on `main`); the emit call sites are not wired yet:
+`AnalyticsEventMap` (which *is* on `main`); only the auth call site is wired:
 
-- **Auth funnel** — `auth_started` → `auth_success` / `auth_failed` (coarse `stage`, never error detail); `token_refresh`.
+- **Auth funnel** — `auth_started` → `auth_success` / `auth_failed` (coarse `stage`, never error detail) — **wired in `src/auth/login.ts`** (PDEV-6855), which also binds identity/group on success. `token_refresh` not yet wired.
 - **AI funnel** — `message_send` → `stream_start` → `stream_first_token` (TTFT) → `stream_complete`; `stream_dropped` / `stream_reconnect`.
 - **Errors** — `api_error` (scrubbed to `statusCode` + `endpoint`; **never** `responseBody`).
 
@@ -86,7 +86,7 @@ Wiring it in a real browser surface (Outlook/Word/web-component):
 
 ```ts
 import mixpanel from "mixpanel-browser";
-import { setAnalyticsAdapter, getAnalyticsAdapter } from "@theblockbrain/bb-client-sdk/analytics";
+import { identifyUser, setAnalyticsAdapter, setAnalyticsGroup } from "@theblockbrain/bb-client-sdk/analytics";
 import { createMixpanelAdapter } from "@theblockbrain/bb-client-sdk/analytics/mixpanel";
 
 mixpanel.init(MIXPANEL_TOKEN, { api_host: "https://api-eu.mixpanel.com", ip: false });
@@ -95,15 +95,17 @@ setAnalyticsAdapter(
     superProps: { surface: "outlook-addin", env: "prod", sdk_version: SDK_VERSION },
   }),
 );
-// after login (Zitadel `sub` — never PII):
-getAnalyticsAdapter()?.identify?.(profile.sub);
+
+// `login()` already binds identity on success (PDEV-6855) — nothing to do there.
+// Only a session RESTORED from storage (no login() call this session) needs it:
+identifyUser(profile.sub);                                  // Zitadel `sub` — never PII
 // `Profile.orgId` is `string | null` (src/auth/jwt.ts) — guard it. Passing null would
 // register `tenant_id: null` as a sticky super-prop for the whole session.
-if (profile.orgId) getAnalyticsAdapter()?.group?.(profile.orgId);
+if (profile.orgId) setAnalyticsGroup(profile.orgId);
 ```
 
 The intent is that the SDK emits the core catalog (auth, chat/streaming, api_error) with the
-surface adding only its own thin events. ⚠️ **That half is not wired yet** — no SDK call site
-emits through the seam on `main` (`grep -rn "trackEvent(" src/` matches only `src/analytics/`).
-`login()`'s `auth_*` instrumentation (PDEV-6855) never landed; §4 below describes the target
-catalog, not shipped behaviour.
+surface adding only its own thin events. ⚠️ **Only the auth third is wired today** —
+`src/auth/login.ts` emits `auth_started`/`auth_success`/`auth_failed` and binds identity
+(PDEV-6855). `token_refresh`, `message_send`/`stream_*` and `api_error` are unwired, so §4 still
+describes a target catalog rather than shipped behaviour for those.
