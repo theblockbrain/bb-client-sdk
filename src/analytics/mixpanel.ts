@@ -112,17 +112,29 @@ function normalizeKey(key: string): string {
 }
 
 /**
- * Keep only defined, primitive values whose normalized key is not denylisted.
- * Non-primitives are dropped outright rather than traversed: the taxonomy is
- * primitives-only by design, so a nested object is always a caller error — and
- * dropping it means a `BBApiError`, a response body, or any object graph carrying a
- * token can never be forwarded, whatever key it arrived under.
+ * Keep only JSON-safe primitives whose normalized key is not denylisted.
+ *
+ * An allowlist (`string | number | boolean`) rather than a "not an object" test,
+ * for two reasons:
+ *
+ * 1. **Nothing object-shaped can leak.** The taxonomy is primitives-only by design,
+ *    so a nested value is always a caller error — and dropping it means a
+ *    `BBApiError`, a response body, or any object graph carrying a token can never
+ *    be forwarded, whatever key it arrived under.
+ * 2. **One bad field must not cost the whole event.** `bigint` and `symbol` are
+ *    primitives but not JSON-safe: `JSON.stringify` THROWS on a bigint and silently
+ *    omits a symbol. Mixpanel serializes the payload, so a single stray bigint from
+ *    an untyped caller would throw inside `mixpanel.track`, get swallowed by the
+ *    adapter's catch, and take the entire event with it. Dropping the one field is
+ *    strictly better than losing the event.
+ *
+ * `null`/`undefined` and functions fall out of the same check for free.
  */
 function scrub(props: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(props)) {
-    if (v === undefined || v === null) continue;
-    if (typeof v === "object" || typeof v === "function") continue;
+    const type = typeof v;
+    if (type !== "string" && type !== "number" && type !== "boolean") continue;
     if (PII_DENYLIST.has(normalizeKey(k))) continue;
     out[k] = v;
   }

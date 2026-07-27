@@ -122,6 +122,25 @@ describe("createMixpanelAdapter", () => {
     expect(JSON.stringify(tracked)).not.toContain("nested-should-never-leak");
   });
 
+  it("drops non-JSON-safe primitives without costing the rest of the event", () => {
+    const { client, tracked } = makeMixpanelDouble();
+    const adapter = createMixpanelAdapter(client, { superProps: { ...superProps } });
+
+    // `bigint` and `symbol` are primitives but not JSON-safe: JSON.stringify throws
+    // on the former and silently omits the latter. Mixpanel serializes the payload,
+    // so letting a bigint through would throw inside track(), hit the adapter's
+    // catch, and lose the WHOLE event. Drop the field, keep the event.
+    adapter.captureError(new Error("x"), {
+      scope: "api",
+      attempt: 9_007_199_254_740_993n,
+      marker: Symbol("nope"),
+    } as never);
+
+    expect(tracked[0].props).toEqual({ error_name: "Error", scope: "api" });
+    // The payload must survive a JSON round-trip — the thing Mixpanel actually does.
+    expect(() => JSON.stringify(tracked[0].props)).not.toThrow();
+  });
+
   it("derived fields win over caller-supplied ones of the same name", () => {
     const { client, tracked } = makeMixpanelDouble();
     const adapter = createMixpanelAdapter(client, { superProps: { ...superProps } });
