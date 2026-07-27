@@ -14,6 +14,7 @@ export default defineConfig({
     "src/ui/index.ts",
     "src/react/index.ts",
     "src/analytics/index.ts",
+    "src/analytics/mixpanel.ts",
   ],
   format: ["esm"],
   // Declarations are emitted by `tsc -p tsconfig.build.json` in the build script.

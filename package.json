@@ -54,6 +54,10 @@
       "types": "./dist/analytics/index.d.ts",
       "import": "./dist/analytics/index.js"
     },
+    "./analytics/mixpanel": {
+      "types": "./dist/analytics/mixpanel.d.ts",
+      "import": "./dist/analytics/mixpanel.js"
+    },
     "./ui/theme-base.css": "./dist/ui/theme-base.css"
   },
   "files": [
