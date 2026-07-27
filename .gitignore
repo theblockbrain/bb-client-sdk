@@ -3,3 +3,8 @@ node_modules/
 dist
 # Claude Code local (per-user) settings — not shared
 .claude/settings.local.json
+
+# Local session handoff scratch — deliberately NOT tracked. It would only mirror
+# git/gh/Jira and drift out of date, which is what PDEV-7334 cleaned up. Durable
+# facts belong in CLAUDE.md, the /sdk skills, or Jira.
+/status.md

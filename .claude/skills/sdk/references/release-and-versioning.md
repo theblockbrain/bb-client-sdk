@@ -31,10 +31,11 @@ once — treat it that way.
 ## 1. The SemVer contract for a fan-out package
 
 The public surface is the JS entry points declared in `package.json`
-`"exports"` — **11 today** (`.`, `./auth`, `./api`, `./settings`, `./utils`, `./adapters`,
-`./config`, `./prompt`, `./actions`, `./ui`, `./react`; the `./ui/theme-base.css`
-asset subpath is not a module surface), with **`./analytics` planned** (telemetry workstream — brings
-the target to 12). Anything reachable through those
+`"exports"` — **13 today** (`.`, `./auth`, `./api`, `./settings`, `./utils`, `./adapters`,
+`./config`, `./prompt`, `./actions`, `./ui`, `./react`, `./analytics`, `./analytics/mixpanel`;
+the `./ui/theme-base.css` asset subpath is not a module surface). The last two are on `main`
+but **not in a published release** — the newest tag, `v0.17.0`, predates them.
+Anything reachable through those
 subpaths — every exported value **and type** — is the contract. Internal files
 not re-exported from an entry `index.ts` are not.
 
@@ -208,14 +209,15 @@ the token.
 
 ### The stale-pin lesson (cautionary tale)
 
-`ms-outlook-addin` — the **reference adopter** — pins **`^0.7.3`** while the SDK
-is at **`0.17.0`**. That is ~10 minor eras behind. The consequences map directly
-to the invariants:
+`ms-outlook-addin` — the **reference adopter** — sat on **`^0.7.3`** while the SDK
+reached **`0.17.0`**: ~10 minor eras behind. It was brought current in July 2026 and
+now pins **`^0.17.0`**, but the consequences of that drift map directly to the
+invariants and are why SLO E3 below exists:
 
-- The surface cannot canary-test current changes (its code assumes an old
+- A drifted surface cannot canary-test current changes (its code assumes an old
   surface), so it stops being a reliable pre-`latest` signal — the very thing
   §2 depends on.
-- Every accumulated breaking change now lands in **one** painful upgrade instead
+- Every accumulated breaking change lands in **one** painful upgrade instead
   of being absorbed incrementally.
 - Under `^` ranges a breaking change would otherwise fan out **silently**; a
   frozen pin trades that for an ever-growing migration debt.
