@@ -66,10 +66,10 @@ console.log("\n[1] subFromAccessToken — valid JWT with sub");
 
 // ── Test 2: non-JWT (API key / opaque) ────────────────────────────────────────
 console.log("\n[2] subFromAccessToken — non-JWT / opaque token");
-{
-  eq(subFromAccessToken("sk-abc123notajwt"), null, "returns null for opaque token");
-  eq(subFromAccessToken(""), null, "returns null for empty string");
-}
+// No block here: this section binds no locals, so there is nothing to scope.
+// (The other sections' braces exist to keep their `token`/`settings`/`ctx` apart.)
+eq(subFromAccessToken("sk-abc123notajwt"), null, "returns null for opaque token");
+eq(subFromAccessToken(""), null, "returns null for empty string");
 
 // ── Test 3: JWT without sub ───────────────────────────────────────────────────
 console.log("\n[3] subFromAccessToken — JWT missing sub claim");

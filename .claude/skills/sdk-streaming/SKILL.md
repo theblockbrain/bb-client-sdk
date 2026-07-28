@@ -30,6 +30,8 @@ Read every file below in full before editing any of them. These are the only fil
 
 **Do not assume the Agentic parser's path.** It is NOT alongside `blocky-sse.ts`; it lives under `src/api/agentic/` (`sse.ts` + `client.ts` + `types.ts`). Confirm with `grep -rn "parseAgenticStream\|callAgenticStream" src/api` before editing.
 
+**The Agentic protocol is a published entry point** (PDEV-7329): `src/api/agentic/index.ts` is exported as **`./agentic`** and re-exported from `./api`, so all 26 symbols above — including `ApprovalResolver`, the frame union and the type guards — are part of the public contract that `src/public-api.contract.test.ts` snapshots. A rename inside `src/api/agentic/**` is now a **consumer-visible** change: it is what every surface's approval UI imports. (On `main`, unreleased — `v0.17.0` predates it.)
+
 What the map has to tell you, and the exact wire facts to preserve:
 
 - **Blocky wire format** (`blocky-sse.ts` header comment): events `user_message`, `message_start`, `new_token`, `message_end`, `langfuse_url`, `attached_context`, `message_ready`. Only `new_token.token` is yielded; **`message_ready` is the terminal sentinel** (sets `isDone`). Events split on `/\r\n\r\n|\n\n/`; the trailing partial event is kept in `buffer`; the buffer is flushed once after the stream closes.

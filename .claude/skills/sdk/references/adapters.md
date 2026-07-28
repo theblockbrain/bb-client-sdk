@@ -98,7 +98,7 @@ Grouped by the invariants they enforce (**A** framework-agnostic core, **B** no 
 
 - **Invariants A–E** and the security model: `/sdk` (base skill) **§3** — the invariant summaries live inline there (there is no separate `invariants.md`).
 - **The injection seams** (`IdentityAdapter`, `StorageAdapter`): `src/adapters/identity.ts`, `src/adapters/storage.ts`.
-- **The breakage tripwire**: `src/public-api.contract.test.ts` + `src/__snapshots__/public-api.contract.test.ts.snap` — an undeclared change to any entry point fails the test (13 today).
+- **The breakage tripwire**: `src/public-api.contract.test.ts` + `src/__snapshots__/public-api.contract.test.ts.snap` — an undeclared change to any entry point fails the test (14 today).
 - **Canary before `latest`**: `canary.yml` (label `release:canary`). Note the publish gap — `publish.yml` runs only typecheck + build, **not** test/lint/`check:package`; `ci.yml` on `main` is the safety net (target SLO E2: CI + publish both gated on tests).
 - **Telemetry / event taxonomy** (the canonical `AnalyticsEvent` union, identity model, release gate): `references/telemetry-release-gate.md`.
 - **Org code-style baseline** (import order, no `any`, early returns, error handling, verification checklist): the org **Code Cleanup & Refactoring** standard.

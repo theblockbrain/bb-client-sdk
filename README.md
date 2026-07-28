@@ -15,7 +15,7 @@ Shared frontend SDK for BlockBrain apps (Chrome extension, Outlook add-in, futur
 ```jsonc
 // package.json
 "dependencies": {
-  "@theblockbrain/bb-client-sdk": "^0.7.2"
+  "@theblockbrain/bb-client-sdk": "^0.17.0"
 }
 ```
 
@@ -240,6 +240,120 @@ share the same origin:
 | bb-dashboard | `"bb-dashboard-theme"` |
 | chrome-addon | handled via chrome.storage — custom hook |
 
+## Testing an unreleased change in a consumer
+
+Some entry points live on `main` before they are published — `./agentic`, `./analytics` and
+`./analytics/mixpanel` all postdate the `v0.17.0` tag. A consumer pinning `^0.17.0` resolves to
+that tag and **cannot import them**, so testing an unreleased change needs one of the three
+routes below. Pick by blast radius: local link → canary → release.
+
+**1. `file:` link — no publish, fastest, includes uncommitted work.** npm points the consumer's
+`node_modules` entry at your local SDK checkout, so the surface builds against the exact `dist/`
+you have on disk — uncommitted changes included. Nothing is published and no version number is
+involved, which makes it the right choice for "does this actually work in a real Office.js
+webview / SPFx / RN runtime". Use `npm install --no-save file:../bb-client-sdk` (surfaces should
+expose it as an `sdk:link` script): **`--no-save` leaves `package.json` and `package-lock.json`
+byte-identical**, so a `file:` pin can never be committed by accident, and any later
+`npm install`/`npm ci` drops the link automatically. The one gotcha that catches everyone:
+`dist/` is git-ignored **and npm does not run `build` for a linked dependency**, so you must
+`npm run build` here yourself — and again after every change.
+
+**2. Canary publish — a real version, `latest` untouched.** Adding the `release:canary` label to
+an SDK PR runs [`canary.yml`](.github/workflows/canary.yml), which publishes
+`0.0.0-canary.<short-sha>` under the `canary` dist-tag. Because that is a prerelease of `0.0.0`,
+no semver range ever resolves to it — a consumer must ask for `@canary` or the exact version by
+name, so stable consumers cannot drift onto it by accident. Use this when the code must travel:
+another person, another machine, or a consumer's CI. It publishes the **committed branch head**,
+not your working tree, gates only on `typecheck` + `build`, and the version is computed in the
+runner (your `package.json` is never modified). Re-labelling the same commit fails — the registry
+refuses a duplicate version — so push a new commit or re-run via `workflow_dispatch`.
+
+**3. Cut a real release — the end state, and the highest blast radius.** A `vX.Y.Z` tag on `main`
+publishes to the `latest` dist-tag, where every consumer's `^` range can pick it up. New entry
+points are **additive → MINOR**, and at `0.x` a minor is this package's major (`^0.17.0` locks to
+`<0.18.0`), so new subpaths ship as `0.18.0` — never as a patch, which would silently upgrade
+every `^0.17.x` consumer with no opt-in. Do this only after a canary or link has been validated in
+a real consumer: `publish.yml` runs **only `typecheck` + `build`** on the tag, so `ci.yml` on
+`main` is the only thing that ever ran the tests.
+
+### Chronological steps
+
+**Option 1 — `file:` link** (run in the SDK repo, then the consumer):
+
+```sh
+# 1. HERE — required after every SDK change (npm won't build a linked dep; dist/ is git-ignored)
+nvm use && npm run build
+
+# 2. IN THE SURFACE — once per clone. --no-save keeps package.json + the lockfile untouched.
+cd ../ms-outlook-addin
+npm run sdk:link                          # = npm install --no-save file:../bb-client-sdk
+npm run dev                               # restart so the bundler re-resolves; then sideload
+
+# 3. after each further SDK change — rebuild here, reload there. No reinstall.
+cd ../bb-client-sdk && npm run build
+
+# 4. rollback
+cd ../ms-outlook-addin && npm run sdk:unlink   # = npm ci, restores the published version
+```
+
+Two things to verify once, per surface, the first time you link it: `git status` must show **no**
+change to `package.json`/`package-lock.json` (if it does, someone used `npm install file:…`
+without `--no-save`), and the bundler must **dedupe `react`/`react-dom`** — Node resolves a
+symlinked package's bare imports from the SDK's *own* `node_modules`, where React is a
+devDependency, so a React consumer will otherwise load two copies and fail with "Invalid hook
+call". In Vite that is `resolve.dedupe: ["react", "react-dom", "@tanstack/react-query"]`.
+Do **not** substitute a bundler alias for the link: an alias bypasses the `exports` map, so a
+subpath can appear to work locally while being broken for real consumers.
+
+**Option 2 — canary**:
+
+```sh
+# 1. commit + push everything you want included (the workflow builds the branch HEAD, not your tree)
+git push -u origin <your-branch>
+
+# 2. trigger it — either the label on the PR…
+gh pr edit <PR> --repo theblockbrain/bb-client-sdk --add-label "release:canary"
+#    …or from any ref, no PR needed:
+gh workflow run "Canary release" --repo theblockbrain/bb-client-sdk --ref <your-branch>
+
+# 3. the workflow comments the install line on the PR; in the consumer:
+npm install @theblockbrain/bb-client-sdk@0.0.0-canary.<short-sha>   # exact build
+npm install @theblockbrain/bb-client-sdk@canary                     # newest canary
+
+# 4. rollback in the consumer:
+npm install @theblockbrain/bb-client-sdk@^0.17.0
+```
+
+> Consumer notification is **manual**: `canary.yml`'s `notify-consumers` job is dormant until an
+> org GitHub App token exists (PDEV-6806), because the default `GITHUB_TOKEN` cannot trigger
+> workflows in another repo. Publishing a canary does not test anything by itself — someone still
+> installs and builds it.
+
+**Option 3 — release**:
+
+```sh
+# 1. full local gate on the exact SHA (mirrors ci.yml; publish.yml will NOT re-run these)
+nvm use && npm ci
+npm run lint && npm run typecheck && npm test && npm run build && npm run check:package
+
+# 2. confirm ci.yml itself went green on that merged main commit
+gh api "repos/theblockbrain/bb-client-sdk/commits/$(git rev-parse HEAD)/check-runs" \
+  --jq '.check_runs[] | "\(.name): \(.status)/\(.conclusion)"'
+
+# 3. bump + tag from main
+npm version minor --no-git-tag-version    # new entry points are additive → MINOR (0.18.0)
+git commit -am "chore: release v0.18.0" && git tag v0.18.0 && git push --follow-tags
+
+# 4. consumers move their pin deliberately
+npm install @theblockbrain/bb-client-sdk@^0.18.0
+```
+
+See [`.claude/skills/sdk-release/SKILL.md`](.claude/skills/sdk-release/SKILL.md) for the full
+pre-release gate, and [`references/release-and-versioning.md`](.claude/skills/sdk/references/release-and-versioning.md)
+for the semver-for-fan-out table.
+
 ## Release
 
-Push tag `vX.Y.Z` on main — the publish workflow triggers automatically and publishes to GitHub Packages.
+Push tag `vX.Y.Z` on main — the publish workflow triggers automatically and publishes to GitHub
+Packages. Run the full gate first: `publish.yml` executes **only `typecheck` + `build`** on the tag,
+so the tests never run again after `ci.yml` on `main`. Steps: [Option 3](#chronological-steps) above.

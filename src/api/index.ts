@@ -1,3 +1,9 @@
+// ── Agentic protocol ─────────────────────────────────────────────────────────
+// `export *` (unlike every other line here) because `./agentic/index.ts` is
+// itself a curated barrel — it already selects what is public, so re-listing its
+// 26 symbols would only add drift. Also published directly as the `./agentic`
+// subpath, so a non-React surface can take the protocol without the rest of ./api.
+export * from "./agentic/index.js";
 export type { Agent, AgentsResponse, ApiResponse } from "./agents.js";
 // ── Feature-switches / admin config ──────────────────────────────────────────
 export { fetchAgents, setAgentActive, setAgentAvailability } from "./agents.js";
