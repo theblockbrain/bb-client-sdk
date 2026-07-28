@@ -1,8 +1,8 @@
 # SLO targets — the numbers the telemetry gate reads
 
 The `AnalyticsAdapter` taxonomy exists to make these SLOs **measurable**. This file is the
-target reference the telemetry gate points at: each SLI maps to a (planned, WS9) `AnalyticsEventMap`
-event, so once a surface registers an adapter the number can actually be read.
+target reference the telemetry gate points at: each SLI maps to an `AnalyticsEventMap`
+event (WS9, on `main`), so once a surface registers an adapter the number can actually be read.
 
 > **Canonical source.** These are the SDK- and surface-relevant rows extracted from the
 > domain-wide **Apps Domain — SLO Catalog** (all 13 repos, Grafana-centric tooling). The full

@@ -39,7 +39,7 @@ npm run check:package   # publint + attw --pack . --profile esm-only
 
 All must be green. Then, specifically:
 
-- [ ] **Public-API contract test passed.** `src/public-api.contract.test.ts` snapshots the exported values **and** types of all JS entry points (11 today; 12 once `./analytics` lands) (snapshot: `src/__snapshots__/public-api.contract.test.ts.snap`). To inspect just it:
+- [ ] **Public-API contract test passed.** `src/public-api.contract.test.ts` snapshots the exported values **and** types of all JS entry points (13 today) (snapshot: `src/__snapshots__/public-api.contract.test.ts.snap`). To inspect just it:
   ```bash
   npx vitest run src/public-api.contract.test.ts
   ```
@@ -93,7 +93,7 @@ If breaking: write the **migration note** now (README/CHANGELOG: what changed, b
 
 > **The `notify-consumers` job is DORMANT** — it only fires when `vars.CONSUMER_DISPATCH_ENABLED == 'true'` with an org GitHub App token (`secrets.CONSUMER_DISPATCH_TOKEN`); the default `GITHUB_TOKEN` cannot trigger cross-repo workflows (PDEV-6806). Until that App is wired, **canary consumer testing is manual** — you install and build in the consumer yourself. Do not assume a consumer got tested automatically.
 
-Only after a consumer builds green do you proceed. If Outlook cannot build the canary because its pin assumes an old surface (see Phase 6, the `^0.7.3` lesson), that is itself a signal — the surface has drifted too far to be a reliable pre-`latest` check.
+Only after a consumer builds green do you proceed. If Outlook cannot build the canary because its pin assumes an old surface (see Phase 6, the `^0.7.3` era), that is itself a signal — the surface has drifted too far to be a reliable pre-`latest` check.
 
 ---
 
@@ -103,11 +103,11 @@ Invariant E, documented and **non-negotiable**: nothing ships to production on a
 
 Walk the full checklist in [`../sdk/references/telemetry-release-gate.md`](../sdk/references/telemetry-release-gate.md). Do not promote a surface unless all of:
 
-- [ ] **`AnalyticsAdapter` wired** on the surface (peer of `StorageAdapter`/`IdentityAdapter`). The seam is **planned** (**WS9** — not yet on `main`); once it lands, register a concrete adapter at startup via `setAnalyticsAdapter` (from `@theblockbrain/bb-client-sdk/analytics`) implementing the `AnalyticsAdapter` type (from `@theblockbrain/bb-client-sdk/adapters`). `login()` will emit its `auth_*` events through the seam; the surface still forwards those (and the rest) to Mixpanel + Sentry.
+- [ ] **`AnalyticsAdapter` wired** on the surface (peer of `StorageAdapter`/`IdentityAdapter`). The seam is **on `main`** (**WS9** — PDEV-6854/6855) but **not in a published release yet** (last tag `v0.17.0` predates it), so a surface needs a canary or `file:` link until the next release. Register a concrete adapter at startup via `setAnalyticsAdapter` (from `@theblockbrain/bb-client-sdk/analytics`) implementing the `AnalyticsAdapter` type (from `@theblockbrain/bb-client-sdk/adapters`), or use `createMixpanelAdapter` from `@theblockbrain/bb-client-sdk/analytics/mixpanel`. Note the SDK does not emit anything through the seam yet — the `login()` `auth_*` instrumentation (PDEV-6855) is not on `main`. Registering an adapter today wires up the surface's own events only.
 - [ ] **Minimum event set emitting**, mapped to the standard taxonomy: `auth_success` / `auth_failed`, `message_send`, `stream_start` / `stream_first_token` / `stream_complete` / `stream_dropped`, and `api_error{ statusCode, endpoint }`. The last maps directly off `BBApiError` (`src/api/errors.ts`), which carries `statusCode` and `endpoint` on every non-2xx — that is exactly why the core throws it. **Never** forward `BBApiError.responseBody` raw to Sentry/analytics; scrub it (it may echo secrets) and never log tokens (invariant D).
 - [ ] **Sentry + Grafana Faro live** on the surface (crash-free and error-rate reporting), verified receiving events — not merely configured.
 
-If a surface cannot satisfy this, it does not get promoted, regardless of feature-readiness. (Once the WS9 seam lands, the telemetry half of the SLO becomes measurable the moment a surface wires it.)
+If a surface cannot satisfy this, it does not get promoted, regardless of feature-readiness. (With the WS9 seam landed, the telemetry half of the SLO becomes measurable the moment a surface wires it.)
 
 ---
 
@@ -144,7 +144,7 @@ After the tag: confirm `publish.yml` succeeded and that the version resolves fro
 
 A published version is worthless if surfaces never adopt it. Under `^` ranges a breaking change fans out silently; a **frozen** pin trades that for ever-growing migration debt.
 
-- **The cautionary tale.** `ms-outlook-addin` — the reference adopter — pins **`^0.7.3`** while the SDK is at **`0.17.0`** (~10 minor eras behind). Consequences map straight to the invariants: it can no longer canary-test current changes (Phase 3 loses its signal), and every accumulated break lands in one painful upgrade instead of being absorbed incrementally.
+- **The cautionary tale.** `ms-outlook-addin` — the reference adopter — sat on **`^0.7.3`** while the SDK reached **`0.17.0`** (~10 minor eras behind). Consequences mapped straight to the invariants: it could not canary-test current changes (Phase 3 lost its signal), and every accumulated break landed in one painful upgrade instead of being absorbed incrementally. It is back in step (**`^0.17.0`**, resolving 0.17.0 — the latest published tag); keeping it there is a standing obligation, not a solved problem.
 - **The rule — SLO E3: no surface more than one minor-era behind.** After a release, open (or nudge) an upgrade PR on each consuming surface so it tracks within one minor of current. One small PR per surface per release era is cheap; a 10-era jump is not.
 - **`file:`-linked consumers** (Chrome add-in, monorepo links): `dist/` is git-ignored and npm does **not** run build for symlinked `file:` deps. After any fresh clone/pull of this SDK, run `npm run build` here **once** before building the linked consumer, or its `import` of `dist/` resolves to nothing (README). Registry installs are unaffected (`prepack`/`prepublishOnly` build `dist/`).
 - **Consumer pin policy** (adapter devs): pin `^0.MINOR.PATCH`, read the migration note, bump the minor deliberately. Full policy in [`../sdk/references/release-and-versioning.md`](../sdk/references/release-and-versioning.md) §4.

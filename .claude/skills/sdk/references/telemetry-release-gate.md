@@ -19,7 +19,7 @@ description: Use when adding, wiring, or reviewing telemetry for any BlockBrain 
 We have shipped Apps surfaces **blind** — no funnel, no crash-free number, no error-rate baseline — so we could not tell activation from churn, or a bad release from a quiet one. Objective **O2** ("ship measurable, healthy surfaces") makes instrumentation a precondition of release rather than a follow-up. Concretely:
 
 - Mixpanel is being adopted **org-wide as core product**; Apps adopts the **same** foundation and identity model so Apps data joins the org's, rather than forking a second analytics universe.
-- The SLO catalog's **"Part B" telemetry SLOs were *unmeasurable*** while the SDK exposed no telemetry seam; that seam is **planned (WS9 — not yet on `main`)**. This doc specifies that seam **and** makes wiring it a checklist item, so Part B becomes measurable the moment the seam lands and a surface adopts it. Targets (crash-free %, error-rate %, activation) live in [`./slo-catalog.md`](./slo-catalog.md) — reference it, don't restate the numbers here.
+- The SLO catalog's **"Part B" telemetry SLOs were *unmeasurable*** while the SDK exposed no telemetry seam; that seam is **now on `main` (WS9 — PDEV-6854/6855, PR #22)**, though not yet in a published release. This doc specifies that seam **and** makes wiring it a checklist item, so Part B becomes measurable as soon as a surface adopts it. Targets (crash-free %, error-rate %, activation) live in [`./slo-catalog.md`](./slo-catalog.md) — reference it, don't restate the numbers here.
 
 **Dual audience.** The gate **binds every adapter (consumer) developer** — you cannot promote without it. The **SDK's** job is to make compliance cheap: provide the `AnalyticsAdapter` **seam** + a **standard event taxonomy** so a surface wires telemetry once and gets the whole event set for free. If a surface has to hand-roll event names, the SDK has failed its half.
 
@@ -27,20 +27,20 @@ We have shipped Apps surfaces **blind** — no funnel, no crash-free number, no 
 
 ## 1. The `AnalyticsAdapter` seam (SDK side)
 
-**Status: PLANNED (WS9 — not yet on `main`).** Once it lands, the seam will live in `src/adapters/analytics.ts` (the types) and `src/analytics/index.ts` (the runtime sink); register an adapter at surface startup with `setAnalyticsAdapter` from `@theblockbrain/bb-client-sdk/analytics`. Each surface still supplies the concrete implementation that forwards to Mixpanel/Sentry/Faro — that is the one injected seam, and wiring it stays a release-gate obligation (see the [Definition of Done](#4-the-release-gate--definition-of-done)).
+**Status: on `main` (WS9 — PDEV-6854/6855), not yet published — the last tag `v0.17.0` predates it.** The seam lives in `src/adapters/analytics.ts` (the types) and `src/analytics/index.ts` (the runtime sink); register an adapter at surface startup with `setAnalyticsAdapter` from `@theblockbrain/bb-client-sdk/analytics`. A surface either supplies its own concrete implementation forwarding to Mixpanel/Sentry/Faro, or takes the ready-made `createMixpanelAdapter` from `@theblockbrain/bb-client-sdk/analytics/mixpanel` (§1a). Either way that is the one injected seam, and wiring it stays a release-gate obligation (see the [Definition of Done](#4-the-release-gate--definition-of-done)).
 
 `AnalyticsAdapter` is a **peer of `StorageAdapter` and `IdentityAdapter`** (both verified in `src/adapters/`, exported as **types only** from `src/adapters/index.ts` and re-exported via `./adapters` + the root barrel `src/index.ts`). It follows the same injection pattern: **a pure interface, zero runtime, zero React, zero DOM** — the SDK calls it; the surface supplies the concrete implementation.
 
 ```ts
-// Planned (WS9): types in src/adapters/analytics.ts (to be exported via ./adapters);
-// runtime sink + these type re-exports in src/analytics/index.ts (to be exported via ./analytics).
+// Shipped (WS9): types in src/adapters/analytics.ts (exported via ./adapters);
+// runtime sink + these type re-exports in src/analytics/index.ts (exported via ./analytics).
 
 /** Typed taxonomy — a keyed interface, NOT a closed union. Keys are event names;
  *  values are the (PII-free) prop shape. Extend deliberately. See §2. */
 export interface AnalyticsEventMap {
   auth_started: { mode: "oauth" | "api-key" };
   auth_success: { mode: "oauth" | "api-key"; latencyMs?: number };
-  auth_failed: { mode: "oauth" | "api-key"; stage?: string };
+  auth_failed: { mode: "oauth" | "api-key"; stage?: "launch" | "parse" | "exchange" };
   token_refresh: { ok: boolean; latencyMs?: number };
   message_send: { conversationId?: string; backend?: "blocky" | "agentic"; streaming: boolean };
   stream_start: { backend?: "blocky" | "agentic" };
@@ -63,7 +63,8 @@ export interface AnalyticsIdentity {
 /** Extra context for `captureError`. Keep it PII/secret-free. */
 export interface AnalyticsErrorContext extends AnalyticsIdentity {
   scope?: string; // coarse tag: "auth" | "stream" | "api"
-  [key: string]: unknown;
+  // Primitives only, so a whole object (e.g. a raw response body) can't be attached by accident.
+  [key: string]: string | number | boolean | null | undefined;
 }
 
 export interface AnalyticsAdapter {
@@ -99,14 +100,52 @@ The **runtime sink** is `./analytics` (`src/analytics/index.ts`): `setAnalyticsA
 | Injected + **optional** at construction, but **required to ship** | The core must boot without it (a no-op default is fine) so the framework-agnostic layer has no hard dependency — but the [release gate](#4-the-release-gate--definition-of-done) forbids promoting a surface that left it unwired. |
 | `distinctId` / `orgId` come from `AuthContext` | Single identity model across every surface (see §2). `userId` and `orgId` are already on `AuthContext` (`src/settings/auth-mode.ts`). |
 
-**Where the SDK emits** (call sites, mapped to verified files — `login()` is live today; the rest are wired incrementally per call-site / per-surface):
+**Where the SDK will emit** (call sites, mapped to verified files). ⚠️ **Nothing is wired on `main` today** — `grep -rn "trackEvent" src/` returns only the sink module itself:
 
 | Event group | Call site (verified file) |
 |---|---|
-| `auth_started` / `auth_success` / `auth_failed` | **Live** in `src/auth/login.ts` (via `trackEvent`); `src/auth/browser-redirect.ts` + `src/auth/tokens.ts` (exchange) to follow |
+| `auth_started` / `auth_success` / `auth_failed` | `src/auth/login.ts` — **NOT on `main`**. Written under PDEV-6855, but PR #20 merged into `feat/PDEV-6854/telemetry-adapter` *after* that base had already merged to `main` (PR #19), so it landed on a dead branch. The code and its `login.test.ts` survive only on `origin/feat/PDEV-6855/instrument-auth-telemetry` and must be re-merged. `src/auth/browser-redirect.ts` + `src/auth/tokens.ts` (exchange) to follow |
 | `token_refresh` | `src/auth/refresh-singleton.ts` (single-flight guard — emit once per real refresh, not per waiter) — **not yet wired** |
 | `message_send`, `stream_*` | `src/api/messages.ts` (`sendMessage`) + `src/api/stream-result.ts` (`MessageStream`) / `src/api/blocky-sse.ts` — **wired incrementally** via `trackEvent(...)` |
 | `api_error` | endpoints/surfaces call `trackApiError(err)` in a catch block (forwards only `statusCode` + `endpoint` off `BBApiError`; never `responseBody`) — **wired incrementally** per call site |
+
+### 1a. The Mixpanel leaf (`./analytics/mixpanel`)
+
+The seam is provider-agnostic, but the Mixpanel taxonomy, identity model and PII rules are
+identical on every surface — so the SDK owns them once instead of each surface re-deriving them.
+`src/analytics/mixpanel.ts` exports `createMixpanelAdapter(client, config)`, an `AnalyticsAdapter`
+backed by a Mixpanel-shaped client:
+
+- **No new dependency.** `MixpanelClient` is a **structural** type over the four
+  `mixpanel-browser` methods used (`track` / `identify` / `register` / optional `set_group`).
+  A real `mixpanel` instance satisfies it; so does a test double. The SDK never imports
+  `mixpanel-browser` — invariant A holds, and the core only pulls this module in if a surface
+  imports the subpath.
+- **Super-props** (`surface`, `env`, `sdk_version?`, `app_version?`, `host?`) are `register`ed
+  once at creation, so every event carries the dashboard's slice keys.
+- **Tenant roll-up.** `identity.orgId` is attached under `groupKey` (default `tenant_id`);
+  `group(orgId)` also calls `set_group` for Mixpanel Group Analytics.
+- **PII denylist + consent gate.** A field denylist (`email`, `name`, `*_token`, `responseBody`,
+  `body`, …) scrubs every payload as a second line of defence, and `enabled: false` makes every
+  method a silent no-op. `captureError` forwards only the error **name** — never message or stack.
+- **Never throws.** Setup, `identify` and `group` are individually guarded.
+
+```ts
+import mixpanel from "mixpanel-browser";
+import { setAnalyticsAdapter } from "@theblockbrain/bb-client-sdk/analytics";
+import { createMixpanelAdapter } from "@theblockbrain/bb-client-sdk/analytics/mixpanel";
+
+mixpanel.init(MIXPANEL_TOKEN, { api_host: "https://api-eu.mixpanel.com", ip: false });
+setAnalyticsAdapter(
+  createMixpanelAdapter(mixpanel, {
+    enabled: consentGranted,
+    superProps: { surface: "outlook-addin", env: "prod", sdk_version: SDK_VERSION },
+  }),
+);
+```
+
+Covered by `src/analytics/mixpanel.test.ts` (super-props registered, tenant grouped, response body
+never forwarded, consent gate no-ops, faults never escape).
 
 ---
 
@@ -161,7 +200,7 @@ The SDK emits **one** standard event set through the seam so every surface repor
 
 - **bb-slack-integrations** — Node backend, no DOM: **no Faro, no browser RUM**. Server-side Mixpanel + Sentry Node. Respect the 3-second ack — telemetry is fire-and-forget, never on the ack path.
 - **b2b-webcomponents / blocky-chat** — Lit, not React: `./react` and `./ui` are irrelevant; only the framework-agnostic core (incl. this seam) applies. Size-sensitive (~3.5 MB CDN bundle) — the concrete analytics SDK is the surface's cost to bear, not the core's.
-- **ms-outlook-addin** — the reference adopter and **canary target**; once WS9 lands it should be first to wire the seam (mind its stale `^0.7.3` pin — see Invariant C).
+- **ms-outlook-addin** — the reference adopter and **canary target**; first in line to wire the seam (PDEV-7010). It pins `^0.17.0`, which predates the seam, so it needs a canary or `file:` link until the next release — see Invariant C.
 
 ---
 
@@ -181,7 +220,7 @@ Every surface ticks **every** box before promotion to production. This is the ch
 
 ### CI / release enforcement
 
-Merge is gated by **`ci.yml`** on `main` (lint:biome → lint:types → typecheck → test → build → check:package) under branch protection. **Known gap (SLO E2):** **`publish.yml`** runs **only typecheck + build** on a `vX.Y.Z` tag — it does **not** re-run test / lint / `check:package`, and it does **not** verify telemetry. Until E2 closes ("CI + publish both gated on tests"), the telemetry DoD is a **per-surface promotion gate**, not something the SDK's publish pipeline can prove for you. Do not treat "the SDK published" as "the surface is instrumented" — they are separate gates.
+Merge is gated by **`ci.yml`** on `main` (lint:biome → lint:types → typecheck → test → build → check:package) — but **not enforced**: branch protection on `main` is currently off (`gh api repos/theblockbrain/bb-client-sdk/branches/main/protection` → 404), so CI is advisory. **Known gap (SLO E2):** **`publish.yml`** runs **only typecheck + build** on a `vX.Y.Z` tag — it does **not** re-run test / lint / `check:package`, and it does **not** verify telemetry. Until E2 closes ("CI + publish both gated on tests"), the telemetry DoD is a **per-surface promotion gate**, not something the SDK's publish pipeline can prove for you. Do not treat "the SDK published" as "the surface is instrumented" — they are separate gates.
 
 ---
 

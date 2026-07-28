@@ -187,6 +187,15 @@ exports[`public API surface > exports of "./analytics" are stable 1`] = `
 ]
 `;
 
+exports[`public API surface > exports of "./analytics/mixpanel" are stable 1`] = `
+[
+  "MixpanelAdapterConfig",
+  "MixpanelClient",
+  "MixpanelSuperProps",
+  "createMixpanelAdapter",
+]
+`;
+
 exports[`public API surface > exports of "./api" are stable 1`] = `
 [
   "Agent",

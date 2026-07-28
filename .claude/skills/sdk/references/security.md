@@ -152,7 +152,7 @@ Never `dangerouslySetInnerHTML` / `.innerHTML =` on model output.
 | **ESLint (type-aware)** | `lint:types` (`eslint src`) | typescript-eslint + react-hooks + `@tanstack/eslint-plugin-query`; catches unsafe patterns inference can't |
 | **publint** | `check:package` | Package/export-map correctness (ESM resolution) |
 | **attw** (`@arethetypeswrong/cli`) | `check:package` (`--profile esm-only`) | Types resolve on every entry point → **no React leaks into `./api`/`./auth`** |
-| **Public-API contract test** | `src/public-api.contract.test.ts` (+ snapshot) | Anti-breakage tripwire — an undeclared change across the entry points (11 today; 12 once `./analytics` lands) fails the test |
+| **Public-API contract test** | `src/public-api.contract.test.ts` (+ snapshot) | Anti-breakage tripwire — an undeclared change across the entry points (13 today) fails the test |
 | **PKCE state-separation test** | `test/auth/pkce-state-separation.test.ts` | Verifier never in authorize URL (CWE-200). **NOTE: `bun:test`, excluded from CI (WS1)** — run manually |
 | **npm audit / Dependabot** | dependency PRs | Known-vuln deps |
 | **gitleaks (secret-scan)** | target — **not in CI yet** | Committed tokens/keys |
@@ -161,9 +161,10 @@ Never `dangerouslySetInnerHTML` / `.innerHTML =` on model output.
 | **Mixpanel** | per-surface | Product analytics — **identity = Zitadel `sub`, org as group, NO PII** (no email/name in events) |
 | **CodeQL / SAST** | optional | Deeper static analysis — enable per repo risk |
 
-**Telemetry seam is planned (WS9 — not yet on `main`).** The `AnalyticsAdapter` (peer of `StorageAdapter`/
-`IdentityAdapter`) will be exported as types from `./adapters`, with the runtime sink at `./analytics`
-(`setAnalyticsAdapter`, `trackEvent`, `trackApiError`, …). Its taxonomy is the typed
+**Telemetry seam is on `main` (WS9 — PDEV-6854/6855), not yet published.** The `AnalyticsAdapter` (peer of
+`StorageAdapter`/`IdentityAdapter`) is exported as types from `./adapters`, with the runtime sink at
+`./analytics` (`setAnalyticsAdapter`, `trackEvent`, `trackApiError`, …) and an opt-in Mixpanel
+implementation at `./analytics/mixpanel` (`createMixpanelAdapter` — PII denylist + consent gate). Its taxonomy is the typed
 **`AnalyticsEventMap`** (`AnalyticsEventName = keyof AnalyticsEventMap`) — `auth_started`,
 `auth_success`, `auth_failed`, `token_refresh`, `message_send`, `stream_start`,
 `stream_first_token`, `stream_complete`, `stream_dropped`, `stream_reconnect`, `api_error` —
@@ -198,7 +199,7 @@ the org **Code Cleanup & Refactoring** standard.)
 - [ ] **Untrusted input.** New model/tool output paths handle `extractJson` returning `null`; any new rendering goes through `renderMarkdown` (no `innerHTML`/`dangerouslySetInnerHTML` on model output).
 - [ ] **Transport/CSP.** HTTPS only; no `eval`/`new Function`/inline script (SPFx + Office webviews); no new hard dependency on `window`/`fetch`/`EventSource` in the core.
 - [ ] **Supply chain.** No new runtime dep without justification; `./api`/`./auth` still React-free (`check:package` green); `npm audit` clean.
-- [ ] **Public-API contract test passes** — or the snapshot change is intentional, declared, and canary-tested in a consumer (Outlook) **before** promoting to `latest` (invariant C; the stale `^0.7.3` pin is the cautionary tale).
+- [ ] **Public-API contract test passes** — or the snapshot change is intentional, declared, and canary-tested in a consumer (Outlook) **before** promoting to `latest` (invariant C; Outlook's `^0.7.3` era is the cautionary tale).
 - [ ] **Telemetry.** If this adds a security-relevant event, it emits a valid `AnalyticsEvent` from the union (e.g. `auth_success`/`auth_failed`, `token_refresh`, `api_error{statusCode,endpoint}`) with **no PII and no token/responseBody** (identity = `sub`, org = group).
 
 **Adapter reviewers:** the same list applies to you — your `StorageAdapter` secure-storage choice,

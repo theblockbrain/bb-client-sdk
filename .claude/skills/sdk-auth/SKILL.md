@@ -113,7 +113,7 @@ npm run check:package      # publint + attw (esm-only) — proves ./auth & ./set
 
   If you touch PKCE/state/redirect behaviour, the highest-value move is to **port that test into `src/auth/*.test.ts`** in the same PR so `npm test`/CI enforces it.
 
-**Public-export change** (added/renamed/removed anything in `src/auth/index.ts` or `src/settings/index.ts`): the contract test `src/public-api.contract.test.ts` (snapshot `src/__snapshots__/public-api.contract.test.ts.snap`) will fail. Only update it deliberately — `vitest -u` in the same PR — and treat it as an intentional breaking change: bump semver accordingly and **canary-test in a consumer (Outlook) before `latest`** (the stale `^0.7.3` Outlook pin is the cautionary tale). See `../sdk/references/adapters.md`.
+**Public-export change** (added/renamed/removed anything in `src/auth/index.ts` or `src/settings/index.ts`): the contract test `src/public-api.contract.test.ts` (snapshot `src/__snapshots__/public-api.contract.test.ts.snap`) will fail. Only update it deliberately — `vitest -u` in the same PR — and treat it as an intentional breaking change: bump semver accordingly and **canary-test in a consumer (Outlook) before `latest`** (Outlook's `^0.7.3` era, ten minors behind, is the cautionary tale; it pins `^0.17.0` today). See `../sdk/references/adapters.md`.
 
 **Cross-adapter pass** — before merge, confirm the change against each affected runtime in the matrix:
 

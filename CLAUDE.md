@@ -11,7 +11,7 @@ a change that breaks any one adapter is a defect.
 
 Before doing **any** work in this repo, load the base skill:
 [`.claude/skills/sdk/SKILL.md`](.claude/skills/sdk/SKILL.md). It is the authoritative
-entry point: the layer map (11 entry points today; `./analytics` planned → 12), the five prime invariants, the adapter
+entry point: the layer map (13 entry points today), the five prime invariants, the adapter
 matrix, and the per-change verification loop. Then load the task sub-skill:
 
 - [`sdk-auth`](.claude/skills/sdk-auth/SKILL.md) — PKCE / tokens / refresh / `AuthContext` (security-critical)
@@ -39,15 +39,15 @@ Reference docs (under `sdk/references/`):
    `targetOrgId` discipline; **0 cross-tenant leakage**; `extractJson` never throws; minimal deps.
 5. **Instrument every surface (hard release gate)** — nothing ships to production without both
    product analytics (Mixpanel) **and** health telemetry (Sentry + Grafana Faro). Emit via the
-   `AnalyticsAdapter` seam (the `./analytics` subpath — **planned**, landing with the telemetry
-   workstream; see the section below).
+   `AnalyticsAdapter` seam (the `./analytics` subpath; see the section below).
 
-## Telemetry seam (`./analytics`) — **planned**
+## Telemetry seam (`./analytics`)
 
-> **Not yet on `main`.** The `AnalyticsAdapter` seam, the `./analytics` subpath, and the
-> `login()` instrumentation land with the telemetry workstream (PDEV-6854 / PDEV-6855 — PRs #19/#20,
-> consolidated for `main` in PR #22). The snippet below is the **target** API; the `./analytics`
-> import will not resolve until that ships.
+> **The seam is on `main`, not yet published; the instrumentation is on neither.** The
+> `AnalyticsAdapter` seam and the `./analytics` subpath landed via PDEV-6854 (PR #19, consolidated
+> for `main` in PR #22). The last published tag is `v0.17.0`, which predates them: a consumer on
+> npm/GitHub Packages cannot import `./analytics` until the next release; `file:`-linked or canary
+> consumers can. The `login()` instrumentation (PDEV-6855) is a separate matter — see below.
 
 The `AnalyticsAdapter` seam is a peer of `StorageAdapter` / `IdentityAdapter`. Each surface
 implements it once and registers it at startup; the SDK emits a typed, PII-free event taxonomy
@@ -67,9 +67,16 @@ setAnalyticsAdapter(analytics);
 ```
 
 The sink is safe by construction: it **no-ops when no adapter is registered and never throws**
-into a product flow. Once the seam lands, `login()` will emit `auth_started` / `auth_success` /
-`auth_failed`; other events (`api_error` via `trackApiError`, streaming, `token_refresh`) are wired
-incrementally at each call site. See
+into a product flow. **No SDK call site emits through it yet** — `grep -rn "trackEvent" src/`
+returns only the sink itself. The `login()` instrumentation (PDEV-6855) exists on
+`feat/PDEV-6855/instrument-auth-telemetry` but **never reached `main`**: PR #20 was merged into
+`feat/PDEV-6854/telemetry-adapter` at 09:18 on 2026-07-20, 17 minutes *after* that base branch had
+already merged to `main` in PR #19 — so the child landed on a dead branch. Re-merging it (plus its
+`src/auth/login.test.ts`, also absent from `main`) is outstanding work, not a done ticket.
+
+A ready-made Mixpanel implementation ships as an **opt-in leaf** at `./analytics/mixpanel`
+(`createMixpanelAdapter`) — typed structurally against `mixpanel-browser`, so the SDK still has
+no analytics dependency and the core still tree-shakes clean. See
 [`references/telemetry-release-gate.md`](.claude/skills/sdk/references/telemetry-release-gate.md).
 
 ## Verify loop (run before every commit)

@@ -50,9 +50,9 @@ The non-2xx block is boilerplate you copy verbatim (bots.ts lines 55–66); on t
 
 - Export only the types the surfaces actually need (`interface`/`type` for request options, response body, and any enum union). No `any`; model the raw envelope with a local `Raw*` interface and map it (see `RawBot` → `Bot` in `bots.ts`, `RawTenant` in `tenant.ts`). Backends wrap payloads inconsistently (`{ body }`, `{ content }`, `{ data }`, flat array) — normalize defensively like the siblings do.
 - Re-export new public symbols from `src/api/index.ts` (values and `export type` separately, alphabetized — match the existing file).
-- **Any added/renamed/removed public export changes the public-API snapshot.** `src/public-api.contract.test.ts` snapshots the exported names (values AND types) of all entry points (11 today; 12 once `./analytics` lands); an undeclared change fails CI.
+- **Any added/renamed/removed public export changes the public-API snapshot.** `src/public-api.contract.test.ts` snapshots the exported names (values AND types) of all entry points (13 today); an undeclared change fails CI.
   - Additive export → snapshot grows → intentional **minor**.
-  - Rename/removal → this is a **breaking** fan-out change. Semver + consumer range-pinning means it breaks surfaces silently (the Outlook add-in pinned a stale `^0.7.3` — the cautionary tale). Requires an intentional bump and a canary pass in a real consumer before `latest` (see `../sdk/references/cross-adapter-safety.md`).
+  - Rename/removal → this is a **breaking** fan-out change. Semver + consumer range-pinning means it breaks surfaces silently (the Outlook add-in once sat on `^0.7.3` for ten minor eras — the cautionary tale; it is current at `^0.17.0` now). Requires an intentional bump and a canary pass in a real consumer before `latest` (see `../sdk/references/cross-adapter-safety.md`).
   - To land an intentional change: update the snapshot with `vitest -u` **in the same PR** and call it out in the description.
 
 ---
@@ -73,7 +73,7 @@ Read the sibling first: `src/react/queries.ts` (reads), `src/react/mutations.ts`
 **Writes (`mutations.ts`) — get invalidation right:**
 - Simple write → `onSuccess` invalidates the affected `bbKeys` prefix (a coarse key prefix-matches every finer key beneath it, so invalidating `messages.forConvo(id)` clears every paginated/keyword variant at once).
 - Optimistic write → the full `cancel → snapshot → optimistic set → rollback in onError → reconcile in onSettled` cycle. Copy `useSetAgentActive`. `useChatStream.send` models the optimistic-then-rollback path for the streaming case.
-- **Agent-swap rule (STATUS.md):** there is no `setConversationAgent` endpoint today — a conversation's agent is fixed at `createConversation`. If you add that endpoint, its hook's `onSuccess` MUST call `invalidateConvoDetailCache(convoId)` (`src/api/messages.ts`) to purge the hidden module-level routing cache, or `sendMessage` will keep routing on the stale agent. `useDeleteConversation` already models this dual purge (React Query cache **and** the hidden cache).
+- **Agent-swap rule** (`docs/react-layer.md` gap #3)**:** there is no `setConversationAgent` endpoint today — a conversation's agent is fixed at `createConversation`. If you add that endpoint, its hook's `onSuccess` MUST call `invalidateConvoDetailCache(convoId)` (`src/api/messages.ts`) to purge the hidden module-level routing cache, or `sendMessage` will keep routing on the stale agent. `useDeleteConversation` already models this dual purge (React Query cache **and** the hidden cache).
 
 If you add a hook to `src/react/index.ts`, that is also a public-export change → re-run Phase 2's contract test.
 
@@ -93,11 +93,11 @@ This is invariant D and a zero-tolerance isolation boundary. See `../sdk/referen
 
 Invariant E: nothing ships without product analytics **and** health telemetry. The SDK's job is the seam, wired per surface.
 
-- The `AnalyticsAdapter` seam is **planned** (**WS9** — not yet on `main`); once it lands, emit via `trackEvent(...)` / `trackApiError(err)` from `@theblockbrain/bb-client-sdk/analytics` (the surface registers the adapter). `api_error` is **not auto-emitted by the core** — it is wired incrementally per call site — so your obligation in this phase is still to keep the endpoint *instrumentable*:
+- The `AnalyticsAdapter` seam is **on `main`** (**WS9** — PDEV-6854/6855): emit via `trackEvent(...)` / `trackApiError(err)` from `@theblockbrain/bb-client-sdk/analytics` (the surface registers the adapter). `api_error` is **not auto-emitted by the core** — it is wired incrementally per call site — so your obligation is both to call it at the throw/catch site and to keep the endpoint *instrumentable*:
   - Every non-2xx throws `BBApiError` carrying **`statusCode` and `endpoint`** (Phase 1) — that is exactly the payload `trackApiError(err)` forwards to the `api_error{ statusCode, endpoint }` event (call it in a catch block, then re-throw). A bare `Error` or a swallowed failure is un-instrumentable and blocks the gate.
   - **Never** log the token or put `responseBody` into a thrown `message` — `responseBody` may echo secrets. `trackApiError` forwards only `statusCode` + `endpoint` (never `responseBody`); scrub before any surface forwards it to Sentry.
 - If your endpoint is a new streamed turn, note the taxonomy it must emit (`stream_start` / `stream_first_token` / `stream_complete` / `stream_dropped`), wired via `trackEvent(...)`, so the surface wiring is unambiguous.
-- WS9 has landed, so this phase is now "call `trackApiError(err)` (or `trackEvent(...)`) at the throw/catch site" where the endpoint or surface wires it; the standing checklist item is still that a surface can derive the standard events from what you throw.
+- The standing checklist item is that a surface can derive the standard events from what you throw.
 
 ---
 
@@ -116,7 +116,7 @@ npm run check:package # publint + attw --pack . --profile esm-only
 Then, specifically for this change:
 
 - [ ] **Contract test** passed, or you ran `vitest -u` and the snapshot diff is intentional and reviewed (Phase 2).
-- [ ] **Add tests for new behavior** — the STATUS.md gaps are explicit: pagination (`getNextPageParam`/`initialPageParam`), optimistic paths, and conditional invalidation are the things that break silently. A hook that only typechecks is not covered.
+- [ ] **Add tests for new behavior** — the gaps in `docs/react-layer.md` are explicit: pagination (`getNextPageParam`/`initialPageParam`), optimistic paths, and conditional invalidation are the things that break silently. A hook that only typechecks is not covered.
 - [ ] **`check:package` clean** — confirms the export map still tree-shakes and `./api` + `./auth` carry **zero React** in their graph (invariant A). If you accidentally imported React into the core, attw/publint or the graph will show it.
 - [ ] **Cross-adapter pass** — the endpoint is `fetch`-based, so it must work under **Node (Slack) and RN (mobile)** transports, not just the browser. Walk `../sdk/references/cross-adapter-safety.md` and confirm no browser-only assumption slipped in:
   - No direct `window`/`document`/`localStorage`/`EventSource` — storage always via `StorageAdapter`.
