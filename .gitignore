@@ -8,3 +8,10 @@ dist
 # git/gh/Jira and drift out of date, which is what PDEV-7334 cleaned up. Durable
 # facts belong in CLAUDE.md, the /sdk skills, or Jira.
 /status.md
+
+# Coverage output from `npm run test:coverage` (which the release gate in
+# .claude/skills/sdk-release Phase 1 mandates). Generated, so never committed —
+# and because biome.json sets `vcs.useIgnoreFile: true`, ignoring it here is also
+# what keeps `biome check .` from linting ~700 lines of generated istanbul JS and
+# failing the lint gate right after the release gate told you to produce it.
+/coverage/

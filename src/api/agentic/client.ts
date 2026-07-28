@@ -59,15 +59,46 @@ export interface SuspendResult {
 /**
  * Strategy interface for handling tool-call approval and ask-user-question events.
  *
- * Replace the default `autoApprove` implementation to surface prompts to users.
- * The call path is unchanged — only the resolver impl changes.
+ * The agent backend emits a `data-tool-call-approval` frame and WAITS for an
+ * answer — that frame is a real gate, and this resolver is what answers it.
+ * Implement it to put the decision in front of a human; a write-capable agent's
+ * tools execute server-side (e.g. against a live Microsoft Graph mailbox), so
+ * the answer is a security decision, not a formality.
  */
 export interface ApprovalResolver {
   resolveApproval(ctx: ApprovalContext): Promise<ApprovalResult>;
   resolveSuspend(ctx: SuspendContext): Promise<SuspendResult>;
 }
 
-/** Default resolver: auto-approves all tool calls and returns empty answers. */
+/**
+ * Safe fallback: denies every tool call and cancels every ask-user-question.
+ *
+ * Used by `sendMessage` when a conversation turns out to route to the Agentic
+ * backend and the caller supplied no resolver. Denying is not a silent no-op:
+ * the turn resumes with `{approved: false}`, so the agent is told the call was
+ * refused and can still answer in prose — the user gets a response explaining
+ * the tool did not run, instead of a tool running unattended.
+ *
+ * Suspends are `cancelled` rather than answered with `{}`: fabricating an empty
+ * answer would let the agent proceed as though a human had responded.
+ */
+export const denyAllResolver: ApprovalResolver = {
+  resolveApproval(_ctx: ApprovalContext): Promise<ApprovalResult> {
+    return Promise.resolve({ approved: false });
+  },
+  resolveSuspend(_ctx: SuspendContext): Promise<SuspendResult> {
+    return Promise.resolve({ cancelled: true });
+  },
+};
+
+/**
+ * Explicit opt-in that approves everything unattended. **Never a default.**
+ *
+ * Legitimate only where the agent cannot mutate anything the caller cares about
+ * — read/compute-only embeds, fixtures, tests. Passing this to a write-capable
+ * agent re-creates the defect PDEV-7330 fixed: the backend offers a gate and the
+ * client answers "yes" on the user's behalf.
+ */
 export const autoApproveResolver: ApprovalResolver = {
   resolveApproval(_ctx: ApprovalContext): Promise<ApprovalResult> {
     return Promise.resolve({ approved: true });
@@ -94,8 +125,16 @@ export interface AgenticCallOptions {
   botId?: string | null;
   /** Override AGENTIC_BASE_URL (for testing). */
   agenticBaseUrl?: string;
-  /** Override the approval resolver. Default: `autoApproveResolver`. */
-  approvalResolver?: ApprovalResolver;
+  /**
+   * How tool-call approvals and ask-user-questions are answered. **Required** —
+   * there is deliberately no default, because a default is a decision made on
+   * the user's behalf (PDEV-7330). Supply a resolver that prompts a human, or
+   * `denyAllResolver` / `autoApproveResolver` to say so explicitly.
+   *
+   * `sendMessage` keeps this optional and falls back to `denyAllResolver`,
+   * because it only learns at runtime whether a conversation routes here.
+   */
+  approvalResolver: ApprovalResolver;
   /**
    * Maximum number of consecutive auto-resume cycles to prevent infinite loops.
    * Default: 3. Mirrors `MAX_AUTO_RESUMES` in v1-frontend AgenticChatBridge.
@@ -183,7 +222,7 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
     content,
     botId,
     agenticBaseUrl = AGENTIC_BASE_URL,
-    approvalResolver = autoApproveResolver,
+    approvalResolver,
     maxAutoResumes = DEFAULT_MAX_AUTO_RESUMES,
   } = options;
 

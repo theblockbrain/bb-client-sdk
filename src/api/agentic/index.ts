@@ -6,7 +6,12 @@ export type {
   SuspendContext,
   SuspendResult,
 } from "./client.js";
-export { autoApproveResolver, buildAgenticStreamUrl, callAgenticStream } from "./client.js";
+export {
+  autoApproveResolver,
+  buildAgenticStreamUrl,
+  callAgenticStream,
+  denyAllResolver,
+} from "./client.js";
 export type { AgenticHeaderOptions } from "./headers.js";
 export { agenticHeaders } from "./headers.js";
 export { collectTextFromStream, parseAgenticStream } from "./sse.js";

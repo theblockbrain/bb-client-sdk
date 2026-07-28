@@ -1,7 +1,7 @@
 import type { AuthContext } from "../settings/auth-mode.js";
 import { subFromAccessToken } from "../utils/jwt.js";
 import type { ApprovalResolver } from "./agentic/client.js";
-import { callAgenticStream } from "./agentic/client.js";
+import { callAgenticStream, denyAllResolver } from "./agentic/client.js";
 import { parseBlockySseStream } from "./blocky-sse.js";
 import { getConversationDetail } from "./conversations.js";
 import { BBApiError } from "./errors.js";
@@ -51,6 +51,38 @@ async function getCachedConvoAgent(ctx: AuthContext, convoId: string): Promise<s
   const agent = detail.agent ?? null;
   convoDetailCache.set(convoId, { agent, cachedAt: Date.now() });
   return agent;
+}
+
+/**
+ * `denyAllResolver` plus a diagnostic, for the case where a conversation routed
+ * to the Agentic backend and the caller passed no `approvalResolver`.
+ *
+ * The warning fires only when the agent ACTUALLY requests a tool call or a
+ * suspend — not on every send — so a conversation that never reaches for a tool
+ * stays silent. It is bounded by `maxAutoResumes`, so it cannot become a loop of
+ * log spam. No dedup state is kept: each refused call is worth its own line,
+ * since each one is a tool that did not run.
+ */
+function warnAndDenyResolver(agentId: string): ApprovalResolver {
+  const explain = (what: string, detail: string) =>
+    console.warn(
+      `[bb-sdk] Agentic ${what} DENIED for agent ${agentId}: no approvalResolver was ` +
+        `passed to sendMessage, so the SDK refused on the user's behalf rather than ` +
+        `approving unattended (${detail}). Pass an approvalResolver that prompts the ` +
+        `user, or autoApproveResolver from "@theblockbrain/bb-client-sdk/agentic" if ` +
+        `this agent genuinely cannot mutate anything.`,
+    );
+
+  return {
+    resolveApproval(ctx) {
+      explain("tool call", `tool: ${ctx.toolName ?? "unknown"}`);
+      return denyAllResolver.resolveApproval(ctx);
+    },
+    resolveSuspend(ctx) {
+      explain("ask-user-question", `toolCallId: ${ctx.toolCallId ?? "unknown"}`);
+      return denyAllResolver.resolveSuspend(ctx);
+    },
+  };
 }
 
 /** Evict a cached conversation (e.g. when the agent assignment changes). */
@@ -140,7 +172,10 @@ export async function sendMessage(
       // botId is not available from /general-info; X-BLOCKBRAIN-ACTIVE-BOT-ID
       // is sent conditionally — absent here means the header is omitted.
       botId: null,
-      approvalResolver: options.approvalResolver,
+      // Deny by default (PDEV-7330). Routing to Agentic is decided at runtime from
+      // the conversation's agent, so a caller cannot always know a resolver will be
+      // needed — but "didn't know" must not mean "approve on the user's behalf".
+      approvalResolver: options.approvalResolver ?? warnAndDenyResolver(agentId),
     });
 
     if (streaming) {
