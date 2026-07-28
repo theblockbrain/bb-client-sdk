@@ -5,8 +5,10 @@ import {
   captureError,
   flushAnalytics,
   getAnalyticsAdapter,
+  identifyUser,
   resetAnalyticsAdapter,
   setAnalyticsAdapter,
+  setAnalyticsGroup,
   trackApiError,
   trackEvent,
 } from "./index.js";
@@ -121,11 +123,45 @@ describe("analytics sink", () => {
     const { adapter } = makeRecorder({ identify, group });
     setAnalyticsAdapter(adapter);
 
-    getAnalyticsAdapter()?.identify?.("sub-9");
-    getAnalyticsAdapter()?.group?.("org-9");
+    identifyUser("sub-9");
+    setAnalyticsGroup("org-9");
 
     expect(identify).toHaveBeenCalledWith("sub-9");
     expect(group).toHaveBeenCalledWith("org-9");
+  });
+
+  it("identifyUser/setAnalyticsGroup no-op when the adapter omits them", () => {
+    const { adapter } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+    // The base recorder implements only the required methods — as a multi-tenant
+    // server adapter must, since identify/group bind process-wide.
+    expect("identify" in adapter).toBe(false);
+    expect("group" in adapter).toBe(false);
+
+    expect(() => identifyUser("sub-9")).not.toThrow();
+    expect(() => setAnalyticsGroup("org-9")).not.toThrow();
+  });
+
+  it("identifyUser/setAnalyticsGroup no-op when no adapter is registered", () => {
+    expect(getAnalyticsAdapter()).toBeNull();
+    expect(() => identifyUser("sub-9")).not.toThrow();
+    expect(() => setAnalyticsGroup("org-9")).not.toThrow();
+  });
+
+  it("swallows identify/group faults — a throwing adapter never breaks the SDK", () => {
+    setAnalyticsAdapter({
+      track: () => {},
+      captureError: () => {},
+      identify: () => {
+        throw new Error("mixpanel down");
+      },
+      group: () => {
+        throw new Error("mixpanel down");
+      },
+    });
+
+    expect(() => identifyUser("sub-9")).not.toThrow();
+    expect(() => setAnalyticsGroup("org-9")).not.toThrow();
   });
 
   it("flushAnalytics awaits flush and resolves even when it rejects", async () => {

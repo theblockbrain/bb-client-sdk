@@ -27,7 +27,7 @@ We have shipped Apps surfaces **blind** — no funnel, no crash-free number, no 
 
 ## 1. The `AnalyticsAdapter` seam (SDK side)
 
-**Status: on `main` (WS9 — PDEV-6854/6855), not yet published — the last tag `v0.17.0` predates it.** The seam lives in `src/adapters/analytics.ts` (the types) and `src/analytics/index.ts` (the runtime sink); register an adapter at surface startup with `setAnalyticsAdapter` from `@theblockbrain/bb-client-sdk/analytics`. A surface either supplies its own concrete implementation forwarding to Mixpanel/Sentry/Faro, or takes the ready-made `createMixpanelAdapter` from `@theblockbrain/bb-client-sdk/analytics/mixpanel` (§1a). Either way that is the one injected seam, and wiring it stays a release-gate obligation (see the [Definition of Done](#4-the-release-gate--definition-of-done)).
+**Status: on `main` (WS9 — PDEV-6854 seam + PDEV-6855 `auth_*` instrumentation), not yet published — the last tag `v0.17.0` predates it.** The seam lives in `src/adapters/analytics.ts` (the types) and `src/analytics/index.ts` (the runtime sink); register an adapter at surface startup with `setAnalyticsAdapter` from `@theblockbrain/bb-client-sdk/analytics`. A surface either supplies its own concrete implementation forwarding to Mixpanel/Sentry/Faro, or takes the ready-made `createMixpanelAdapter` from `@theblockbrain/bb-client-sdk/analytics/mixpanel` (§1a). Either way that is the one injected seam, and wiring it stays a release-gate obligation (see the [Definition of Done](#4-the-release-gate--definition-of-done)).
 
 `AnalyticsAdapter` is a **peer of `StorageAdapter` and `IdentityAdapter`** (both verified in `src/adapters/`, exported as **types only** from `src/adapters/index.ts` and re-exported via `./adapters` + the root barrel `src/index.ts`). It follows the same injection pattern: **a pure interface, zero runtime, zero React, zero DOM** — the SDK calls it; the surface supplies the concrete implementation.
 
@@ -91,6 +91,10 @@ export interface AnalyticsAdapter {
 
 The **runtime sink** is `./analytics` (`src/analytics/index.ts`): `setAnalyticsAdapter(adapter | null)` registers the process-wide adapter (call once at startup), `getAnalyticsAdapter()` / `resetAnalyticsAdapter()` read/detach it, and the SDK emits through the safe helpers `trackEvent(event, props, identity?)`, `captureError(error, context?)`, `trackApiError(error, identity?)`, and `flushAnalytics()`. These **no-op when no adapter is registered and never throw/reject into the caller** — telemetry cannot break a product flow. `./analytics` also re-exports every analytics type from `./adapters`.
 
+**Identity binding — `identifyUser(distinctId)` / `setAnalyticsGroup(orgId)`.** The `identity` argument to `trackEvent` tags only the one event it is passed to. Most events (`message_send`, `stream_*`, `api_error`) carry none, so without a binding a Mixpanel-backed adapter attributes them to the anonymous device id and org roll-up stays empty. These two guarded helpers forward to the adapter's optional `identify`/`group` (same contract: no-op when absent, never throw). `login()` calls both on success; a surface that restores a session from storage — no `login()` call — must call them itself at startup.
+
+⚠️ **The binding is process-wide.** A **multi-tenant server** adapter (bb-slack-integrations: one process, many orgs) must **NOT** implement `identify`/`group` — the last caller's identity would become the default for every later event, a cross-tenant attribution leak. Such adapters omit both, the helpers no-op, and per-event `identity` remains the only attribution path.
+
 **Design constraints (why it looks like this):**
 
 | Constraint | Reason |
@@ -100,11 +104,11 @@ The **runtime sink** is `./analytics` (`src/analytics/index.ts`): `setAnalyticsA
 | Injected + **optional** at construction, but **required to ship** | The core must boot without it (a no-op default is fine) so the framework-agnostic layer has no hard dependency — but the [release gate](#4-the-release-gate--definition-of-done) forbids promoting a surface that left it unwired. |
 | `distinctId` / `orgId` come from `AuthContext` | Single identity model across every surface (see §2). `userId` and `orgId` are already on `AuthContext` (`src/settings/auth-mode.ts`). |
 
-**Where the SDK will emit** (call sites, mapped to verified files). ⚠️ **Nothing is wired on `main` today** — `grep -rn "trackEvent" src/` returns only the sink module itself:
+**Where the SDK emits** (call sites, mapped to verified files). ⚠️ **`src/auth/login.ts` is the only wired call site on `main` today** — `grep -rn "trackEvent" src/` returns the sink module plus `src/auth/login.ts`:
 
 | Event group | Call site (verified file) |
 |---|---|
-| `auth_started` / `auth_success` / `auth_failed` | `src/auth/login.ts` — **NOT on `main`**. Written under PDEV-6855, but PR #20 merged into `feat/PDEV-6854/telemetry-adapter` *after* that base had already merged to `main` (PR #19), so it landed on a dead branch. The code and its `login.test.ts` survive only on `origin/feat/PDEV-6855/instrument-auth-telemetry` and must be re-merged. `src/auth/browser-redirect.ts` + `src/auth/tokens.ts` (exchange) to follow |
+| `auth_started` / `auth_success` / `auth_failed` | `src/auth/login.ts` — **wired** (PDEV-6855, recovered from the dead `feat/PDEV-6855/instrument-auth-telemetry` branch after PR #20 merged into an already-merged base). Emits `auth_started` at entry, `auth_success{latencyMs}` + identity binding (`identifyUser`/`setAnalyticsGroup`) on success, `auth_failed{stage}` from a `catch` with a coarse `launch\|parse\|exchange` label and no error detail; the original error is re-thrown unchanged. Covered by `src/auth/login.test.ts`. `src/auth/browser-redirect.ts` + `src/auth/tokens.ts` (exchange) to follow |
 | `token_refresh` | `src/auth/refresh-singleton.ts` (single-flight guard — emit once per real refresh, not per waiter) — **not yet wired** |
 | `message_send`, `stream_*` | `src/api/messages.ts` (`sendMessage`) + `src/api/stream-result.ts` (`MessageStream`) / `src/api/blocky-sse.ts` — **wired incrementally** via `trackEvent(...)` |
 | `api_error` | endpoints/surfaces call `trackApiError(err)` in a catch block (forwards only `statusCode` + `endpoint` off `BBApiError`; never `responseBody`) — **wired incrementally** per call site |

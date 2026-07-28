@@ -6,7 +6,9 @@
  * `captureError` helpers, which no-op when no adapter is registered and NEVER
  * throw or reject into the caller — telemetry must not be able to break a
  * product flow. Per-event identity is passed explicitly, so a single sink is
- * safe in a multi-tenant Node backend (e.g. Slack) serving many orgs.
+ * safe in a multi-tenant Node backend (e.g. Slack) serving many orgs — provided
+ * that backend's adapter omits the optional, process-wide `identify`/`group`
+ * (see {@link identifyUser}).
  *
  * Framework-agnostic and DOM-free (invariants A + B): this module imports only
  * types, so `./analytics` is safe for React add-ins, a Lit web component, React
@@ -64,6 +66,50 @@ export function trackEvent<K extends AnalyticsEventName>(
     adapter.track(event, props, identity);
   } catch {
     // Telemetry must never break the SDK — swallow adapter faults.
+  }
+}
+
+/**
+ * Bind the current user for all SUBSEQUENT events (→ `adapter.identify`).
+ *
+ * Per-event identity (the `identity` argument to {@link trackEvent}) only tags
+ * the one event it is passed to. Most SDK events carry none, so without this
+ * binding a Mixpanel-backed adapter attributes them to the anonymous device id
+ * and org roll-up stays empty. `login()` calls this on success; a surface that
+ * restores a session from storage (no `login()` call) should call it at startup.
+ *
+ * Pass the Zitadel `sub` — pseudonymous, never an email or name. No-op when no
+ * adapter is registered or the adapter omits the optional `identify`; never throws.
+ *
+ * **Process-wide.** A multi-tenant server adapter (e.g. Slack, one process for
+ * many orgs) must NOT implement `identify`/`group` — it would make the last
+ * caller's identity the default for every later event. Such adapters rely on
+ * per-event identity instead.
+ */
+export function identifyUser(distinctId: string): void {
+  const adapter = current;
+  if (!adapter?.identify) return;
+  try {
+    adapter.identify(distinctId);
+  } catch {
+    // Telemetry must never break the SDK.
+  }
+}
+
+/**
+ * Bind the current tenant for all SUBSEQUENT events (→ `adapter.group`).
+ *
+ * The group counterpart of {@link identifyUser} — see that doc for why the
+ * binding is needed, and for the multi-tenant server caveat. No-op when no
+ * adapter is registered or the adapter omits the optional `group`; never throws.
+ */
+export function setAnalyticsGroup(orgId: string): void {
+  const adapter = current;
+  if (!adapter?.group) return;
+  try {
+    adapter.group(orgId);
+  } catch {
+    // Telemetry must never break the SDK.
   }
 }
 

@@ -161,9 +161,9 @@ Never `dangerouslySetInnerHTML` / `.innerHTML =` on model output.
 | **Mixpanel** | per-surface | Product analytics — **identity = Zitadel `sub`, org as group, NO PII** (no email/name in events) |
 | **CodeQL / SAST** | optional | Deeper static analysis — enable per repo risk |
 
-**Telemetry seam is on `main` (WS9 — PDEV-6854/6855), not yet published.** The `AnalyticsAdapter` (peer of
+**Telemetry seam is on `main` (WS9 — PDEV-6854 seam + PDEV-6855 `auth_*` instrumentation), not yet published.** The `AnalyticsAdapter` (peer of
 `StorageAdapter`/`IdentityAdapter`) is exported as types from `./adapters`, with the runtime sink at
-`./analytics` (`setAnalyticsAdapter`, `trackEvent`, `trackApiError`, …) and an opt-in Mixpanel
+`./analytics` (`setAnalyticsAdapter`, `trackEvent`, `trackApiError`, `identifyUser`/`setAnalyticsGroup`, …) and an opt-in Mixpanel
 implementation at `./analytics/mixpanel` (`createMixpanelAdapter` — PII denylist + consent gate). Its taxonomy is the typed
 **`AnalyticsEventMap`** (`AnalyticsEventName = keyof AnalyticsEventMap`) — `auth_started`,
 `auth_success`, `auth_failed`, `token_refresh`, `message_send`, `stream_start`,
@@ -175,6 +175,14 @@ once a surface wires it — and the **release gate still applies**: nothing ship
 BOTH product analytics (Mixpanel) AND health telemetry (Sentry + Faro), each surface still
 registering its own adapter. When emitting `api_error`, send only `statusCode` + `endpoint` —
 **never** `responseBody` (Layer 1).
+
+⚠️ **`identify`/`group` bind process-wide — a tenant-isolation trap.** `login()` calls
+`identifyUser(profile.sub)` + `setAnalyticsGroup(profile.orgId)` on success so later
+identity-less events attribute correctly. On a **single-user** surface that is right; in a
+**multi-tenant server** process (bb-slack-integrations serves many orgs) implementing
+`identify`/`group` would make the last caller's identity the default for every subsequent event —
+cross-tenant attribution leakage. Such an adapter must implement only `track`/`captureError` and
+rely on the per-event `identity` argument; both sink helpers then no-op.
 
 **CI reality check:** `ci.yml` (lint:biome → lint:types → typecheck → test → build → check:package)
 is the real merge gate. `publish.yml` runs **only typecheck + build** on a `vX.Y.Z` tag — it does
