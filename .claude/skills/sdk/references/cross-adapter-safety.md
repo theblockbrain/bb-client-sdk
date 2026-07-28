@@ -86,7 +86,7 @@ Expect **zero** matches. React may appear only under `src/react` and `src/ui`. `
 
 ## Phase 3 — Public-API contract test workflow
 
-`src/public-api.contract.test.ts` snapshots the exported **names — values and types** — of all JS entry points (derived from `package.json` `"exports"`, not hard-coded — 13 today), against `src/__snapshots__/public-api.contract.test.ts.snap`. An undeclared surface change fails CI.
+`src/public-api.contract.test.ts` snapshots the exported **names — values and types** — of all JS entry points (derived from `package.json` `"exports"`, not hard-coded — 14 today), against `src/__snapshots__/public-api.contract.test.ts.snap`. An undeclared surface change fails CI.
 
 **When `npm test` reports a contract-snapshot diff:**
 

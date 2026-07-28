@@ -18,6 +18,10 @@
       "types": "./dist/api/index.d.ts",
       "import": "./dist/api/index.js"
     },
+    "./agentic": {
+      "types": "./dist/api/agentic/index.d.ts",
+      "import": "./dist/api/agentic/index.js"
+    },
     "./settings": {
       "types": "./dist/settings/index.d.ts",
       "import": "./dist/settings/index.js"

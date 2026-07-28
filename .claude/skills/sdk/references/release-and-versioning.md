@@ -31,9 +31,10 @@ once — treat it that way.
 ## 1. The SemVer contract for a fan-out package
 
 The public surface is the JS entry points declared in `package.json`
-`"exports"` — **13 today** (`.`, `./auth`, `./api`, `./settings`, `./utils`, `./adapters`,
-`./config`, `./prompt`, `./actions`, `./ui`, `./react`, `./analytics`, `./analytics/mixpanel`;
-the `./ui/theme-base.css` asset subpath is not a module surface). The last two are on `main`
+`"exports"` — **14 today** (`.`, `./auth`, `./api`, `./agentic`, `./settings`, `./utils`,
+`./adapters`, `./config`, `./prompt`, `./actions`, `./ui`, `./react`, `./analytics`,
+`./analytics/mixpanel`; the `./ui/theme-base.css` asset subpath is not a module surface).
+`./agentic`, `./analytics` and `./analytics/mixpanel` are on `main`
 but **not in a published release** — the newest tag, `v0.17.0`, predates them.
 Anything reachable through those
 subpaths — every exported value **and type** — is the contract. Internal files

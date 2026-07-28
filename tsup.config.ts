@@ -5,6 +5,7 @@ export default defineConfig({
     "src/index.ts",
     "src/auth/index.ts",
     "src/api/index.ts",
+    "src/api/agentic/index.ts",
     "src/settings/index.ts",
     "src/utils/index.ts",
     "src/adapters/index.ts",

@@ -152,7 +152,7 @@ Never `dangerouslySetInnerHTML` / `.innerHTML =` on model output.
 | **ESLint (type-aware)** | `lint:types` (`eslint src`) | typescript-eslint + react-hooks + `@tanstack/eslint-plugin-query`; catches unsafe patterns inference can't |
 | **publint** | `check:package` | Package/export-map correctness (ESM resolution) |
 | **attw** (`@arethetypeswrong/cli`) | `check:package` (`--profile esm-only`) | Types resolve on every entry point → **no React leaks into `./api`/`./auth`** |
-| **Public-API contract test** | `src/public-api.contract.test.ts` (+ snapshot) | Anti-breakage tripwire — an undeclared change across the entry points (13 today) fails the test |
+| **Public-API contract test** | `src/public-api.contract.test.ts` (+ snapshot) | Anti-breakage tripwire — an undeclared change across the entry points (14 today) fails the test |
 | **PKCE state-separation test** | `test/auth/pkce-state-separation.test.ts` | Verifier never in authorize URL (CWE-200). **NOTE: `bun:test`, excluded from CI (WS1)** — run manually |
 | **npm audit / Dependabot** | dependency PRs | Known-vuln deps |
 | **gitleaks (secret-scan)** | target — **not in CI yet** | Committed tokens/keys |

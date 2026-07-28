@@ -11,7 +11,7 @@ a change that breaks any one adapter is a defect.
 
 Before doing **any** work in this repo, load the base skill:
 [`.claude/skills/sdk/SKILL.md`](.claude/skills/sdk/SKILL.md). It is the authoritative
-entry point: the layer map (13 entry points today), the five prime invariants, the adapter
+entry point: the layer map (14 entry points today), the five prime invariants, the adapter
 matrix, and the per-change verification loop. Then load the task sub-skill:
 
 - [`sdk-auth`](.claude/skills/sdk-auth/SKILL.md) — PKCE / tokens / refresh / `AuthContext` (security-critical)

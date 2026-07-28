@@ -1,15 +1,14 @@
 import { type InfiniteData, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  type ApprovalResolver,
   type MessageItem,
   type MessageListBody,
-  type SendMessageOptions,
   sendMessage,
 } from "../api/index.js";
 import { bbKeys } from "./keys.js";
 import { useBBContext } from "./provider.js";
 
-type ApprovalResolver = NonNullable<SendMessageOptions["approvalResolver"]>;
 type MessagesCache = InfiniteData<MessageListBody, number>;
 
 export interface UseChatStreamArgs {

@@ -50,7 +50,7 @@ The non-2xx block is boilerplate you copy verbatim (bots.ts lines 55–66); on t
 
 - Export only the types the surfaces actually need (`interface`/`type` for request options, response body, and any enum union). No `any`; model the raw envelope with a local `Raw*` interface and map it (see `RawBot` → `Bot` in `bots.ts`, `RawTenant` in `tenant.ts`). Backends wrap payloads inconsistently (`{ body }`, `{ content }`, `{ data }`, flat array) — normalize defensively like the siblings do.
 - Re-export new public symbols from `src/api/index.ts` (values and `export type` separately, alphabetized — match the existing file).
-- **Any added/renamed/removed public export changes the public-API snapshot.** `src/public-api.contract.test.ts` snapshots the exported names (values AND types) of all entry points (13 today); an undeclared change fails CI.
+- **Any added/renamed/removed public export changes the public-API snapshot.** `src/public-api.contract.test.ts` snapshots the exported names (values AND types) of all entry points (14 today); an undeclared change fails CI.
   - Additive export → snapshot grows → intentional **minor**.
   - Rename/removal → this is a **breaking** fan-out change. Semver + consumer range-pinning means it breaks surfaces silently (the Outlook add-in once sat on `^0.7.3` for ten minor eras — the cautionary tale; it is current at `^0.17.0` now). Requires an intentional bump and a canary pass in a real consumer before `latest` (see `../sdk/references/cross-adapter-safety.md`).
   - To land an intentional change: update the snapshot with `vitest -u` **in the same PR** and call it out in the description.

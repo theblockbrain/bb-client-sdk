@@ -39,7 +39,7 @@ npm run check:package   # publint + attw --pack . --profile esm-only
 
 All must be green. Then, specifically:
 
-- [ ] **Public-API contract test passed.** `src/public-api.contract.test.ts` snapshots the exported values **and** types of all JS entry points (13 today) (snapshot: `src/__snapshots__/public-api.contract.test.ts.snap`). To inspect just it:
+- [ ] **Public-API contract test passed.** `src/public-api.contract.test.ts` snapshots the exported values **and** types of all JS entry points (14 today) (snapshot: `src/__snapshots__/public-api.contract.test.ts.snap`). To inspect just it:
   ```bash
   npx vitest run src/public-api.contract.test.ts
   ```
