@@ -1,4 +1,5 @@
 import { isTokenExpired } from "../auth/tokens.js";
+import type { BBHosts } from "../config.js";
 import { OAUTH_BACKEND_URL } from "../config.js";
 import { subFromAccessToken } from "../utils/jwt.js";
 import type { Settings } from "./schema.js";
@@ -28,6 +29,31 @@ export interface AuthContext {
    * need the Agentic path.
    */
   userId?: string;
+  /**
+   * Per-host origin overrides. Optional — each host falls back to its entry in
+   * {@link DEFAULT_HOSTS}.
+   *
+   * BlockBrain is three hosts, not one (PDEV-7332): `blocky` serves conversations
+   * and messages, `integrations` serves agents / capabilities / tenants behind a
+   * different auth pipeline, and `agentic` serves agent execution. `baseUrl` above
+   * can only express one of them, which is why `useAgents`, `useCapabilities` and
+   * `useTenantConfig` were unusable through a single provider.
+   *
+   * Supply this to point at a non-production environment — blocky-mobile runs
+   * `integrations.dev.` and `integrations.qa.` variants:
+   *
+   * ```ts
+   * const ctx = { ...base, hosts: { integrations: "https://integrations.qa.theblockbrain.ai" } };
+   * ```
+   *
+   * Origins only. Path prefixes such as {@link INTEGRATIONS_API_PREFIX} are the
+   * SDK's and survive an override.
+   *
+   * `baseUrl` is deliberately left in place rather than replaced: removing it would
+   * move all 28 API signatures and break PDEV-7337's no-signature-change rule.
+   * PDEV-7337 feeds this same record into the transport's host resolution.
+   */
+  hosts?: Partial<BBHosts>;
 }
 
 export interface OAuthTokens {

@@ -1,7 +1,12 @@
 import type { AuthContext } from "../settings/auth-mode.js";
-import { bbApiAuthHeaders, throwIfNotOk } from "./_auth-headers.js";
+import {
+  type AdminListingOptions,
+  adminListingParams,
+  bbApiAuthHeaders,
+  buildIntegrationsUrl,
+  throwIfNotOk,
+} from "./_auth-headers.js";
 import type { ApiResponse } from "./agents.js";
-import { normalizeUrl } from "./url.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -17,43 +22,28 @@ export type CapabilitiesResponse = Record<string, Capability>;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/**
- * Build a URL for the capabilities API.
- *
- * @param targetOrgId - Operation target org (i.e. ?orgId= query param).
- *   Falls back to ctx.orgId (user's home) for self-tenant operations.
- */
-function buildUrl(
-  ctx: AuthContext,
-  path: string,
-  targetOrgId: string | undefined,
-  extra: Record<string, string> = {},
-): string {
-  const base = normalizeUrl(ctx.baseUrl);
-  const params = new URLSearchParams(extra);
-  params.set("orgId", targetOrgId ?? ctx.orgId);
-  return `${base}/${path}?${params.toString()}`;
-}
-
 // ── API functions ─────────────────────────────────────────────────────────────
 
 /**
- * Fetch all capabilities for the org (includes inactive and unavailable).
- * GET /capabilities?includeInactive=true&includeUnavailable=true&orgId=...
+ * Fetch the capabilities visible to the caller.
+ * `GET {integrations}/api/v1/capabilities?orgId=...`
+ *
+ * Returns the tenant's active, available capabilities by default.
  *
  * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
  *   For cross-tenant admin calls, pass the target's orgId while ctx.orgId
  *   remains the user's home org (used for x-zitadel-org-id header auth).
+ * @param options - {@link AdminListingOptions}. **Admin-only** — `capabilityStatusRoutesV1`
+ *   carries the same `requireRole` gate as the agents route, so a non-admin token gets
+ *   a 403. PDEV-7332 described the defect on agents only; it was on both.
  */
 export async function fetchCapabilities(
   ctx: AuthContext,
   targetOrgId?: string,
+  options?: AdminListingOptions,
 ): Promise<CapabilitiesResponse> {
   const endpoint = "capabilities";
-  const url = buildUrl(ctx, endpoint, targetOrgId, {
-    includeInactive: "true",
-    includeUnavailable: "true",
-  });
+  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId, adminListingParams(options));
   const res = await fetch(url, {
     method: "GET",
     headers: bbApiAuthHeaders(ctx),
@@ -75,7 +65,7 @@ export async function setCapabilityActive(
   targetOrgId?: string,
 ): Promise<ApiResponse> {
   const endpoint = "capabilities/set-active";
-  const url = buildUrl(ctx, endpoint, targetOrgId);
+  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
   const res = await fetch(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
@@ -98,7 +88,7 @@ export async function setCapabilityAvailability(
   targetOrgId?: string,
 ): Promise<ApiResponse> {
   const endpoint = "capabilities/set-availability";
-  const url = buildUrl(ctx, endpoint, targetOrgId);
+  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
   const effectiveOrgId = targetOrgId ?? ctx.orgId;
   const res = await fetch(url, {
     method: "PATCH",

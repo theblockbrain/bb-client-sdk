@@ -6,6 +6,7 @@ import {
   useQuery,
 } from "@tanstack/react-query";
 import {
+  type AdminListingOptions,
   fetchAgents,
   fetchBotDetail,
   fetchBotList,
@@ -53,21 +54,38 @@ export function useBotDetail(botId: string) {
   return useQuery(botDetailQueryOptions(getAuthContext, orgId, botId));
 }
 
+/**
+ * Cache-key suffix for an admin listing.
+ *
+ * An admin listing returns a strictly larger set than a normal one, so the two must
+ * not share a cache entry — otherwise a normal user can read admin-populated data,
+ * or an admin's view gets overwritten by a filtered one. Only appended when a flag is
+ * actually set, so the default key shape is unchanged; prefix-based invalidation on
+ * the base key still reaches both entries.
+ */
+function listingKeySuffix(options?: AdminListingOptions): readonly AdminListingOptions[] {
+  const includeInactive = options?.includeInactive === true;
+  const includeUnavailable = options?.includeUnavailable === true;
+  return includeInactive || includeUnavailable ? [{ includeInactive, includeUnavailable }] : [];
+}
+
 // ── agents (cross-tenant aware) ───────────────────────────────────────────────────
 export function agentsQueryOptions(
   getCtx: () => AuthContext,
   homeOrgId: string,
   targetOrgId?: string,
+  options?: AdminListingOptions,
 ) {
   const scope = targetOrgId ?? homeOrgId;
   return queryOptions({
-    queryKey: bbKeys(scope).agents.list, // cached under the tenant being viewed
-    queryFn: () => fetchAgents(getCtx(), targetOrgId),
+    // cached under the tenant being viewed
+    queryKey: [...bbKeys(scope).agents.list, ...listingKeySuffix(options)],
+    queryFn: () => fetchAgents(getCtx(), targetOrgId, options),
   });
 }
-export function useAgents(targetOrgId?: string) {
+export function useAgents(targetOrgId?: string, options?: AdminListingOptions) {
   const { getAuthContext, orgId } = useBBContext();
-  return useQuery(agentsQueryOptions(getAuthContext, orgId, targetOrgId));
+  return useQuery(agentsQueryOptions(getAuthContext, orgId, targetOrgId, options));
 }
 
 // ── capabilities (cross-tenant aware) ─────────────────────────────────────────────
@@ -75,16 +93,17 @@ export function capabilitiesQueryOptions(
   getCtx: () => AuthContext,
   homeOrgId: string,
   targetOrgId?: string,
+  options?: AdminListingOptions,
 ) {
   const scope = targetOrgId ?? homeOrgId;
   return queryOptions({
-    queryKey: bbKeys(scope).capabilities.list,
-    queryFn: () => fetchCapabilities(getCtx(), targetOrgId),
+    queryKey: [...bbKeys(scope).capabilities.list, ...listingKeySuffix(options)],
+    queryFn: () => fetchCapabilities(getCtx(), targetOrgId, options),
   });
 }
-export function useCapabilities(targetOrgId?: string) {
+export function useCapabilities(targetOrgId?: string, options?: AdminListingOptions) {
   const { getAuthContext, orgId } = useBBContext();
-  return useQuery(capabilitiesQueryOptions(getAuthContext, orgId, targetOrgId));
+  return useQuery(capabilitiesQueryOptions(getAuthContext, orgId, targetOrgId, options));
 }
 
 // ── tenant config (cross-tenant aware) ─────────────────────────────────────────────
