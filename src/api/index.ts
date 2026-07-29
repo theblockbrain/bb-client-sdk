@@ -29,7 +29,11 @@ export {
   updateConversation,
   uploadConversationAttachment,
 } from "./conversations.js";
+export type { BBErrorKind } from "./errors.js";
 export { BBApiError, isBBApiError } from "./errors.js";
+// NOTE: `./transport.js` is deliberately NOT exported here. PDEV-7336 lands the
+// seam internally so it can be reviewed on its own; it becomes public when
+// PDEV-7337/7338 migrate the call sites onto it.
 export { authHeaders } from "./headers.js";
 export type { IntrospectResponse } from "./introspect.js";
 export { extractOrgIdFromIntrospect, introspectApiKey } from "./introspect.js";
