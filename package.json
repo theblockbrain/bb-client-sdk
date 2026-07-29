@@ -62,6 +62,14 @@
       "types": "./dist/analytics/mixpanel.d.ts",
       "import": "./dist/analytics/mixpanel.js"
     },
+    "./telemetry": {
+      "types": "./dist/telemetry/index.d.ts",
+      "import": "./dist/telemetry/index.js"
+    },
+    "./telemetry/cookiebot": {
+      "types": "./dist/telemetry/cookiebot.d.ts",
+      "import": "./dist/telemetry/cookiebot.js"
+    },
     "./ui/theme-base.css": "./dist/ui/theme-base.css"
   },
   "files": [

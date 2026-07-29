@@ -453,6 +453,79 @@ exports[`public API surface > exports of "./settings" are stable 1`] = `
 ]
 `;
 
+exports[`public API surface > exports of "./telemetry" are stable 1`] = `
+[
+  "AGENT_KINDS",
+  "AgentKind",
+  "BACKEND_ACTION_TYPES",
+  "BLOCKED_ACTIONS",
+  "BOT_KINDS",
+  "BackendActionType",
+  "BlockedAction",
+  "BotKind",
+  "CHAT_TOPICS",
+  "CLIENT_ROUTES",
+  "CONVERSATION_ENTRY_POINTS",
+  "CORE_EVENT_NAMES",
+  "ChatTopic",
+  "ConsentGate",
+  "ConsentSource",
+  "ConsentState",
+  "ConversationEntryPoint",
+  "CoreEventMap",
+  "CoreEventName",
+  "CoreEventProps",
+  "DENIED_PROPERTY_KEYS",
+  "EMITTERS",
+  "Emitter",
+  "INPUT_MODES",
+  "InputMode",
+  "LEGACY_EVENT_RENAMES",
+  "MIN_EVENT_SET",
+  "OUTCOMES",
+  "OWNER_PERMISSIONS",
+  "Outcome",
+  "OwnerPermission",
+  "PROMPT_SOURCES",
+  "PeopleProperties",
+  "PromptSource",
+  "RETIRED_EVENT_NAMES",
+  "Route",
+  "SIGN_IN_METHODS",
+  "SIGN_IN_STAGES",
+  "SIGN_OUT_CAUSES",
+  "SURFACES",
+  "SignInMethod",
+  "SignInStage",
+  "SignOutCause",
+  "SuperProperties",
+  "Surface",
+  "TAXONOMY_VERSION",
+  "TELEMETRY_ENVS",
+  "TOOL_KINDS",
+  "TOPIC_TAXONOMY_VERSION",
+  "TelemetryEnv",
+  "ToolKind",
+  "VOCABULARY_FINGERPRINT",
+  "coerceChatTopic",
+  "createConsentGate",
+  "createStaticConsentSource",
+  "createTogglableConsentSource",
+  "stripDeniedProperties",
+]
+`;
+
+exports[`public API surface > exports of "./telemetry/cookiebot" are stable 1`] = `
+[
+  "COOKIEBOT_EVENTS",
+  "ConsentEventTarget",
+  "CookiebotConsent",
+  "CookiebotLike",
+  "CookiebotSourceOptions",
+  "createCookiebotConsentSource",
+]
+`;
+
 exports[`public API surface > exports of "./ui" are stable 1`] = `
 [
   "MarkdownOptions",

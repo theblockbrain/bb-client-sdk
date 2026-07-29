@@ -54,6 +54,59 @@ export default tseslint.config(
     rules: { "@tanstack/query/exhaustive-deps": "off" },
   },
 
+  // ── Telemetry governance (PDEV-7011) ──
+  // The typed event map already stops an unknown event NAME at compile time, so
+  // this rule targets the three ways code can get around the type system and
+  // reach Mixpanel with an arbitrary string:
+  //
+  //   1. importing a vendor client into the SDK and calling it directly,
+  //   2. calling a `mixpanel` instance outside the one adapter that may,
+  //   3. casting a string into an event-name union.
+  //
+  // `src/analytics/mixpanel.ts` is the single legitimate integration point and is
+  // exempted below.
+  {
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+    ignores: ["src/analytics/mixpanel.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "mixpanel-browser",
+              message:
+                "Do not import a vendor analytics client here. The SDK stays provider-agnostic: describe the client structurally (see MixpanelClient in src/analytics/mixpanel.ts) and let the surface pass an instance in.",
+            },
+            {
+              name: "posthog-js",
+              message:
+                "Do not import a vendor analytics client here. Emit through the typed seam so one taxonomy governs every surface.",
+            },
+          ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: 'CallExpression[callee.object.name="mixpanel"]',
+          message:
+            "Do not call a Mixpanel client directly — it bypasses the typed taxonomy and the PII denylist. Emit via trackEvent() from ./analytics, whose event names are checked against src/telemetry/taxonomy.ts.",
+        },
+        {
+          selector: 'TSAsExpression > TSTypeReference > Identifier[name="CoreEventName"]',
+          message:
+            "Do not cast to CoreEventName. The cast launders an unchecked string into the event union, which is exactly what the typed map exists to prevent. Add the event to CoreEventMap instead.",
+        },
+        {
+          selector: 'TSAsExpression > TSTypeReference > Identifier[name="AnalyticsEventName"]',
+          message:
+            "Do not cast to AnalyticsEventName. Add the event to AnalyticsEventMap (and give it a canonical name in LEGACY_EVENT_RENAMES) instead of casting past the type.",
+        },
+      ],
+    },
+  },
+
   // Tests legitimately use `any`, non-null assertions, and loose typing
   {
     files: ["src/**/*.test.{ts,tsx}"],
