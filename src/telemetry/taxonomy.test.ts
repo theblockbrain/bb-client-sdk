@@ -8,14 +8,18 @@ import {
   coerceChatTopic,
   DENIED_PROPERTY_KEYS,
   EMITTERS,
+  ERROR_SCOPES,
   INPUT_MODES,
   LEGACY_EVENT_RENAMES,
+  LEGACY_RENAME_TARGETS,
+  MESSAGE_FAILED_STAGES,
   MIN_EVENT_SET,
   PROMPT_SOURCES,
   RETIRED_EVENT_NAMES,
   SIGN_IN_METHODS,
   SIGN_IN_STAGES,
   SIGN_OUT_CAUSES,
+  STREAM_DROP_REASONS,
   SURFACES,
   stripDeniedProperties,
   TELEMETRY_ENVS,
@@ -53,6 +57,9 @@ describe("wire naming", () => {
       ...SIGN_IN_METHODS,
       ...SIGN_IN_STAGES,
       ...SIGN_OUT_CAUSES,
+      ...MESSAGE_FAILED_STAGES,
+      ...STREAM_DROP_REASONS,
+      ...ERROR_SCOPES,
       ...INPUT_MODES,
       ...PROMPT_SOURCES,
       ...CONVERSATION_ENTRY_POINTS,
@@ -72,6 +79,9 @@ describe("wire naming", () => {
       SIGN_IN_METHODS,
       SIGN_IN_STAGES,
       SIGN_OUT_CAUSES,
+      MESSAGE_FAILED_STAGES,
+      STREAM_DROP_REASONS,
+      ERROR_SCOPES,
       INPUT_MODES,
       PROMPT_SOURCES,
       CONVERSATION_ENTRY_POINTS,
@@ -147,8 +157,17 @@ describe("the min-event-set", () => {
 describe("the legacy rename map", () => {
   it("every target exists in the core catalog", () => {
     const core = new Set<string>(CORE_EVENT_NAMES);
-    const bad = Object.entries(LEGACY_EVENT_RENAMES).filter(([, to]) => !core.has(to));
-    expect(bad).toEqual([]);
+    expect(LEGACY_RENAME_TARGETS.filter(to => !core.has(to))).toEqual([]);
+  });
+
+  it("splits token_refresh into both halves of its boolean", () => {
+    // The one fan-out in the map. If a future edit flattens it back to a single
+    // target, session_token_refresh_failed silently stops being renamed.
+    expect(LEGACY_EVENT_RENAMES.token_refresh).toEqual({
+      success: "session_token_refreshed",
+      failure: "session_token_refresh_failed",
+    });
+    expect(LEGACY_RENAME_TARGETS).toContain("session_token_refresh_failed");
   });
 
   it("covers every event currently declared on the seam", () => {
@@ -163,9 +182,8 @@ describe("the legacy rename map", () => {
   });
 
   it("does not resurrect a retired name", () => {
-    const targets = Object.values<string>(LEGACY_EVENT_RENAMES);
     for (const retired of RETIRED_EVENT_NAMES) {
-      expect(targets).not.toContain(retired);
+      expect(LEGACY_RENAME_TARGETS as readonly string[]).not.toContain(retired);
       expect(CORE_EVENT_NAMES as readonly string[]).not.toContain(retired);
     }
   });
@@ -218,6 +236,33 @@ describe("stripDeniedProperties", () => {
     const props = { route: "chat", email: "a@b.c" };
     stripDeniedProperties(props);
     expect(props.email).toBe("a@b.c");
+  });
+
+  it("denies a key whose case differs from the denylist entry", () => {
+    // A bag built from somewhere else does not have to match our spelling for the
+    // value behind the key to be PII.
+    const out = stripDeniedProperties({ route: "chat", Email: "a@b.c", PHONE: "+1", $Name: "x" });
+    expect(out).toEqual({ route: "chat" });
+  });
+
+  it("denies the camelCase spelling of a snake_case denied key", () => {
+    // The denylist is snake_case because the wire format is, but the rest of the
+    // SDK is camelCase — so this is the spelling a real leak arrives in.
+    const out = stripDeniedProperties({
+      route: "chat",
+      displayName: "Ada",
+      fullName: "Ada L",
+      fileName: "q3.pdf",
+      messageText: "secret",
+    });
+    expect(out).toEqual({ route: "chat" });
+  });
+
+  it("keeps a safe key that merely shares a prefix with a denied one", () => {
+    // The guard is exact-match on the folded key, not substring — over-stripping
+    // is tolerable but it must not be unbounded.
+    const props = { prompt_source: "template", owner_permission: "member", topic_name_id: "x" };
+    expect(stripDeniedProperties(props)).toEqual(props);
   });
 
   it("denies the Mixpanel reserved identity properties by name", () => {

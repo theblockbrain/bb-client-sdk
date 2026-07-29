@@ -120,6 +120,56 @@ export const SIGN_IN_STAGES = ["launch", "parse", "exchange"] as const;
 export type SignInStage = (typeof SIGN_IN_STAGES)[number];
 
 /**
+ * Coarse phase of a failed turn — the counterpart to {@link SIGN_IN_STAGES}.
+ *
+ * Closed for the same reason that one is: `stage` is the field a caught error's
+ * `.message` lands in when the type permits it, and the "no free text" invariant
+ * cannot be enforced by review alone. `send` is a request that never landed,
+ * `stream` a mid-stream death, `parse` an unreadable response, `cancelled` a user
+ * abort — which is a real drop-off reason and must not be counted as a defect.
+ */
+export const MESSAGE_FAILED_STAGES = ["send", "stream", "parse", "cancelled"] as const;
+export type MessageFailedStage = (typeof MESSAGE_FAILED_STAGES)[number];
+
+/**
+ * Why a stream ended abnormally.
+ *
+ * Closed so a drop-rate breakdown is groupable at all: free text produces one
+ * bucket per error string and the panel becomes unreadable. `client_abort` is
+ * separated from the true failures because a user navigating away is not a
+ * reliability defect and must not inflate the drop rate.
+ */
+export const STREAM_DROP_REASONS = [
+  "network",
+  "timeout",
+  "server_error",
+  "parse_error",
+  "client_abort",
+  "unknown",
+] as const;
+export type StreamDropReason = (typeof STREAM_DROP_REASONS)[number];
+
+/**
+ * Which subsystem surfaced a handled error. Mirrors the SDK's own layer map so a
+ * Mixpanel breakdown and a Sentry tag group by the same word.
+ *
+ * `unknown` exists deliberately: without an escape hatch the pressure is to cast
+ * past the union, which is what the lint rule forbids and what this closed set is
+ * for.
+ */
+export const ERROR_SCOPES = [
+  "auth",
+  "api",
+  "stream",
+  "storage",
+  "upload",
+  "consent",
+  "ui",
+  "unknown",
+] as const;
+export type ErrorScope = (typeof ERROR_SCOPES)[number];
+
+/**
  * Why a session ended.
  *
  * Closed rather than free text: an expiry and a deliberate sign-out look identical in
@@ -296,12 +346,13 @@ export interface CoreEventMap {
     model?: string;
     reference_count?: number;
   };
-  message_failed: { route: Route; stage?: string; error_code?: string };
+  /** `stage` is a coarse phase label. Never error detail. */
+  message_failed: { route: Route; stage?: MessageFailedStage; error_code?: string };
 
   // ── stream health ──
   stream_started: { route: Route; request_id?: string; conversation_id?: string };
   stream_stalled: { route: Route; request_id?: string; stall_ms: number };
-  stream_dropped: { route: Route; reason?: string };
+  stream_dropped: { route: Route; reason?: StreamDropReason };
   stream_reconnect: { route: Route; attempt: number };
 
   // ── errors ──
@@ -311,7 +362,7 @@ export interface CoreEventMap {
    * crashes and stack traces belong to Sentry.
    */
   error_raised: {
-    scope: string;
+    scope: ErrorScope;
     error_code?: string;
     request_id?: string;
     is_blocking?: boolean;
@@ -409,19 +460,49 @@ export function coerceChatTopic(value: unknown): ChatTopic {
 }
 
 /**
+ * Fold a property key to the form the denylist is matched against: lowercase,
+ * with separators removed.
+ *
+ * The denylist is written in the snake_case the wire format mandates, but the bag
+ * this guard exists to catch is the one built dynamically from somewhere else —
+ * and the rest of the SDK is camelCase (`latencyMs`, `conversationId`). A
+ * literal comparison therefore denies `display_name` while waving `displayName`,
+ * `DisplayName`, and `Display_Name` straight through, which is the opposite of a
+ * denylist's job. Folding both sides means one entry covers every spelling.
+ */
+function foldPropertyKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Denied keys pre-folded, built once. A per-call `new Set` is wasted allocation
+ * on a function that runs on every event.
+ */
+const DENIED_PROPERTY_KEY_SET: ReadonlySet<string> = new Set(
+  DENIED_PROPERTY_KEYS.map(foldPropertyKey),
+);
+
+/**
  * Strip denied keys from a property bag.
  *
  * Belt-and-braces with the type system: the typed event map already prevents a
  * declared PII property, but a surface building props dynamically (spreading an
  * API response, say) can still smuggle one in. Runs at the seam so no call site
  * has to remember.
+ *
+ * Matching is case- and separator-insensitive (see {@link foldPropertyKey}), so
+ * `email`, `Email`, `display_name` and `displayName` are all denied by the one
+ * entry. Over-stripping a safe key is an acceptable trade for never leaking a
+ * PII one — no property here is load-bearing enough to justify the inverse.
  */
 export function stripDeniedProperties<T extends Record<string, unknown>>(props: T): Partial<T> {
-  const denied = new Set<string>(DENIED_PROPERTY_KEYS);
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(props)) {
-    // Mixpanel reserves the `$` and `mp_` prefixes for its own properties.
-    if (denied.has(key) || key.startsWith("$") || key.startsWith("mp_")) continue;
+    // Mixpanel reserves the `$` and `mp_` prefixes for its own properties. Checked
+    // on the lowercased key, not the folded one — folding would eat the `_` in `mp_`.
+    const lowered = key.toLowerCase();
+    if (lowered.startsWith("$") || lowered.startsWith("mp_")) continue;
+    if (DENIED_PROPERTY_KEY_SET.has(foldPropertyKey(key))) continue;
     out[key] = value;
   }
   return out as Partial<T>;
@@ -430,6 +511,20 @@ export function stripDeniedProperties<T extends Record<string, unknown>>(props: 
 // ─────────────────────────────────────────────────────────────────────────────
 // Migration off the pre-standard names
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A legacy event whose boolean outcome flag fans out into a success/failure pair
+ * of canonical events.
+ *
+ * `token_refresh: { ok: boolean }` is the only one today. A boolean discriminator
+ * does not read as a funnel step in Mixpanel — you cannot put "the false half of
+ * `session_token_refreshed`" into an ordered list of names — so the split happens
+ * at the rename rather than being carried forward as a property.
+ */
+export interface SplitRename {
+  success: CoreEventName;
+  failure: CoreEventName;
+}
 
 /**
  * The rename PDEV-7009 has to execute on the existing `AnalyticsEventMap`.
@@ -445,12 +540,18 @@ export function stripDeniedProperties<T extends Record<string, unknown>>(props: 
  *
  * Note `token_refresh` maps to TWO events: its boolean `ok` becomes a success and
  * a failure event, because a boolean discriminator does not read as a funnel step.
+ * That fan-out is encoded as a {@link SplitRename} rather than described in prose,
+ * so the failure target is data the tests can check — a 1→1 map plus a comment is
+ * exactly how `session_token_refresh_failed` gets dropped during the rename.
  */
 export const LEGACY_EVENT_RENAMES = {
   auth_started: "sign_in_started",
   auth_success: "sign_in_completed",
   auth_failed: "sign_in_failed",
-  token_refresh: "session_token_refreshed",
+  token_refresh: {
+    success: "session_token_refreshed",
+    failure: "session_token_refresh_failed",
+  },
   message_send: "message_sent",
   stream_start: "stream_started",
   stream_first_token: "message_first_token",
@@ -458,7 +559,17 @@ export const LEGACY_EVENT_RENAMES = {
   stream_dropped: "stream_dropped",
   stream_reconnect: "stream_reconnect",
   api_error: "api_error",
-} as const satisfies Record<string, CoreEventName>;
+} as const satisfies Record<string, CoreEventName | SplitRename>;
+
+/**
+ * Every canonical name {@link LEGACY_EVENT_RENAMES} points at, flattened.
+ *
+ * Derived rather than hand-listed so a split target cannot be present in the map
+ * and absent from what the drift tests check.
+ */
+export const LEGACY_RENAME_TARGETS: readonly CoreEventName[] = Object.values<
+  CoreEventName | SplitRename
+>(LEGACY_EVENT_RENAMES).flatMap(to => (typeof to === "string" ? [to] : [to.success, to.failure]));
 
 /**
  * Names that appeared in an earlier design document and must NOT be used.
