@@ -38,6 +38,10 @@
       "types": "./dist/adapters/index.d.ts",
       "import": "./dist/adapters/index.js"
     },
+    "./adapters/office": {
+      "types": "./dist/adapters/office.d.ts",
+      "import": "./dist/adapters/office.js"
+    },
     "./config": {
       "types": "./dist/config.d.ts",
       "import": "./dist/config.js"

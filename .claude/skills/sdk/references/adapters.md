@@ -102,4 +102,4 @@ Grouped by the invariants they enforce (**A** framework-agnostic core, **B** no 
 - **Canary before `latest`**: `canary.yml` (label `release:canary`). Note the publish gap — `publish.yml` runs only typecheck + build, **not** test/lint/`check:package`; `ci.yml` on `main` is the safety net (target SLO E2: CI + publish both gated on tests).
 - **Telemetry / event taxonomy** (the canonical `AnalyticsEvent` union, identity model, release gate): `references/telemetry-release-gate.md`.
 - **Org code-style baseline** (import order, no `any`, early returns, error handling, verification checklist): the org **Code Cleanup & Refactoring** standard.
-- **React layer honest gaps** (cancellation, missing hook tests, legacy `bun:test` at `test/auth/pkce-state-separation.test.ts:7`): `docs/react-layer.md`.
+- **React layer honest gaps** (cancellation, missing hook tests): `docs/react-layer.md`. The `bun:test` legacy is gone — the PKCE state-separation test is now `src/auth/pkce.test.ts` and runs in CI (PDEV-7684).

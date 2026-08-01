@@ -10,6 +10,7 @@ export default defineConfig({
     "src/utils/index.ts",
     "src/text/index.ts",
     "src/adapters/index.ts",
+    "src/adapters/office.ts",
     "src/config.ts",
     "src/ui/index.ts",
     "src/react/index.ts",
