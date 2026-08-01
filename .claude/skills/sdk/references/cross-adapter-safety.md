@@ -38,8 +38,8 @@ Answer each question. Any "yes" pulls in the linked phase's checks. Cheap change
 
 | # | Does the change touch… | How to tell | If yes → required |
 |---|---|---|---|
-| 1 | a **public export**? | edits a file re-exported from any `src/**/index.ts` behind a `package.json` `"exports"` subpath (`.`, `./auth`, `./api`, `./settings`, `./utils`, `./adapters`, `./config`, `./prompt`, `./actions`, `./ui`, `./react`) | **Phase 3** (contract test + semver) **and** **Phase 4** (canary) |
-| 2 | the **framework-agnostic core**? | edits under `src/api` `src/auth` `src/settings` `src/utils` `src/adapters` `src/prompt` `src/actions` `src/config.ts` | **Phase 2** (runtime audit). Invariant A: core must import **zero React**. |
+| 1 | a **public export**? | edits a file re-exported from any `src/**/index.ts` behind a `package.json` `"exports"` subpath (`.`, `./auth`, `./api`, `./settings`, `./text`, `./utils`, `./adapters`, `./adapters/office`, `./config`, `./ui`, `./react`) | **Phase 3** (contract test + semver) **and** **Phase 4** (canary) |
+| 2 | the **framework-agnostic core**? | edits under `src/api` `src/auth` `src/settings` `src/text` `src/utils` `src/adapters` `src/config.ts` | **Phase 2** (runtime audit). Invariant A: core must import **zero React**. |
 | 3 | **auth**? | `src/auth/*`, `src/settings/auth-mode.ts`, `src/config.ts` OAuth constants | **Phase 2** + auth sub-checks below + **Phase 5** (auth-flow column) |
 | 4 | **streaming / transport**? | `src/api/messages.ts`, `stream-result.ts`, `blocky-sse.ts`, `src/api/agentic/sse.ts`, any `fetch(`/`getReader`/`ReadableStream` | **Phase 2** (transport seam) + **Phase 5** (streaming column) |
 | 5 | **types only**? | `export type` / `interface` change, no runtime code | **Phase 3** — the contract test snapshots **types too** (`./adapters` is entirely `export type`), so a type change still trips it. Decide semver. |
@@ -60,7 +60,7 @@ The core must not assume the browser. No direct `window`/`document`/`localStorag
 
 ```bash
 grep -rnE '\b(window|document|localStorage|sessionStorage|navigator|EventSource)\b|crypto\.subtle|\bfetch\(' \
-  src/api src/auth src/settings src/utils src/adapters src/prompt src/actions src/config.ts
+  src/api src/auth src/settings src/text src/utils src/adapters src/config.ts
 ```
 
 Compare against the **known/sanctioned** hits. A hit **not** on this list is a defect — reroute it through an adapter or capability check.
@@ -77,7 +77,7 @@ Compare against the **known/sanctioned** hits. A hit **not** on this list is a d
 
 ```bash
 grep -rnE "from ['\"]react|from ['\"]@tanstack/react-query|useState|useEffect" \
-  src/api src/auth src/settings src/utils src/adapters src/prompt src/actions src/config.ts
+  src/api src/auth src/settings src/text src/utils src/adapters src/config.ts
 ```
 
 Expect **zero** matches. React may appear only under `src/react` and `src/ui`. `check:package` (attw/publint) verifies `./api` and `./auth` tree-shake with no React in the graph; keep it that way.

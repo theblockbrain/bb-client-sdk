@@ -1,5 +1,5 @@
+import { subFromAccessToken } from "../auth/jwt-claims.js";
 import type { AuthContext } from "../settings/auth-mode.js";
-import { subFromAccessToken } from "../utils/jwt.js";
 import type { ApprovalResolver } from "./agentic/client.js";
 import { callAgenticStream, denyAllResolver } from "./agentic/client.js";
 import { parseBlockySseStream } from "./blocky-sse.js";

@@ -1,8 +1,8 @@
 import type { IdentityAdapter } from "../adapters/identity.js";
 import { identifyUser, setAnalyticsGroup, trackEvent } from "../analytics/index.js";
 import { AUTH_SCOPES, AUTHORIZE_ENDPOINT, TOKEN_ENDPOINT } from "../config.js";
-import type { Profile } from "./jwt.js";
-import { extractProfile } from "./jwt.js";
+import type { Profile } from "./jwt-claims.js";
+import { extractProfile } from "./jwt-claims.js";
 import { generateChallenge, generateStateNonce, generateVerifier } from "./pkce.js";
 import type { TokenResult } from "./tokens.js";
 import { computeExpiration, exchangeCode } from "./tokens.js";

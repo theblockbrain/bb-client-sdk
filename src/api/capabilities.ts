@@ -6,19 +6,26 @@ import {
   buildIntegrationsUrl,
   throwIfNotOk,
 } from "./_auth-headers.js";
-import type { ApiResponse } from "./agents.js";
+import type { MutationAckResponse } from "./mutation-ack.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface Capability {
+/**
+ * A tenant's on/off switches for one capability.
+ *
+ * Renamed from `Capability` (PDEV-7684), for the same reason as {@link AgentSwitch}:
+ * Botticelli's `@botticelli/capabilities` uses "capability" for the grantable RBAC
+ * primitive, and this is the admin toggle for one — not the same noun.
+ */
+export interface CapabilitySwitch {
   id: string;
   name: string;
   active: boolean;
   available: boolean;
 }
 
-/** API response shape: Record<capabilityId, Capability> */
-export type CapabilitiesResponse = Record<string, Capability>;
+/** Switch state keyed by capability id. */
+export type CapabilitySwitchesResponse = Record<string, CapabilitySwitch>;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -41,7 +48,7 @@ export async function fetchCapabilities(
   ctx: AuthContext,
   targetOrgId?: string,
   options?: AdminListingOptions,
-): Promise<CapabilitiesResponse> {
+): Promise<CapabilitySwitchesResponse> {
   const endpoint = "capabilities";
   const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId, adminListingParams(options));
   const res = await fetch(url, {
@@ -49,7 +56,7 @@ export async function fetchCapabilities(
     headers: bbApiAuthHeaders(ctx),
   });
   await throwIfNotOk(res, endpoint);
-  return res.json() as Promise<CapabilitiesResponse>;
+  return res.json() as Promise<CapabilitySwitchesResponse>;
 }
 
 /**
@@ -63,7 +70,7 @@ export async function setCapabilityActive(
   capabilityId: string,
   active: boolean,
   targetOrgId?: string,
-): Promise<ApiResponse> {
+): Promise<MutationAckResponse> {
   const endpoint = "capabilities/set-active";
   const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
   const res = await fetch(url, {
@@ -72,7 +79,7 @@ export async function setCapabilityActive(
     body: JSON.stringify({ capabilityId, active }),
   });
   await throwIfNotOk(res, endpoint);
-  return res.json() as Promise<ApiResponse>;
+  return res.json() as Promise<MutationAckResponse>;
 }
 
 /**
@@ -86,7 +93,7 @@ export async function setCapabilityAvailability(
   capabilityId: string,
   available: boolean,
   targetOrgId?: string,
-): Promise<ApiResponse> {
+): Promise<MutationAckResponse> {
   const endpoint = "capabilities/set-availability";
   const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
   const effectiveOrgId = targetOrgId ?? ctx.orgId;
@@ -96,5 +103,5 @@ export async function setCapabilityAvailability(
     body: JSON.stringify({ capabilityId, available, orgId: effectiveOrgId }),
   });
   await throwIfNotOk(res, endpoint);
-  return res.json() as Promise<ApiResponse>;
+  return res.json() as Promise<MutationAckResponse>;
 }

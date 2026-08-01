@@ -1,5 +1,5 @@
 import { AUTH_SCOPES, AUTHORIZE_ENDPOINT, TOKEN_ENDPOINT } from "../config.js";
-import { extractProfile } from "./jwt.js";
+import { extractProfile } from "./jwt-claims.js";
 import type { LoginResult } from "./login.js";
 import { generateChallenge, generateStateNonce, generateVerifier } from "./pkce.js";
 import { computeExpiration, exchangeCode } from "./tokens.js";

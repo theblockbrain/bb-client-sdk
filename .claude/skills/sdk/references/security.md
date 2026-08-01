@@ -112,7 +112,7 @@ Everything coming back from a model, a tool, or a user is hostile until proven o
 |---|---|
 | **`extractJson` NEVER throws.** LLM JSON is malformed constantly; the parser returns `T \| null` and best-effort-repairs unescaped quotes. Callers **must handle `null`** — never assume a parse. | `extractJson` / `repairUnescapedQuotes` in `src/utils/extract-json.ts` |
 | **Markdown rendering is XSS-safe by construction.** `renderMarkdown` builds a `DocumentFragment` with `createElement`/`createTextNode` — it **never `innerHTML`s raw input**. Raw HTML blocks and images are dropped. Links are validated with `new URL()` against a protocol allowlist (`https:`/`http:`/`mailto:`); `javascript:` and other schemes render as plain text. `markdownToHtml`'s single `innerHTML` read serializes a DOM the SDK built itself — safe. | `src/ui/markdown.ts` (`./ui` — React/DOM only) |
-| **Validate tool / action output** before acting on it — same posture as `extractJson`: parse defensively, handle the failure branch, never `eval`. | `src/actions/runner.ts`, `src/prompt/parse-response.ts` |
+| **Validate tool / action output** before acting on it — same posture as `extractJson`: parse defensively, handle the failure branch, never `eval`. | `src/text/extract-json.ts`; the `./actions` + `./prompt` runners were removed in 0.18.0 (PDEV-7684) |
 
 **Adapter obligation:** if you render assistant output yourself (custom UI, a non-React surface
 like Lit/blocky-chat, or Slack Block Kit), you must apply the same discipline — go through

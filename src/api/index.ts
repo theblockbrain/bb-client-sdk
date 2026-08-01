@@ -8,12 +8,12 @@ export type { AdminListingOptions } from "./_auth-headers.js";
 // 26 symbols would only add drift. Also published directly as the `./agentic`
 // subpath, so a non-React surface can take the protocol without the rest of ./api.
 export * from "./agentic/index.js";
-export type { Agent, AgentsResponse, ApiResponse } from "./agents.js";
+export type { AgentSwitch, AgentSwitchesResponse } from "./agents.js";
 // ── Feature-switches / admin config ──────────────────────────────────────────
 export { fetchAgents, setAgentActive, setAgentAvailability } from "./agents.js";
 export type { Bot, BotDetail } from "./bots.js";
 export { fetchBotDetail, fetchBotList } from "./bots.js";
-export type { CapabilitiesResponse, Capability } from "./capabilities.js";
+export type { CapabilitySwitch, CapabilitySwitchesResponse } from "./capabilities.js";
 export {
   fetchCapabilities,
   setCapabilityActive,
@@ -49,6 +49,7 @@ export type {
   SendMessageStreamOptions,
 } from "./messages.js";
 export { getMessageList, invalidateConvoDetailCache, sendMessage } from "./messages.js";
+export type { MutationAckResponse } from "./mutation-ack.js";
 export type { CreateNoteParams, NoteResult } from "./notes.js";
 export { createNote } from "./notes.js";
 export type { MessageStream } from "./stream-result.js";

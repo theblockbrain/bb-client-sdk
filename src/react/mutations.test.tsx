@@ -2,7 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api/index.js";
-import { type AgentsResponse, BBApiError } from "../api/index.js";
+import { type AgentSwitchesResponse, BBApiError } from "../api/index.js";
 import { bbKeys } from "./keys.js";
 import { useDeleteConversation, useSetAgentActive } from "./mutations.js";
 import { makeWrapper } from "./test-harness.js";
@@ -23,7 +23,7 @@ describe("useSetAgentActive", () => {
   it("optimistically flips active, then rolls back when the request fails", async () => {
     const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
     const key = bbKeys("org-1").agents.list;
-    client.setQueryData<AgentsResponse>(key, {
+    client.setQueryData<AgentSwitchesResponse>(key, {
       a1: { id: "a1", name: "A", active: false, available: true },
     });
 
@@ -42,13 +42,17 @@ describe("useSetAgentActive", () => {
     });
 
     // onMutate writes the optimistic value while the request is pending…
-    await waitFor(() => expect(client.getQueryData<AgentsResponse>(key)!.a1.active).toBe(true));
+    await waitFor(() =>
+      expect(client.getQueryData<AgentSwitchesResponse>(key)!.a1.active).toBe(true),
+    );
 
     // …and onError rolls it back once the request rejects.
     act(() => {
       rejectRequest(new BBApiError("boom", 500));
     });
-    await waitFor(() => expect(client.getQueryData<AgentsResponse>(key)!.a1.active).toBe(false));
+    await waitFor(() =>
+      expect(client.getQueryData<AgentSwitchesResponse>(key)!.a1.active).toBe(false),
+    );
   });
 });
 
