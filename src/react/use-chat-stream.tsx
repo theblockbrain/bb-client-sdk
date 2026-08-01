@@ -52,10 +52,15 @@ function insertLiveMessage(
  *     the messages infinite-query cache;
  *   - on `final`, ownership transfers from local state to the cache in one commit.
  *
- * Cancellation is best-effort today: the SDK does not yet thread an AbortSignal
- * through `sendMessage`, so `stop()` bumps a run-id (so a late `final` is ignored)
- * and stops consuming. The `signal` line is written and commented for a one-line
- * enable once the transport seam (WS2) lands.
+ * `stop()` really cancels (PDEV-7339). The controller's signal is threaded through
+ * `sendMessage` into the transport, so aborting ends the in-flight request rather
+ * than merely abandoning it. The run-id guard stays: it covers the window between
+ * an abort and the request actually unwinding, and a late `final` writing to the
+ * cache would be data corruption, not just noise.
+ *
+ * The post-stop `invalidateQueries` also stays. It reconciles the optimistic user
+ * message against server truth — the server may well have persisted the turn
+ * before the abort reached it, so "cancelled" client-side is not "did not happen".
  */
 export function useChatStream({
   convoId,
@@ -157,7 +162,7 @@ export function useChatStream({
         const stream = await sendMessage(getAuthContext(), convoId, content, {
           enableStreaming: true,
           approvalResolver,
-          // signal: controller.signal,  // ← enable once the SDK threads AbortSignal (WS2)
+          signal: controller.signal,
         });
 
         for await (const delta of stream.textDeltas) {

@@ -1,3 +1,8 @@
+import {
+  createFetchTransport,
+  type Transporter,
+  type TransportResponse,
+} from "../api/transport.js";
 import { TOKEN_ENDPOINT } from "../config.js";
 
 export interface TokenResult {
@@ -22,6 +27,8 @@ export async function exchangeCode(
   redirectUri: string,
   clientId: string,
   tokenEndpoint = TOKEN_ENDPOINT,
+  /** Optional transport (PDEV-7339). Defaults to `fetch` at the endpoint's origin. */
+  transport?: Transporter,
 ): Promise<TokenResult> {
   const params = new URLSearchParams({
     grant_type: "authorization_code",
@@ -31,18 +38,48 @@ export async function exchangeCode(
     code_verifier: verifier,
   });
 
-  const res = await fetch(tokenEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString(),
-  });
+  const res = await postToken(tokenEndpoint, params, transport);
 
   if (!res.ok) {
     const text = await res.text().catch(() => res.status.toString());
     throw new Error(`Token exchange failed: ${text}`);
   }
 
-  return (await res.json()) as TokenResult;
+  return res.json<TokenResult>();
+}
+
+/**
+ * POST a form-encoded grant to the token endpoint, through the transport.
+ *
+ * Auth runs **before** an `AuthContext` exists — `exchangeCode` is what produces
+ * one — so the transport cannot ride on `ctx` the way every `./api` call does.
+ * It arrives as a parameter instead (PDEV-7339). Never a module singleton: that
+ * is process-wide mutable state, and it is what disqualified the same shape for
+ * the API transport.
+ *
+ * Why route auth through the seam at all, when a plain `fetch` POST works in
+ * every runtime including React Native: `b2b-webcomponents` rewrites every
+ * request to `${PROXY_URL}/wc/proxy${pathname}`. A token call on bare `fetch`
+ * skips that rewrite — and skips the timeout, retry and custom headers every
+ * other call gets. Auth is the last call that should be on its own code path.
+ *
+ * `tokenEndpoint` stays an absolute URL in the public signature so no caller has
+ * to change; it is split into the `auth` host and a path here.
+ */
+async function postToken(
+  tokenEndpoint: string,
+  params: URLSearchParams,
+  transport: Transporter | undefined,
+): Promise<TransportResponse> {
+  const endpoint = new URL(tokenEndpoint);
+  const send = transport ?? createFetchTransport({ hosts: { auth: endpoint.origin } });
+  return send.send({
+    host: "auth",
+    path: endpoint.pathname,
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
 }
 
 /**
@@ -61,6 +98,8 @@ export async function refreshTokens(
   refreshToken: string,
   clientId: string,
   tokenEndpoint = TOKEN_ENDPOINT,
+  /** Optional transport (PDEV-7339). Defaults to `fetch` at the endpoint's origin. */
+  transport?: Transporter,
 ): Promise<TokenResult> {
   const params = new URLSearchParams({
     grant_type: "refresh_token",
@@ -68,19 +107,16 @@ export async function refreshTokens(
     refresh_token: refreshToken,
   });
 
-  const res = await fetch(tokenEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString(),
-  });
+  const res = await postToken(tokenEndpoint, params, transport);
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    // Status only — the body of a failed token call can echo the grant.
     console.error("[auth] refreshTokens failed:", res.status, text);
     throw new Error(`Token refresh failed: ${res.status}`);
   }
 
-  return (await res.json()) as TokenResult;
+  return res.json<TokenResult>();
 }
 
 /** Compute the expiration timestamp (ms) from an expires_in value (seconds). */

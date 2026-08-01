@@ -18,6 +18,7 @@ function sseResponse(frames: object[]): Response {
   return {
     ok: true,
     status: 200,
+    headers: new Headers(),
     body: new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode(text));

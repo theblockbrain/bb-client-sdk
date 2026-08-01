@@ -84,7 +84,7 @@ export const INTEGRATIONS_API_PREFIX = "/api/v1";
  * `AuthContext.hosts` without importing from `./api` — `src/api` already depends on
  * `src/settings`, and `src/config` is the leaf both can reach.
  */
-export type BBHost = "blocky" | "integrations" | "agentic";
+export type BBHost = "blocky" | "integrations" | "agentic" | "auth";
 
 export type BBHosts = Readonly<Record<BBHost, string>>;
 
@@ -97,4 +97,11 @@ export const DEFAULT_HOSTS: BBHosts = {
   blocky: OAUTH_BACKEND_URL,
   integrations: INTEGRATIONS_BASE_URL,
   agentic: AGENTIC_BASE_URL,
+  // The Zitadel authority. A host like any other (PDEV-7339), not a special
+  // case: self-hosted deployments run their own, and Zitadel's Hosted Login v2
+  // introduces a custom base URL. Modelling it as a host rather than letting
+  // token calls pass absolute URLs is what keeps b2b's proxy rewrite — and every
+  // adapter's timeout, retry and custom headers — covering auth too. Auth is the
+  // call you least want on a different code path from everything else.
+  auth: AUTH_AUTHORITY,
 };

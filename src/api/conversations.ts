@@ -1,9 +1,8 @@
 import type { AuthContext } from "../settings/auth-mode.js";
-import { requestJson } from "./_send.js";
+import { request, requestJson, throwIfNotOk } from "./_send.js";
 import { fetchBotDetail } from "./bots.js";
 import { BBApiError } from "./errors.js";
 import { authHeaders } from "./headers.js";
-import { normalizeUrl } from "./url.js";
 import type { WebSearchConfig, WebSearchType } from "./websearch.js";
 
 // ─── getConversationDetail ─────────────────────────────────────────────────────
@@ -103,34 +102,13 @@ export async function createConversation(
     // Non-fatal: proceed without agent — Blocky routing applies
   }
 
-  const endpoint = `/cortex/active-bot/${encodeURIComponent(botId)}/convo`;
-  const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}${endpoint}`, {
+  const data = await requestJson<ConversationResponse>(ctx, {
+    host: "blocky",
+    path: `/cortex/active-bot/${encodeURIComponent(botId)}/convo`,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(ctx.token, ctx.orgId),
-    },
-    body: JSON.stringify({
-      convoName,
-      ...(agentId !== null && { agent: agentId }),
-    }),
+    headers: { "Content-Type": "application/json", ...authHeaders(ctx.token, ctx.orgId) },
+    body: JSON.stringify({ convoName, ...(agentId !== null && { agent: agentId }) }),
   });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
-
-  const data = (await res.json()) as ConversationResponse;
   return { convoId: data.body.dataRoomId };
 }
 
@@ -142,25 +120,14 @@ export async function createConversation(
  * DELETE /cortex/conversation/:convoId
  */
 export async function deleteConversation(ctx: AuthContext, convoId: string): Promise<void> {
-  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}`;
-  const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}${endpoint}`, {
+  const path = `/cortex/conversation/${encodeURIComponent(convoId)}`;
+  const res = await request(ctx, {
+    host: "blocky",
+    path,
     method: "DELETE",
     headers: authHeaders(ctx.token, ctx.orgId),
   });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
+  await throwIfNotOk(res, path);
 }
 
 /**
@@ -259,8 +226,7 @@ export async function uploadConversationAttachment(
   sessionId: string,
   options?: UploadAttachmentOptions,
 ): Promise<AttachmentUploadResult> {
-  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}/attachment`;
-  const url = normalizeUrl(ctx.baseUrl);
+  const uploadPath = `/cortex/conversation/${encodeURIComponent(convoId)}/attachment`;
 
   const form = new FormData();
   form.append("attachment", file);
@@ -282,31 +248,21 @@ export async function uploadConversationAttachment(
   // Do NOT set Content-Type here — the runtime sets the multipart boundary
   // automatically when a FormData body is provided. Manually setting
   // Content-Type would omit the boundary and cause a 422 on the server.
-  const res = await fetch(`${url}${endpoint}`, {
+  const res = await request(ctx, {
+    host: "blocky",
+    path: uploadPath,
     method: "POST",
     headers: authHeaders(ctx.token, ctx.orgId),
     body: form,
   });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
+  await throwIfNotOk(res, uploadPath);
 
   // Backend wraps in CommonResponseDTO: { code, key, body: AttachedFilesDTO }
-  const envelope = (await res.json()) as AttachmentUploadEnvelope;
+  const envelope = await res.json<AttachmentUploadEnvelope>();
   const data = envelope.body;
   if (!data?._id || !data?.name) {
     throw new BBApiError("Attachment upload response missing required fields", res.status, {
-      endpoint,
+      endpoint: uploadPath,
       responseBody: envelope,
     });
   }
@@ -406,27 +362,13 @@ export async function updateConversation(
   convoId: string,
   patch: UpdateConversationPatch,
 ): Promise<void> {
-  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}`;
-  const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}${endpoint}`, {
+  const path = `/cortex/conversation/${encodeURIComponent(convoId)}`;
+  const res = await request(ctx, {
+    host: "blocky",
+    path,
     method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(ctx.token, ctx.orgId),
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders(ctx.token, ctx.orgId) },
     body: JSON.stringify(patch),
   });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
+  await throwIfNotOk(res, path);
 }

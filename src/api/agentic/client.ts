@@ -10,7 +10,10 @@
  * without a suspend/approval event.
  */
 import { AGENTIC_BASE_URL } from "../../config.js";
+import type { AuthContext } from "../../settings/auth-mode.js";
+import { request } from "../_send.js";
 import { BBApiError } from "../errors.js";
+import type { Transporter } from "../transport.js";
 import { normalizeUrl } from "../url.js";
 import { agenticHeaders } from "./headers.js";
 import { parseAgenticStream } from "./sse.js";
@@ -140,6 +143,17 @@ export interface AgenticCallOptions {
    * Default: 3. Mirrors `MAX_AUTO_RESUMES` in v1-frontend AgenticChatBridge.
    */
   maxAutoResumes?: number;
+  /**
+   * Cancels the turn (PDEV-7339). An agentic run has no deadline — it can
+   * legitimately last minutes — so this is the only way to end one early.
+   */
+  signal?: AbortSignal;
+  /**
+   * Transport override. Defaults to a `fetch` transport pointed at
+   * {@link AgenticCallOptions.agenticBaseUrl}. Supply one for a runtime whose
+   * global `fetch` cannot stream — React Native needs its XHR source here.
+   */
+  transport?: Transporter;
 }
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
@@ -155,6 +169,17 @@ const DEFAULT_MAX_AUTO_RESUMES = 3;
 export function buildAgenticStreamUrl(baseUrl: string, agentId: string): string {
   const v2Base = normalizeUrl(baseUrl).replace(/\/api\/?$/, "/v2/api");
   return `${v2Base}/agents/${encodeURIComponent(agentId)}/stream`;
+}
+
+/**
+ * The stream route as a host-relative path, for the transport.
+ *
+ * {@link buildAgenticStreamUrl} stays for consumers that build the absolute URL
+ * themselves; the transport resolves the origin from the `agentic` host, so it
+ * needs only this.
+ */
+function agenticStreamPath(agentId: string): string {
+  return `/v2/api/agents/${encodeURIComponent(agentId)}/stream`;
 }
 
 /** Build a minimal UIMessage for the new user turn. */
@@ -173,30 +198,36 @@ function makeUserMessage(content: string): AgenticUIMessage {
  * Throws `BBApiError` on non-2xx status.
  */
 async function postAgenticStream(
-  url: string,
+  ctx: AuthContext,
+  path: string,
   headers: Record<string, string>,
   body: AgenticRequestBody,
+  signal: AbortSignal | undefined,
 ): Promise<AsyncIterable<AgenticSseFrame>> {
-  const res = await fetch(url, {
+  const res = await request(ctx, {
+    host: "agentic",
+    path,
     method: "POST",
     headers,
     body: JSON.stringify(body),
+    stream: true,
+    signal,
   });
 
-  if (!res.ok || !res.body) {
+  if (!res.ok || !res.chunks) {
     let responseBody: unknown;
     try {
       responseBody = await res.json();
     } catch {
       /* non-JSON error body */
     }
-    throw new BBApiError(`Agentic API ${res.status} at ${url}`, res.status, {
-      endpoint: url,
+    throw new BBApiError(`Agentic API ${res.status} at ${path}`, res.status, {
+      endpoint: path,
       responseBody,
     });
   }
 
-  return parseAgenticStream(res.body);
+  return parseAgenticStream(res.chunks);
 }
 
 /**
@@ -222,11 +253,29 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
     content,
     botId,
     agenticBaseUrl = AGENTIC_BASE_URL,
+    signal,
+    transport,
     approvalResolver,
     maxAutoResumes = DEFAULT_MAX_AUTO_RESUMES,
   } = options;
 
-  const url = buildAgenticStreamUrl(agenticBaseUrl, agentId);
+  // The agentic protocol has no AuthContext of its own — it is called with a
+  // token and an org. Assemble the minimum the transport needs, pointing the
+  // `agentic` host at the configured base URL.
+  const ctx: AuthContext = {
+    // `baseUrl` seeds the `blocky` host in `_send.ts` and is never read here —
+    // every request below sets `host: "agentic"`. Pointed at the agentic origin
+    // rather than left blank so a stray blocky call would fail loudly on the
+    // wrong origin instead of silently hitting production.
+    baseUrl: agenticBaseUrl,
+    token,
+    orgId,
+    mode: "oauth",
+    userId,
+    hosts: { agentic: agenticBaseUrl },
+    transport,
+  };
+  const path = agenticStreamPath(agentId);
   const headers = agenticHeaders({
     token,
     orgId,
@@ -252,7 +301,7 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
   let resumeCount = 0;
 
   while (true) {
-    const frames = await postAgenticStream(url, headers, body);
+    const frames = await postAgenticStream(ctx, path, headers, body, signal);
 
     let approvalData: { runId?: string; toolCallId?: string; toolName?: string } | null = null;
     let suspendData: { runId?: string; toolCallId?: string } | null = null;

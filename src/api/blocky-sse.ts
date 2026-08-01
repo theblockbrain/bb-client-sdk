@@ -23,43 +23,33 @@
  * The iterable completes when the stream closes or a `message_ready` event is
  * received. Malformed `data:` lines are silently skipped.
  */
-export async function* parseBlockySseStream(
-  body: ReadableStream<Uint8Array>,
-): AsyncIterable<string> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
+export async function* parseBlockySseStream(chunks: AsyncIterable<string>): AsyncIterable<string> {
   let buffer = "";
   let done = false;
 
-  try {
-    while (!done) {
-      const { done: streamDone, value } = await reader.read();
-      if (streamDone) break;
+  for await (const chunk of chunks) {
+    buffer += chunk;
 
-      buffer += decoder.decode(value, { stream: true });
+    // SSE events are delimited by \r\n\r\n or \n\n
+    const parts = buffer.split(/\r\n\r\n|\n\n/);
+    // Last element may be an incomplete event — keep it in the buffer
+    buffer = parts.pop() ?? "";
 
-      // SSE events are delimited by \r\n\r\n or \n\n
-      const parts = buffer.split(/\r\n\r\n|\n\n/);
-      // Last element may be an incomplete event — keep it in the buffer
-      buffer = parts.pop() ?? "";
-
-      for (const rawEvent of parts) {
-        const result = extractBlockyToken(rawEvent);
-        if (result.isDone) {
-          done = true;
-          break;
-        }
-        if (result.token !== null) yield result.token;
+    for (const rawEvent of parts) {
+      const result = extractBlockyToken(rawEvent);
+      if (result.isDone) {
+        done = true;
+        break;
       }
-    }
-
-    // Flush any remaining buffer after stream closes
-    if (!done && buffer.trim()) {
-      const result = extractBlockyToken(buffer);
       if (result.token !== null) yield result.token;
     }
-  } finally {
-    reader.releaseLock();
+    if (done) break;
+  }
+
+  // Flush any remaining buffer after the source ends
+  if (!done && buffer.trim()) {
+    const result = extractBlockyToken(buffer);
+    if (result.token !== null) yield result.token;
   }
 }
 

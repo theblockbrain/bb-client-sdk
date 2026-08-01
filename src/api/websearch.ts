@@ -1,8 +1,6 @@
 import type { AuthContext } from "../settings/auth-mode.js";
 import { request, requestJson, throwIfNotOk } from "./_send.js";
-import { BBApiError } from "./errors.js";
 import { authHeaders } from "./headers.js";
-import { normalizeUrl } from "./url.js";
 
 export type WebSearchProvider =
   | "linkup_normal_web_search"
@@ -71,29 +69,15 @@ export async function setConversationWebSearch(
   convoId: string,
   settings: ConversationWebSearchSettings,
 ): Promise<void> {
-  const endpoint = `/cortex/conversation/${convoId}`;
-  const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}${endpoint}`, {
+  const path = `/cortex/conversation/${encodeURIComponent(convoId)}`;
+  const res = await request(ctx, {
+    host: "blocky",
+    path,
     method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(ctx.token, ctx.orgId),
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders(ctx.token, ctx.orgId) },
     body: JSON.stringify(settings),
   });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
+  await throwIfNotOk(res, path);
 }
 
 /**

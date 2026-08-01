@@ -1,7 +1,7 @@
 import type { AuthContext } from "../settings/auth-mode.js";
+import { request, throwIfNotOk } from "./_send.js";
 import { BBApiError } from "./errors.js";
 import { authHeaders } from "./headers.js";
-import { normalizeUrl } from "./url.js";
 
 export interface CreateNoteParams {
   title: string;
@@ -40,14 +40,11 @@ interface NoteCreateEnvelope {
  * (`BlockyBaseModel` populates by field name, not alias, for POST bodies).
  */
 export async function createNote(ctx: AuthContext, params: CreateNoteParams): Promise<NoteResult> {
-  const endpoint = "/cortex/notes/add-note";
-  const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}${endpoint}`, {
+  const res = await request(ctx, {
+    host: "blocky",
+    path: "/cortex/notes/add-note",
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(ctx.token, ctx.orgId),
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders(ctx.token, ctx.orgId) },
     body: JSON.stringify({
       title: params.title,
       summary: params.summary,
@@ -56,24 +53,13 @@ export async function createNote(ctx: AuthContext, params: CreateNoteParams): Pr
     }),
   });
 
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
+  await throwIfNotOk(res, "/cortex/notes/add-note");
 
-  const envelope = (await res.json()) as NoteCreateEnvelope;
+  const envelope = await res.json<NoteCreateEnvelope>();
   const data = envelope.body;
   if (!data?._id) {
     throw new BBApiError("Note create response missing _id", res.status, {
-      endpoint,
+      endpoint: "/cortex/notes/add-note",
       responseBody: envelope,
     });
   }

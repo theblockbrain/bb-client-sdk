@@ -26,43 +26,30 @@ import { type AgenticSseFrame, parseSseDataLine } from "./types.js";
  * should ignore frame types they don't recognise.
  */
 export async function* parseAgenticStream(
-  body: ReadableStream<Uint8Array>,
+  chunks: AsyncIterable<string>,
 ): AsyncIterable<AgenticSseFrame> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
   let buffer = "";
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+  for await (const chunk of chunks) {
+    buffer += chunk;
 
-      buffer += decoder.decode(value, { stream: true });
+    // Split on the SSE event delimiter. The last element may be an incomplete
+    // event — keep it in the buffer.
+    const parts = buffer.split(/\r\n\r\n|\n\n/);
+    buffer = parts.pop() ?? "";
 
-      // Split on double-newline (SSE event delimiter). The last element may be
-      // an incomplete event — keep it in the buffer.
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() ?? "";
-
-      for (const rawEvent of parts) {
-        const frames = extractFramesFromRawEvent(rawEvent);
-        for (const frame of frames) {
-          if (frame === null) continue;
-          yield frame;
-        }
+    for (const rawEvent of parts) {
+      for (const frame of extractFramesFromRawEvent(rawEvent)) {
+        if (frame !== null) yield frame;
       }
     }
+  }
 
-    // Flush remaining buffer after stream closes
-    if (buffer.trim()) {
-      const frames = extractFramesFromRawEvent(buffer);
-      for (const frame of frames) {
-        if (frame === null) continue;
-        yield frame;
-      }
+  // Flush remaining buffer after the source ends
+  if (buffer.trim()) {
+    for (const frame of extractFramesFromRawEvent(buffer)) {
+      if (frame !== null) yield frame;
     }
-  } finally {
-    reader.releaseLock();
   }
 }
 

@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../settings/auth-mode.js";
-import { fetchAgents } from "./agents.js";
+import { fetchAgents, setAgentActive } from "./agents.js";
 import { fetchBotDetail, fetchBotList } from "./bots.js";
-import { fetchCapabilities } from "./capabilities.js";
+import { fetchCapabilities, setCapabilityActive } from "./capabilities.js";
+import { deleteConversation } from "./conversations.js";
+import { BBApiError } from "./errors.js";
+import { sendMessage } from "./messages.js";
+import { createNote } from "./notes.js";
 import { getTenantConfig } from "./tenant-config.js";
 import type { Transporter, TransportRequest, TransportResponse } from "./transport.js";
 import { getAvailableWebSearchProviders } from "./websearch.js";
@@ -167,5 +171,102 @@ describe("read endpoints — non-2xx", () => {
       statusCode: 503,
       endpoint: "/cortex/active-bot/list",
     });
+  });
+});
+
+/**
+ * PDEV-7338's acceptance criterion: one error shape, whatever the host or verb.
+ *
+ * There used to be two normalisation points — `throwIfNotOk(res: Response)` in
+ * `_auth-headers.ts` for the integrations host, and inline `new BBApiError` on
+ * blocky — so a non-2xx produced a differently-shaped error depending on which
+ * host you happened to call. That is what stops `trackApiError` working without
+ * per-endpoint instrumentation (WS9). `_send.ts` now owns the only one.
+ */
+describe("every endpoint normalises a non-2xx identically", () => {
+  function failing(status: number): Transporter {
+    return {
+      send: () =>
+        Promise.resolve({
+          status,
+          ok: false,
+          headers: {},
+          json: <T>() => Promise.resolve({ detail: "nope" } as T),
+          text: () => Promise.resolve(""),
+        }),
+    };
+  }
+
+  const cases: Array<[string, (ctx: AuthContext) => Promise<unknown>, string]> = [
+    ["fetchBotList (blocky GET)", c => fetchBotList(c), "/cortex/active-bot/list"],
+    ["fetchAgents (integrations GET)", c => fetchAgents(c), "/api/v1/agents"],
+    ["fetchCapabilities (integrations GET)", c => fetchCapabilities(c), "/api/v1/capabilities"],
+    ["getTenantConfig (integrations GET)", c => getTenantConfig(c), "/api/v1/tenants"],
+    [
+      "setAgentActive (integrations PATCH)",
+      c => setAgentActive(c, "a1", true),
+      "/api/v1/agents/set-active",
+    ],
+    [
+      "setCapabilityActive (integrations PATCH)",
+      c => setCapabilityActive(c, "c1", true),
+      "/api/v1/capabilities/set-active",
+    ],
+    [
+      "createNote (blocky POST)",
+      c => createNote(c, { title: "t", summary: "s" }),
+      "/cortex/notes/add-note",
+    ],
+    [
+      "deleteConversation (blocky DELETE)",
+      c => deleteConversation(c, "c1"),
+      "/cortex/conversation/c1",
+    ],
+  ];
+
+  it.each(cases)("%s throws the same shape", async (_label, call, endpoint) => {
+    const err = await call(ctxWith(failing(503))).then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    // Same class, same fields, same statusCode — across two hosts and four verbs.
+    expect(err).toBeInstanceOf(BBApiError);
+    expect(err).toMatchObject({ name: "BBApiError", statusCode: 503, endpoint });
+    // trackApiError forwards statusCode + endpoint and NEVER responseBody, which
+    // can echo secrets — but the field must exist for local diagnostics.
+    expect(err).toHaveProperty("responseBody");
+  });
+
+  it("preserves the real status rather than collapsing to a generic failure", async () => {
+    for (const status of [401, 403, 404, 429, 500]) {
+      const err = await fetchAgents(ctxWith(failing(status))).catch((e: unknown) => e);
+      expect((err as BBApiError).statusCode).toBe(status);
+    }
+  });
+});
+
+describe("cancellation reaches the transport (PDEV-7339)", () => {
+  it("forwards the caller's AbortSignal on a streamed send", async () => {
+    // Before this, `useChatStream().stop()` stopped consuming but the request
+    // kept running server-side. The signal has to reach the transport for an
+    // abort to mean anything.
+    const rec = recorder();
+    const controller = new AbortController();
+
+    await sendMessage(ctxWith(rec.transport), "c1", "hi", {
+      enableStreaming: false,
+      signal: controller.signal,
+    }).catch(() => undefined);
+
+    expect(rec.sent.some(r => r.signal === controller.signal)).toBe(true);
+  });
+
+  it("asks the transport to stream only when streaming was requested", async () => {
+    // A streamed request gets no timeout; a buffered one must keep its deadline.
+    const rec = recorder({ body: { content: "hi" } });
+    await sendMessage(ctxWith(rec.transport), "c1", "hi").catch(() => undefined);
+
+    expect(rec.sent.some(r => r.stream === true)).toBe(false);
   });
 });
