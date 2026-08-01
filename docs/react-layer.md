@@ -39,11 +39,11 @@ npm run build              # tsup + tsc → dist/react/index.{js,d.ts}
    swap hook was invented. If/when that endpoint lands, its `onSuccess` MUST call
    `invalidateConvoDetailCache(convoId)` — `useDeleteConversation` already models this.
 
-4. **Out of scope here (tracked elsewhere):** the legacy
-   `test/auth/pkce-state-separation.test.ts` still imports `bun:test` (org-rule
-   violation) — that is roadmap **WS1** (migrate to vitest), intentionally not touched
-   so the two workstreams stay independent. `vitest.config.ts` only includes
-   `src/**/*.test.{ts,tsx}`, so it never runs.
+4. **Closed (PDEV-7684):** the legacy `test/auth/pkce-state-separation.test.ts`
+   imported `bun:test`, lived outside `src/`, and therefore never ran — while the
+   security docs cited it as coverage for a CWE-200 defect. It is now
+   `src/auth/pkce.test.ts` on vitest and runs in CI. `test/` is gone; every test is
+   co-located under `src/`.
 
 ## Related
 

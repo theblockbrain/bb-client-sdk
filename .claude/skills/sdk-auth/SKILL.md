@@ -106,13 +106,9 @@ npm run check:package      # publint + attw (esm-only) — proves ./auth & ./set
 **Auth test reality — read this before you claim "tests pass":**
 
 - `npm test` runs `vitest run` with `include: ["src/**/*.test.{ts,tsx}"]`. The **only** vitest coverage of the auth core is `src/auth/login.test.ts` (telemetry emission, `stage` accuracy, identity binding, error re-throw — it exercises the happy path end-to-end with a stubbed `fetch`, so it does catch gross `login()` regressions). `tokens.ts` / `pkce.ts` / `browser-redirect.ts` / `jwt.ts` / `auth-mode.ts` have **no** vitest tests — changing them is **not** covered by `npm test` unless you add coverage. **Co-locate a `src/auth/<file>.test.ts` (vitest)** for your change so CI actually guards it.
-- The CSRF regression test `test/auth/pkce-state-separation.test.ts` (verifier-must-not-appear-in-URL) still imports `bun:test`, lives **outside** `src/`, and is **excluded** from the vitest run (WS1 roadmap: migrate to vitest). It does **not** run in CI today. Until migrated, run it explicitly and keep it green:
+- The CSRF regression test is **`src/auth/pkce.test.ts`** and it **runs in CI** (PDEV-7684). It covers: the verifier never appearing in the authorize URL (asserted against the raw URL string, so it catches a leak into any param or the fragment), `code_challenge_method=S256`, per-nonce verifier isolation across concurrent tabs, the CSRF guard on an unissued nonce, and the verifier being cleared before the exchange so a failed attempt cannot be replayed. Extend it rather than starting a new file.
 
-  ```bash
-  bun test test/auth/pkce-state-separation.test.ts
-  ```
-
-  If you touch PKCE/state/redirect behaviour, the highest-value move is to **port that test into `src/auth/*.test.ts`** in the same PR so `npm test`/CI enforces it.
+  It got there the hard way: it previously lived at `test/auth/pkce-state-separation.test.ts` on `bun:test`, outside vitest's `src/**` include, so it **never executed** — while `references/security.md` cited it as coverage for the CWE-200 defect. Meanwhile `ms-outlook-addin` built its login on the very helpers it was meant to guard against. **Never add a test outside `src/`**; it will not run, and it will read as coverage to the next person.
 
 **Public-export change** (added/renamed/removed anything in `src/auth/index.ts` or `src/settings/index.ts`): the contract test `src/public-api.contract.test.ts` (snapshot `src/__snapshots__/public-api.contract.test.ts.snap`) will fail. Only update it deliberately — `vitest -u` in the same PR — and treat it as an intentional breaking change: bump semver accordingly and **canary-test in a consumer (Outlook) before `latest`** (Outlook's `^0.7.3` era, ten minors behind, is the cautionary tale; it pins `^0.17.0` today). See `../sdk/references/adapters.md`.
 
