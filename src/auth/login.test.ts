@@ -184,3 +184,69 @@ describe("login telemetry", () => {
     await expect(login(identity, OPTIONS)).rejects.toThrow("boom");
   });
 });
+
+/**
+ * PDEV-7684. Two surfaces disagreed about organization scope and both were
+ * right: `ms-outlook-addin` treats the org as an OUTPUT (never asks, reads the
+ * claim), `ms-word-addin` treats it as an INPUT (pins the login via
+ * `urn:zitadel:iam:org:id:<id>`). `LoginOptions.orgId` makes that a first-class
+ * choice instead of a hand-concatenated URN, and makes it additive so pinning
+ * cannot displace `offline_access`.
+ */
+describe("login scopes", () => {
+  /** Run login far enough to capture the authorize URL, then abandon it. */
+  async function capturedScopes(options: Parameters<typeof login>[1]): Promise<string[]> {
+    let authorizeUrl = "";
+    const identity = makeIdentity((url: string) => {
+      authorizeUrl = url;
+      return Promise.reject(new Error("stop here"));
+    });
+    await login(identity, options).catch(() => undefined);
+    return (new URL(authorizeUrl).searchParams.get("scope") ?? "").split(" ");
+  }
+
+  it("sends the default scope set when nothing is overridden", async () => {
+    const scopes = await capturedScopes(OPTIONS);
+    expect(scopes).toEqual(["openid", "profile", "email", "offline_access", "blockbrain:grants"]);
+  });
+
+  it("omits any org scope when no orgId is given (org-as-output)", async () => {
+    const scopes = await capturedScopes(OPTIONS);
+    expect(scopes.some(s => s.startsWith("urn:zitadel:iam:org:id:"))).toBe(false);
+  });
+
+  it("appends the org scope WITHOUT dropping the defaults (org-as-input)", async () => {
+    // The whole point of the option: hand-building this scope means also
+    // remembering to re-list offline_access, and forgetting it kills refresh.
+    const scopes = await capturedScopes({ ...OPTIONS, orgId: "org-42" });
+
+    expect(scopes).toContain("urn:zitadel:iam:org:id:org-42");
+    expect(scopes).toContain("offline_access");
+    expect(scopes).toContain("blockbrain:grants");
+  });
+
+  it("layers the org scope on top of a custom scope list", async () => {
+    const scopes = await capturedScopes({
+      ...OPTIONS,
+      scopes: ["openid", "offline_access"],
+      orgId: "org-42",
+    });
+    expect(scopes).toEqual(["openid", "offline_access", "urn:zitadel:iam:org:id:org-42"]);
+  });
+
+  it("does not duplicate an org scope the caller already listed", async () => {
+    const scopes = await capturedScopes({
+      ...OPTIONS,
+      scopes: ["openid", "urn:zitadel:iam:org:id:org-42"],
+      orgId: "org-42",
+    });
+    expect(scopes.filter(s => s === "urn:zitadel:iam:org:id:org-42")).toHaveLength(1);
+  });
+
+  it("ignores a blank orgId rather than emitting a valueless scope", async () => {
+    // `urn:zitadel:iam:org:id:` with nothing after it is a malformed scope that
+    // Zitadel rejects — an empty form field must not produce one.
+    const scopes = await capturedScopes({ ...OPTIONS, orgId: "   " });
+    expect(scopes.some(s => s.startsWith("urn:zitadel:iam:org:id:"))).toBe(false);
+  });
+});

@@ -17,9 +17,56 @@ export interface LoginResult extends TokenResult {
 export interface LoginOptions {
   /** OAuth client_id — must be provided by the caller; no SDK-level default. */
   clientId: string;
+  /**
+   * **REPLACES** {@link AUTH_SCOPES} entirely — it does not extend it.
+   *
+   * Pass a partial list and you silently drop the rest: without `offline_access`
+   * there is no refresh token, so the session dies at the first expiry and the
+   * user is bounced back to sign-in with no obvious cause. To add a scope, spread
+   * the default: `scopes: [...AUTH_SCOPES, "my:scope"]`. To pin the login to an
+   * organization, use {@link LoginOptions.orgId} rather than hand-building the URN.
+   */
   scopes?: readonly string[];
+  /**
+   * Pin the login to a specific Zitadel organization.
+   *
+   * Appended as `urn:zitadel:iam:org:id:<orgId>` **on top of** whatever `scopes`
+   * are in effect, so it cannot accidentally displace `offline_access`.
+   *
+   * Two models exist across our surfaces and both are legitimate — this option is
+   * what makes the choice explicit rather than a hand-concatenated string:
+   *
+   * - **Org as output (omit this).** The user signs in, Zitadel resolves their
+   *   home org, and `extractProfile` reads it from the token claims. This is what
+   *   `ms-outlook-addin` does: it never asks which tenant you are.
+   * - **Org as input (set this).** The tenant is known up front — from a URL
+   *   parameter, a deep link, or a form — and the login is pinned to it. This is
+   *   what `ms-word-addin` does with its `?orgId=` parameter.
+   *
+   * Pinning changes which org the user is authenticated *into*, so it is a
+   * tenant-routing decision: pass the tenant the user chose, never a value
+   * inferred from someone else's context.
+   */
+  orgId?: string;
   authorizeEndpoint?: string;
   tokenEndpoint?: string;
+}
+
+/** Zitadel's organization scope prefix — see {@link LoginOptions.orgId}. */
+const ORG_SCOPE_PREFIX = "urn:zitadel:iam:org:id:";
+
+/**
+ * Append the Zitadel org scope, if an org was requested.
+ *
+ * Additive and idempotent: a caller that already put the scope in `scopes` does
+ * not get it twice, and an absent or blank `orgId` leaves the list untouched
+ * rather than emitting a malformed `urn:zitadel:iam:org:id:` with no value.
+ */
+function withOrgScope(scopes: readonly string[], orgId: string | undefined): readonly string[] {
+  const trimmed = orgId?.trim();
+  if (!trimmed) return scopes;
+  const orgScope = `${ORG_SCOPE_PREFIX}${trimmed}`;
+  return scopes.includes(orgScope) ? scopes : [...scopes, orgScope];
 }
 
 /**
@@ -44,6 +91,7 @@ export async function login(
     const {
       clientId,
       scopes = AUTH_SCOPES,
+      orgId: requestedOrgId,
       authorizeEndpoint = AUTHORIZE_ENDPOINT,
       tokenEndpoint = TOKEN_ENDPOINT,
     } = options;
@@ -59,7 +107,7 @@ export async function login(
     authUrl.searchParams.set("client_id", clientId);
     authUrl.searchParams.set("redirect_uri", redirectUri);
     authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("scope", [...scopes].join(" "));
+    authUrl.searchParams.set("scope", withOrgScope(scopes, requestedOrgId).join(" "));
     authUrl.searchParams.set("code_challenge", challenge);
     authUrl.searchParams.set("code_challenge_method", "S256");
     authUrl.searchParams.set("state", state);

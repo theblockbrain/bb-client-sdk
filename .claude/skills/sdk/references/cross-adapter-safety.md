@@ -50,7 +50,7 @@ Answer each question. Any "yes" pulls in the linked phase's checks. Cheap change
 - `AuthContext.orgId` is the **HOME** org (`x-zitadel-org-id`). Cross-tenant admin passes a separate `targetOrgId` to individual API fns → `?orgId=` query. **Never** put a target tenant's org in `AuthContext.orgId` — this is the tenant-isolation boundary (invariant D; zero cross-tenant tolerance, esp. bb-slack-integrations).
 - OAuth `baseUrl` is hardcoded to `OAUTH_BACKEND_URL` (`src/config.ts` → `https://blocky.theblockbrain.ai`); `settings.bbUrl` is **ignored** in OAuth mode (audience pinning). Don't "fix" this to read `bbUrl`.
 - Refresh stays **single-flight** via `src/auth/refresh-singleton.ts` — no refresh storms.
-- PKCE stays **S256-only** with state/CSRF separation (`test/auth/pkce-state-separation.test.ts`, currently `bun:test` / vitest-excluded — roadmap WS1).
+- PKCE stays **S256-only** with state/CSRF separation — enforced by `src/auth/pkce.test.ts`, which runs in CI and asserts the verifier never reaches the authorize URL (PDEV-7684).
 
 ---
 
@@ -168,4 +168,4 @@ A change is done only when **all** boxes are checked:
 - [ ] **Security invariants hold** (invariant D) — tokens never logged (scrub `BBApiError.responseBody`), storage only via `StorageAdapter`, orgId vs `targetOrgId` discipline (0 cross-tenant), OAuth audience pinning intact, `extractJson` still never throws, markdown output sanitized.
 - [ ] **Telemetry release-gate acknowledged** (invariant E) — no surface ships to production without **both** product analytics (Mixpanel: Zitadel `sub` as distinct id, org as group, no PII) **and** health telemetry (Sentry + Grafana Faro RUM). The `AnalyticsAdapter` seam is **on `main`** (**WS9** — PDEV-6854/6855, unreleased): register an adapter via `setAnalyticsAdapter` from `@theblockbrain/bb-client-sdk/analytics` (or `createMixpanelAdapter` from `…/analytics/mixpanel`) and forward the standard event taxonomy (`auth_success`/`auth_failed`, `message_send`, `stream_start`/`stream_first_token`/`stream_complete`/`stream_dropped`, `api_error{statusCode,endpoint}` — the typed `AnalyticsEventMap` in [`./telemetry-release-gate.md`](./telemetry-release-gate.md) §1) to Mixpanel + Sentry/Faro; wiring it stays a per-surface release-checklist item.
 - [ ] **Conventional Commit + branch name** pass lefthook — `type(TICKET-123): …` and `type/TICKET-123/description`.
-- [ ] **STATUS/roadmap honesty** — if the change touches a known gap (best-effort cancellation WS2, device-code auth, transport seam WS2/WS7, publish-gate SLO E2, bun:test legacy WS1), update `docs/react-layer.md` rather than silently papering over it.
+- [ ] **STATUS/roadmap honesty** — if the change touches a known gap (best-effort cancellation WS2, device-code auth, transport seam WS2/WS7, publish-gate SLO E2), update `docs/react-layer.md` rather than silently papering over it.

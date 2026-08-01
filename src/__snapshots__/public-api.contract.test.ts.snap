@@ -103,11 +103,9 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "createRefreshGuard",
   "cycleTheme",
   "decodeJwtPayload",
-  "decodePKCEState",
   "deleteConversation",
   "denyAllResolver",
   "discoverFrontendUrls",
-  "encodePKCEState",
   "exchangeCode",
   "extractCode",
   "extractJson",
@@ -195,6 +193,18 @@ exports[`public API surface > exports of "./adapters" are stable 1`] = `
   "AnalyticsIdentity",
   "IdentityAdapter",
   "StorageAdapter",
+]
+`;
+
+exports[`public API surface > exports of "./adapters/office" are stable 1`] = `
+[
+  "OfficeAsyncResult",
+  "OfficeDialog",
+  "OfficeDialogEventArgs",
+  "OfficeDialogOptions",
+  "OfficeGlobal",
+  "OfficeIdentityAdapterConfig",
+  "createOfficeIdentityAdapter",
 ]
 `;
 
@@ -369,8 +379,6 @@ exports[`public API surface > exports of "./auth" are stable 1`] = `
   "computeExpiration",
   "createRefreshGuard",
   "decodeJwtPayload",
-  "decodePKCEState",
-  "encodePKCEState",
   "exchangeCode",
   "extractOrgIdFromClaims",
   "extractProfile",
