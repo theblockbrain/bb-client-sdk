@@ -7,14 +7,33 @@
  *
  * Or copy the relevant sections if you need to extend them.
  *
- * Tailwind v4 consumers: add the SDK's /ui path to your @source
- * directive so ThemeToggle class names are picked up:
+ * ── The dark variant is NOT declared here (PDEV-7000) ──────────────────
  *
- *   @source "../node_modules/@theblockbrain/bb-client-sdk/dist";
+ * This file used to declare
+ *
+ *   @custom-variant dark (&:where(.dark, .dark *));
+ *
+ * which collided with @botticelli/blokkit's identically-named variant keyed on
+ * [data-theme]. Two definitions of `dark`, two different selectors, last import
+ * wins — packages/v1-frontend worked around it with
+ * `next-themes attribute={['class','data-theme']}`.
+ *
+ * blokkit owns the variant now. A surface that uses blokkit gets it for free.
+ * A surface WITHOUT blokkit declares it once, matching `useTheme`'s three
+ * values — note `system` resolves in CSS, not in JS:
+ *
+ *   @custom-variant dark {
+ *     &:where([data-theme="dark"] *, [data-theme="dark"]) { @slot; }
+ *     &:where([data-theme="system"] *, [data-theme="system"]) {
+ *       @media (prefers-color-scheme: dark) { @slot; }
+ *     }
+ *   }
+ *
+ * Everything below is styled with literal colours rather than default-palette
+ * classes on purpose: blokkit's generated `tailwind-reset.css` sets
+ * `--color-*: initial`, so a rule written as `bg-neutral-700` renders unstyled
+ * wherever blokkit is also loaded.
  */
-
-/* Class-based dark mode — useTheme toggles <html class="dark"> */
-@custom-variant dark (&:where(.dark, .dark *));
 
 /* ── Animations ─────────────────────────────────────────────────────── */
 
@@ -74,12 +93,28 @@
   background: #78716c;
 }
 
-.dark ::-webkit-scrollbar-track {
+/* Dark scrollbars follow the same two-branch rule as blokkit's dark variant:
+   an explicit [data-theme="dark"], or [data-theme="system"] while the OS is
+   dark. These were keyed on `.dark` and silently stopped matching the moment
+   the class mechanism was removed. */
+[data-theme="dark"] ::-webkit-scrollbar-track {
   background: #262626;
 }
-.dark ::-webkit-scrollbar-thumb {
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
   background: #525252;
 }
-.dark ::-webkit-scrollbar-thumb:hover {
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background: #737373;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] ::-webkit-scrollbar-track {
+    background: #262626;
+  }
+  [data-theme="system"] ::-webkit-scrollbar-thumb {
+    background: #525252;
+  }
+  [data-theme="system"] ::-webkit-scrollbar-thumb:hover {
+    background: #737373;
+  }
 }
