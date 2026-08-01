@@ -1,3 +1,7 @@
+// Admin-only listing filters for agent/capability discovery — part of the public
+// signature of `fetchAgents` / `fetchCapabilities` (PDEV-7332). Sorted first because
+// biome orders exports by module path and `_auth-headers` precedes `agentic`.
+export type { AdminListingOptions } from "./_auth-headers.js";
 // ── Agentic protocol ─────────────────────────────────────────────────────────
 // `export *` (unlike every other line here) because `./agentic/index.ts` is
 // itself a curated barrel — it already selects what is public, so re-listing its

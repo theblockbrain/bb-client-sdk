@@ -41,31 +41,18 @@
  * when it collapses the two error patterns.
  */
 
-import { AGENTIC_BASE_URL, INTEGRATIONS_BASE_URL, OAUTH_BACKEND_URL } from "../config.js";
+import { type BBHost, type BBHosts, DEFAULT_HOSTS } from "../config.js";
 import { BBApiError } from "./errors.js";
 import { normalizeUrl } from "./url.js";
 
 // ─── Hosts ────────────────────────────────────────────────────────────────────
 
-/**
- * The three BlockBrain hosts.
- *
- * Proxy mode is a URL **rewrite** (see {@link UrlRewrite}), not a fourth host —
- * b2b rewrites an already-built URL rather than selecting a different origin.
- */
-export type BBHost = "blocky" | "integrations" | "agentic";
-
-export type BBHosts = Readonly<Record<BBHost, string>>;
-
-/**
- * Production defaults. Override per-surface via {@link TransportConfig.hosts} —
- * that is how a dev/QA environment is selected, rather than by branching in here.
- */
-export const DEFAULT_HOSTS: BBHosts = {
-  blocky: OAUTH_BACKEND_URL,
-  integrations: INTEGRATIONS_BASE_URL,
-  agentic: AGENTIC_BASE_URL,
-};
+// `BBHost` / `BBHosts` / `DEFAULT_HOSTS` are defined in `../config.js` (the leaf both
+// `./api` and `./settings` can reach) and re-exported here so the transport reads as
+// self-contained. Proxy mode is a URL **rewrite** (see {@link UrlRewrite}), not a
+// fourth host — b2b rewrites an already-built URL rather than selecting an origin.
+export { DEFAULT_HOSTS };
+export type { BBHost, BBHosts };
 
 /**
  * Deadline for non-streaming requests.
