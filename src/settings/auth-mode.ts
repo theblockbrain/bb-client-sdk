@@ -1,3 +1,4 @@
+import type { Transporter } from "../api/transport.js";
 import { subFromAccessToken } from "../auth/jwt-claims.js";
 import { isTokenExpired } from "../auth/tokens.js";
 import type { BBHosts } from "../config.js";
@@ -54,6 +55,23 @@ export interface AuthContext {
    * PDEV-7337 feeds this same record into the transport's host resolution.
    */
   hosts?: Partial<BBHosts>;
+  /**
+   * Transport used for every `./api` call made with this context (PDEV-7337).
+   *
+   * Optional. Omitted, the SDK builds a `fetch` transport whose `blocky` host is
+   * `baseUrl` and whose other hosts come from {@link hosts} over
+   * `DEFAULT_HOSTS` — which is exactly what the endpoints did before the seam
+   * existed, so leaving this unset changes nothing.
+   *
+   * Supply one to run the SDK where global `fetch` is unsuitable or absent:
+   * React Native's XHR-backed streaming, a proxy rewrite (`b2b`'s
+   * `${PROXY_URL}/wc/proxy…`), or a recorded transport in tests. Build it with
+   * `createFetchTransport` or implement {@link Transporter} — a single `send`.
+   *
+   * It rides on the context rather than each call so no endpoint signature had
+   * to move, which is what kept this migration off the public-API snapshot.
+   */
+  transport?: Transporter;
 }
 
 export interface OAuthTokens {

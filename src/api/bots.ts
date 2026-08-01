@@ -1,7 +1,6 @@
 import type { AuthContext } from "../settings/auth-mode.js";
-import { BBApiError } from "./errors.js";
+import { requestJson } from "./_send.js";
 import { authHeaders } from "./headers.js";
-import { normalizeUrl } from "./url.js";
 
 export interface Bot {
   id: string;
@@ -45,27 +44,13 @@ interface BotDetailResponse {
 
 /** Fetch the list of active bots for the authenticated context. */
 export async function fetchBotList(ctx: AuthContext): Promise<Bot[]> {
-  const endpoint = "/cortex/active-bot/list";
-  const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}${endpoint}?page=1&size=100`, {
+  const data = await requestJson<BotListResponse>(ctx, {
+    host: "blocky",
+    path: "/cortex/active-bot/list",
     method: "GET",
+    query: { page: 1, size: 100 },
     headers: authHeaders(ctx.token, ctx.orgId),
   });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
-
-  const data = (await res.json()) as BotListResponse;
 
   let bots: RawBot[] = [];
   if (data.body?.data && Array.isArray(data.body.data)) {
@@ -98,27 +83,12 @@ export async function fetchBotList(ctx: AuthContext): Promise<Bot[]> {
  * use `fetchBotList` instead.
  */
 export async function fetchBotDetail(ctx: AuthContext, botId: string): Promise<BotDetail> {
-  const endpoint = `/cortex/active-bot/${encodeURIComponent(botId)}`;
-  const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}${endpoint}`, {
+  const data = await requestJson<BotDetailResponse>(ctx, {
+    host: "blocky",
+    path: `/cortex/active-bot/${encodeURIComponent(botId)}`,
     method: "GET",
     headers: authHeaders(ctx.token, ctx.orgId),
   });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
-
-  const data = (await res.json()) as BotDetailResponse;
   const raw = data.body ?? (data as unknown as RawBot);
   return {
     id: raw._id ?? raw.id ?? botId,

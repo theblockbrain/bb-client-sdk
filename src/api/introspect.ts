@@ -1,5 +1,6 @@
+import type { AuthContext } from "../settings/auth-mode.js";
+import { requestJson } from "./_send.js";
 import { BBApiError } from "./errors.js";
-import { normalizeUrl } from "./url.js";
 
 export interface IntrospectResponse {
   active: boolean;
@@ -17,29 +18,17 @@ export async function introspectApiKey(
   token: string,
 ): Promise<IntrospectResponse> {
   const endpoint = "/auth/introspect_api_key";
-  const url = normalizeUrl(baseUrl);
-  const res = await fetch(`${url}${endpoint}`, {
+  // This runs BEFORE an AuthContext exists — it is what decides whether the key
+  // is usable at all — so it assembles the minimum the transport needs. `baseUrl`
+  // becomes the blocky host, which is the point: an api-key user is typically on
+  // their own instance.
+  const ctx: AuthContext = { baseUrl, token, orgId: "", mode: "api-key" };
+  const data = await requestJson<IntrospectResponse>(ctx, {
+    host: "blocky",
+    path: endpoint,
     method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
   });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
-
-  const data = (await res.json()) as IntrospectResponse;
   if (data.active !== true) throw new BBApiError("API key is inactive", 401, { endpoint });
 
   return data;

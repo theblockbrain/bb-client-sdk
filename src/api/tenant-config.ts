@@ -1,5 +1,12 @@
+import { INTEGRATIONS_API_PREFIX } from "../config.js";
 import type { AuthContext } from "../settings/auth-mode.js";
-import { bbApiAuthHeaders, buildIntegrationsUrl, throwIfNotOk } from "./_auth-headers.js";
+import {
+  adminListingParams,
+  bbApiAuthHeaders,
+  buildIntegrationsUrl,
+  throwIfNotOk,
+} from "./_auth-headers.js";
+import { requestJson } from "./_send.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,20 +29,17 @@ export async function getTenantConfig(
   ctx: AuthContext,
   targetOrgId?: string,
 ): Promise<TenantConfig> {
-  const endpoint = "tenants";
-  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
-
-  const res = await fetch(url, {
-    method: "GET",
-    headers: bbApiAuthHeaders(ctx),
-  });
-  await throwIfNotOk(res, endpoint);
-
-  const data = (await res.json()) as {
+  const data = await requestJson<{
     id: string;
     name: string;
     config: { customAgentsEnabled: boolean } | null;
-  };
+  }>(ctx, {
+    host: "integrations",
+    path: `${INTEGRATIONS_API_PREFIX}/tenants`,
+    method: "GET",
+    query: { orgId: targetOrgId ?? ctx.orgId },
+    headers: bbApiAuthHeaders(ctx),
+  });
   return { customAgentsEnabled: data.config?.customAgentsEnabled ?? false };
 }
 

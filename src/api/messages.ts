@@ -1,5 +1,6 @@
 import { subFromAccessToken } from "../auth/jwt-claims.js";
 import type { AuthContext } from "../settings/auth-mode.js";
+import { requestJson } from "./_send.js";
 import type { ApprovalResolver } from "./agentic/client.js";
 import { callAgenticStream, denyAllResolver } from "./agentic/client.js";
 import { parseBlockySseStream } from "./blocky-sse.js";
@@ -265,14 +266,13 @@ export async function getMessageList(
   convoId: string,
   options: GetMessageListOptions = {},
 ): Promise<MessageListBody> {
-  const endpoint = "/cortex/message/list";
-  const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}${endpoint}`, {
+  // A POST, but a read: the filter set is too large for a query string, so the
+  // list endpoint takes a body. In scope for PDEV-7337 because nothing mutates.
+  const data = await requestJson<{ body: MessageListBody }>(ctx, {
+    host: "blocky",
+    path: "/cortex/message/list",
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(ctx.token, ctx.orgId),
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders(ctx.token, ctx.orgId) },
     body: JSON.stringify({
       convoId,
       keyword: options.keyword ?? "",
@@ -280,20 +280,5 @@ export async function getMessageList(
       size: options.size ?? 20,
     }),
   });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
-
-  const data = (await res.json()) as { body: MessageListBody };
   return data.body;
 }
