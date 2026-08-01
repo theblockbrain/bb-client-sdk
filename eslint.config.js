@@ -108,6 +108,47 @@ export default tseslint.config(
   },
 
   // Tests legitimately use `any`, non-null assertions, and loose typing
+  // ── The transport seam is locked in (PDEV-7341) ─────────────────────────────
+  //
+  // WS2 migrated 28 `fetch()` sites across 12 modules onto one transport. That
+  // work is worth nothing the moment someone adds the 29th: the next endpoint
+  // written the old way silently opts out of the proxy rewrite, the timeout, the
+  // retry policy, the 401-refresh and the single `api_error` emit point — and
+  // nothing fails, it just quietly misbehaves on the surfaces that need the seam.
+  //
+  // A lint rule is the only thing that makes the migration stick. Ratchets are
+  // cheapest immediately after the cleanup and most expensive later.
+  {
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+    ignores: [
+      // The transport IS the fetch call.
+      "src/api/transport.ts",
+      // Tests stub `fetch` to drive the transport itself.
+      "src/**/*.test.{ts,tsx}",
+    ],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "fetch",
+          message:
+            "Do not call fetch() directly. Route through the transport: `request` / `requestJson` from ./api/_send.js (they resolve ctx.transport), or `createFetchTransport` for a pre-auth call. A bare fetch skips the proxy rewrite, timeout, retry, 401-refresh and the single api_error emit point (PDEV-7341).",
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          // `no-restricted-globals` only sees the bare identifier, so a
+          // qualified call slips past it.
+          selector:
+            'MemberExpression[object.name="globalThis"][property.name="fetch"], MemberExpression[object.name="window"][property.name="fetch"]',
+          message:
+            "Do not reach for globalThis.fetch / window.fetch. Route through the transport (PDEV-7341) — and note `window` is unavailable in Slack (Node) and React Native.",
+        },
+      ],
+    },
+  },
+
   {
     files: ["src/**/*.test.{ts,tsx}"],
     rules: {

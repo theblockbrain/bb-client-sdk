@@ -397,3 +397,130 @@ describe("createFetchTransport — defaults", () => {
     }
   });
 });
+
+/**
+ * PDEV-7340 — retry and the 401 replay.
+ *
+ * Both are opt-in. The default transport does neither, because a silent retry
+ * changes timing every consumer already tuned around.
+ */
+describe("retry (PDEV-7340)", () => {
+  const ok = () => new Response("{}", { status: 200 });
+  const fail = (status: number) => new Response("{}", { status });
+
+  it("does not retry unless a policy is configured", async () => {
+    const doFetch = vi.fn().mockResolvedValue(fail(503));
+    const t = createFetchTransport({ fetch: doFetch });
+
+    await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a 503 on GET and returns the eventual success", async () => {
+    const doFetch = vi.fn().mockResolvedValueOnce(fail(503)).mockResolvedValueOnce(ok());
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 2, baseDelayMs: 1 } });
+
+    const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(2);
+    expect(res.ok).toBe(true);
+  });
+
+  it("retries a 429", async () => {
+    const doFetch = vi.fn().mockResolvedValueOnce(fail(429)).mockResolvedValueOnce(ok());
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 2, baseDelayMs: 1 } });
+
+    await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("never retries a 4xx that is not 429 — it would fail identically", async () => {
+    const doFetch = vi.fn().mockResolvedValue(fail(404));
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 3, baseDelayMs: 1 } });
+
+    await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("never retries a POST — it could double-send a message", async () => {
+    const doFetch = vi.fn().mockResolvedValue(fail(503));
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 3, baseDelayMs: 1 } });
+
+    await t.send({ host: "blocky", path: "/x", method: "POST", body: "{}" });
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up after the configured attempts and surfaces the last response", async () => {
+    const doFetch = vi.fn().mockResolvedValue(fail(503));
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 2, baseDelayMs: 1 } });
+
+    const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(3); // first + 2 retries
+    expect(res.status).toBe(503);
+  });
+});
+
+describe("401 refresh (PDEV-7340)", () => {
+  const unauthorized = () => new Response("{}", { status: 401 });
+  const ok = () => new Response('{"v":1}', { status: 200 });
+
+  it("refreshes once and replays with the new token", async () => {
+    const doFetch = vi.fn().mockResolvedValueOnce(unauthorized()).mockResolvedValueOnce(ok());
+    const onUnauthorized = vi.fn().mockResolvedValue("fresh-token");
+    const t = createFetchTransport({ fetch: doFetch, onUnauthorized });
+
+    const res = await t.send({
+      host: "blocky",
+      path: "/x",
+      method: "GET",
+      headers: { Authorization: "Bearer stale" },
+    });
+
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(res.ok).toBe(true);
+    // The replay must carry the NEW token — replaying with the stale one would
+    // just 401 again and look like a refresh that "didn't work".
+    const replayHeaders = doFetch.mock.calls[1][1].headers as Record<string, string>;
+    expect(replayHeaders.authorization).toBe("Bearer fresh-token");
+  });
+
+  it("does not loop when the refreshed token is also rejected", async () => {
+    // Two 401s means an authorisation problem, not a stale token. Retrying is
+    // how a login loop starts.
+    const doFetch = vi.fn().mockResolvedValue(unauthorized());
+    const onUnauthorized = vi.fn().mockResolvedValue("fresh-token");
+    const t = createFetchTransport({ fetch: doFetch, onUnauthorized });
+
+    const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(2);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(401);
+  });
+
+  it("lets the 401 through when refresh returns null", async () => {
+    // The honest answer when the refresh token itself has expired.
+    const doFetch = vi.fn().mockResolvedValue(unauthorized());
+    const t = createFetchTransport({ fetch: doFetch, onUnauthorized: () => Promise.resolve(null) });
+
+    const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(401);
+  });
+
+  it("does nothing on a 401 when no handler is configured", async () => {
+    const doFetch = vi.fn().mockResolvedValue(unauthorized());
+    const t = createFetchTransport({ fetch: doFetch });
+
+    const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(401);
+  });
+});

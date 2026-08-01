@@ -144,7 +144,55 @@ export interface TransportConfig {
    * on a collision.
    */
   readonly headers?: () => Readonly<Record<string, string>>;
+  /**
+   * Retry policy for **idempotent** requests (PDEV-7340). Omitted, nothing retries.
+   *
+   * Deliberately not on by default: a silent retry changes the timing every
+   * consumer already tuned around, and one of them streams. Opt in per surface.
+   */
+  readonly retry?: RetryPolicy;
+  /**
+   * Called once on a 401, to re-mint the bearer token (PDEV-7340).
+   *
+   * Return the new token to have the request replayed with it, or `null` to let
+   * the 401 through. Returning `null` is the honest answer when the refresh
+   * token is itself expired — retrying forever is how a login loop starts.
+   *
+   * **Wrap your refresh in `createRefreshGuard` before passing it here.** Ten
+   * concurrent requests hitting an expired token will each land on a 401 and
+   * each call this; without single-flight that is ten refreshes, and with a
+   * rotating refresh token nine of them fail and log the user out. The transport
+   * does not impose the guard because the guard belongs to the surface's token
+   * store, which is where the new token has to be persisted anyway.
+   */
+  readonly onUnauthorized?: () => Promise<string | null>;
 }
+
+export interface RetryPolicy {
+  /** Extra attempts after the first. Default 2. */
+  readonly attempts?: number;
+  /** First backoff, doubling per attempt. Default 300ms. */
+  readonly baseDelayMs?: number;
+}
+
+/**
+ * Methods safe to replay.
+ *
+ * GET only. PUT and DELETE are idempotent *by HTTP semantics*, but that is a
+ * statement about the server's state, not about what our backends actually do —
+ * and a replayed DELETE racing a concurrent create is a bad afternoon. A retried
+ * POST could double-send a message. The conservative set is the one that cannot
+ * surprise anyone. Note `getMessageList` is a POST and therefore never retried,
+ * which is correct even though it only reads.
+ */
+const REPLAYABLE = new Set<TransportMethod>(["GET"]);
+
+/** 5xx and 429 are worth a second go; a 4xx will fail identically. */
+function isRetriableStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status < 600);
+}
+
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * The default {@link Transporter}, over `fetch`.
@@ -174,7 +222,23 @@ export function createFetchTransport(config: TransportConfig = {}): Transporter 
         );
       }
 
-      const res = await runFetch(doFetch, url, req, plan);
+      let res = await attempt(doFetch, url, req, plan, config.retry);
+
+      // ── 401 → refresh → replay once (PDEV-7340) ──────────────────────────
+      // Once, never in a loop: if the fresh token also gets a 401 the problem is
+      // authorisation, not staleness, and retrying is how a login loop starts.
+      // Applies to streamed requests too — an expired token fails a stream just
+      // as readily, and re-opening it is exactly what a surface would hand-roll.
+      if (res.status === 401 && config.onUnauthorized) {
+        const refreshed = await config.onUnauthorized();
+        if (refreshed) {
+          const replay: TransportRequest = {
+            ...req,
+            headers: { ...req.headers, Authorization: `Bearer ${refreshed}` },
+          };
+          res = await attempt(doFetch, url, replay, plan, config.retry);
+        }
+      }
 
       if (!streaming) {
         // Buffer inside send() so the deadline covers reading the body too, and so
@@ -197,6 +261,58 @@ export function createFetchTransport(config: TransportConfig = {}): Transporter 
   };
 }
 
+/**
+ * One request, plus retries for a replayable method.
+ *
+ * Retries a network failure or a 429/5xx, with doubling backoff. Never retries a
+ * 4xx other than 429 — the same request will fail the same way — and never
+ * retries a non-GET (see {@link REPLAYABLE}).
+ *
+ * The deadline is NOT reset per attempt: `plan` is created once in `send`, so
+ * the whole retry sequence lives inside the caller's timeout. A retry that could
+ * extend the deadline would make the timeout unbounded, which is the opposite of
+ * what a timeout is for.
+ */
+async function attempt(
+  doFetch: typeof globalThis.fetch,
+  url: string,
+  req: TransportRequest,
+  plan: AbortPlan,
+  policy: RetryPolicy | undefined,
+): Promise<Response> {
+  const extra = policy && REPLAYABLE.has(req.method) ? (policy.attempts ?? 2) : 0;
+  const baseDelay = policy?.baseDelayMs ?? 300;
+
+  let lastError: unknown;
+  for (let i = 0; i <= extra; i++) {
+    if (i > 0) {
+      // Abort mid-backoff rather than sleeping through a cancellation.
+      if (plan.signal?.aborted) break;
+      await sleep(baseDelay * 2 ** (i - 1));
+      if (plan.signal?.aborted) break;
+    }
+
+    try {
+      const res = await doFetch(url, {
+        method: req.method,
+        headers: lowerKeys({ ...req.headers }),
+        body: req.body,
+        signal: plan.signal,
+      });
+      if (i === extra || !isRetriableStatus(res.status)) return res;
+    } catch (err) {
+      // A timeout or a caller abort is terminal — only a transient network
+      // failure is worth another go.
+      if (plan.timedOut() || plan.signal?.aborted) throw toTransportError(err, req, plan);
+      lastError = err;
+      if (i === extra) throw toTransportError(err, req, plan);
+    }
+  }
+
+  // Backoff was cut short by an abort.
+  throw toTransportError(lastError ?? new Error("aborted"), req, plan);
+}
+
 // ─── Internals ────────────────────────────────────────────────────────────────
 
 function buildUrl(hosts: BBHosts, req: TransportRequest, rewrite?: UrlRewrite): string {
@@ -213,25 +329,6 @@ function buildUrl(hosts: BBHosts, req: TransportRequest, rewrite?: UrlRewrite): 
   }
 
   return rewrite ? rewrite(url, req.host) : url.toString();
-}
-
-async function runFetch(
-  doFetch: typeof globalThis.fetch,
-  url: string,
-  req: TransportRequest,
-  plan: AbortPlan,
-): Promise<Response> {
-  try {
-    return await doFetch(url, {
-      method: req.method,
-      headers: lowerKeys({ ...req.headers }),
-      body: req.body,
-      signal: plan.signal,
-    });
-  } catch (cause) {
-    plan.dispose();
-    throw toTransportError(cause, req, plan);
-  }
 }
 
 async function readBody(res: Response, req: TransportRequest, plan: AbortPlan): Promise<string> {
