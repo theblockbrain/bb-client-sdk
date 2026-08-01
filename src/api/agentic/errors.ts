@@ -7,6 +7,7 @@
  * the transport layer, and consumers branching on `isBBApiError` to render a
  * network banner would render the wrong thing.
  */
+import type { AgenticErrorCode, AgenticErrorCodeValue } from "./types.js";
 
 /**
  * Why an Agentic turn ended without a complete answer.
@@ -38,8 +39,14 @@ export class AgenticStreamError extends Error {
   readonly reason: AgenticStreamErrorReason;
   /** True when text was already streamed to the caller before the turn failed. */
   readonly partial: boolean;
-  /** Stable server error code — present only when `reason` is `server-error`. */
-  readonly code?: string;
+  /**
+   * Server error code — present only when `reason` is `server-error`.
+   *
+   * Typed as the open {@link AgenticErrorCodeValue} rather than the closed
+   * {@link AgenticErrorCode}: it comes straight off the wire unvalidated, so a
+   * closed union would let a `switch` claim exhaustiveness it does not have.
+   */
+  readonly code?: AgenticErrorCodeValue;
   /** Server trace id for support — present only when `reason` is `server-error`. */
   readonly traceId?: string;
   /** Whether a blind retry could plausibly succeed. */
@@ -52,7 +59,7 @@ export class AgenticStreamError extends Error {
     reason: AgenticStreamErrorReason,
     options?: {
       partial?: boolean;
-      code?: string;
+      code?: AgenticErrorCodeValue;
       traceId?: string;
       retryable?: boolean;
       toolName?: string;

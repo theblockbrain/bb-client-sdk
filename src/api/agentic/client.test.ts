@@ -240,6 +240,32 @@ describe("callAgenticStream — fail-fast frames (PDEV-7333)", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
+
+    it("passes through a code the SDK has never heard of", async () => {
+      // `AgenticErrorCode` lists what the server sends *today*; the SDK releases
+      // independently of it. A code typed as the closed union would let a
+      // consumer's `switch` claim exhaustiveness, so the wire-facing fields use
+      // the open `AgenticErrorCodeValue` and an unknown code reaches the caller
+      // intact rather than being dropped or coerced.
+      stubSequence([
+        {
+          type: "data-error",
+          data: {
+            code: "RATE_LIMITED",
+            errorClass: "TooManyRequests",
+            message: "slow down",
+            traceId: "t-9",
+            retryable: true,
+            partial: false,
+          },
+        },
+      ]);
+
+      const err = await thrownBy(callAgenticStream(DENY));
+
+      expect((err as AgenticStreamError).code).toBe("RATE_LIMITED");
+      expect((err as AgenticStreamError).retryable).toBe(true);
+    });
   });
 
   describe("the resume budget", () => {

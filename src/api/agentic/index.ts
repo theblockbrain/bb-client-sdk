@@ -22,6 +22,7 @@ export type {
   AgenticApprovalResumeData,
   AgenticAskUserQuestionResumeData,
   AgenticErrorCode,
+  AgenticErrorCodeValue,
   AgenticRequestBody,
   AgenticResumeData,
   AgenticSseFrame,

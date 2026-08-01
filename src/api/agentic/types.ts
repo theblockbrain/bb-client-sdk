@@ -124,9 +124,20 @@ export interface ToolCallTooLargeFrame {
 }
 
 /**
- * Stable error identifiers emitted by the server's structured-error path
- * (`sse-error-emit.ts`). The server keeps this list closed deliberately — the
- * client renders copy from it — so it is a union here rather than `string`.
+ * The error identifiers the server emits today from its structured-error path
+ * (`sse-error-emit.ts`), where the list is deliberately closed because the
+ * client renders copy from it.
+ *
+ * Use this to type a copy map — `Record<AgenticErrorCode, string>` — so adding
+ * a code is a compile error in the place that must handle it.
+ *
+ * **Do not use it as the type of a value read off the wire.** The server's list
+ * being closed is a server-side discipline, not a runtime guarantee: the SDK
+ * releases independently, `parseSseDataLine` casts parsed JSON without
+ * validating it, and a server that adds `RATE_LIMITED` ships before any SDK
+ * knows the name. Wire-facing fields are therefore typed
+ * {@link AgenticErrorCodeValue}, which keeps the autocomplete but refuses to
+ * promise exhaustiveness a `switch` cannot actually rely on.
  */
 export type AgenticErrorCode =
   | "TOOL_EXECUTION_FAILED"
@@ -134,9 +145,19 @@ export type AgenticErrorCode =
   | "HTTP_EXCEPTION"
   | "UNKNOWN_ERROR";
 
+/**
+ * A code as it actually arrives: one of {@link AgenticErrorCode}, or any other
+ * string a newer server sends.
+ *
+ * `(string & {})` is the open-enum idiom — it keeps editor completion for the
+ * four known values while still accepting an unknown one, so a consumer's
+ * `switch` needs a `default` and cannot silently drop a code the SDK predates.
+ */
+export type AgenticErrorCodeValue = AgenticErrorCode | (string & {});
+
 /** Payload of a {@link StreamErrorFrame}. Mirrors the server's `StructuredSseError`. */
 export interface AgenticStreamErrorData {
-  code: AgenticErrorCode;
+  code: AgenticErrorCodeValue;
   /** Originating error class name, for diagnostics. */
   errorClass: string;
   /**
