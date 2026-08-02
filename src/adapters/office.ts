@@ -58,8 +58,15 @@ import type { IdentityAdapter } from "./identity.js";
 
 /** `Office.AsyncResult` — only `status`, `value` and `error` are read. */
 export interface OfficeAsyncResult<T> {
-  /** Compared against {@link OfficeGlobal.AsyncResultStatus}. Numeric enum at runtime. */
-  status: number;
+  /**
+   * Compared against {@link OfficeGlobal.AsyncResultStatus}.
+   *
+   * A **string** enum in Office.js (`"succeeded"` / `"failed"`), not numeric —
+   * verified against a real `Office` object, having first assumed otherwise.
+   * Typing it `number` made the whole namespace fail to satisfy `OfficeGlobal`,
+   * which is the kind of thing only compiling against the real thing catches.
+   */
+  status: string;
   value: T;
   error?: { code?: number; message?: string };
 }
@@ -116,7 +123,7 @@ export interface OfficeGlobal {
     DialogEventReceived: string;
   };
   AsyncResultStatus: {
-    Failed: number;
+    Failed: string;
   };
 }
 

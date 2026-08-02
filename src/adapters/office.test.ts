@@ -37,7 +37,7 @@ vi.mock("../auth/jwt.js", () => ({
 
 const MESSAGE_RECEIVED = "dialogMessageReceived";
 const EVENT_RECEIVED = "dialogEventReceived";
-const FAILED = 1;
+const FAILED = "failed"; // string enum in Office.js, verified against the real namespace
 
 interface FakeOffice {
   office: OfficeGlobal;
@@ -74,7 +74,7 @@ function fakeOffice(options: { failToOpen?: boolean } = {}): FakeOffice {
             callback({ status: FAILED, value: dialog, error: { message: "blocked" } });
             return;
           }
-          callback({ status: 0, value: dialog });
+          callback({ status: "succeeded", value: dialog });
         },
       },
     },
