@@ -158,6 +158,41 @@ describe("useTheme", () => {
     expect(localStorage.getItem("bb-theme")).toBeNull();
   });
 
+  it("advances twice when cycled twice in one tick", () => {
+    // The stale-closure bug a reviewer caught on #32: `cycleTheme` computed
+    // `next` from a closed-over `mode`, so two calls batched into one tick both
+    // read the same value and the second was a no-op — a double click advanced
+    // one step. The functional updater reads the live previous value.
+    stubMatchMedia(false);
+    const { result } = renderHook(() => useTheme());
+    expect(result.current[1]).toBe("system");
+
+    act(() => {
+      result.current[2]();
+      result.current[2]();
+    });
+
+    // system -> light -> dark, not system -> light.
+    expect(result.current[1]).toBe("dark");
+  });
+
+  it("keeps systemDark current while an explicit mode is set", () => {
+    // Why the OS listener fires unconditionally. Skipping it in explicit modes
+    // (as the same review suggested) leaves a stale value: flip the OS, then
+    // switch to system, and the hook would report the pre-flip theme.
+    const media = stubMatchMedia(false);
+    const { result } = renderHook(() => useTheme());
+
+    act(() => result.current[2]()); // -> light, so systemDark is now unused
+    act(() => media.flip(true)); //   OS goes dark while we ignore it
+    act(() => result.current[2]()); // -> dark
+    act(() => result.current[2]()); // -> system
+
+    expect(result.current[1]).toBe("system");
+    // Correct only because the listener kept running through explicit modes.
+    expect(result.current[0]).toBe("dark");
+  });
+
   it("detaches its OS listener on unmount", () => {
     const media = stubMatchMedia(false);
     const { unmount } = renderHook(() => useTheme());

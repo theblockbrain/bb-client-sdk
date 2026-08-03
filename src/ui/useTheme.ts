@@ -101,9 +101,15 @@ export function useTheme(storageKey: string = DEFAULT_STORAGE_KEY): [Theme, Them
     document.documentElement.dataset.theme = mode;
   }, [mode]);
 
-  // Track the OS preference only to keep `effectiveTheme` honest. The DOM does
-  // not change when the OS flips: `data-theme` still reads `system`, and the
-  // media query inside the CSS variant does the switching.
+  // Track the OS preference **unconditionally**, including while `mode` is an
+  // explicit light/dark. It looks wasteful — `theme` ignores `systemDark` in
+  // those modes — but skipping it leaves a stale value: flip the OS while in
+  // explicit light, then switch to `system`, and the hook would report light
+  // against a dark OS until the next flip. One re-render per OS theme change is
+  // the cheaper side of that trade.
+  //
+  // The DOM is not touched here either way: `data-theme` still reads `system`,
+  // and the media query inside the CSS variant does the switching.
   useEffect(() => {
     const query = window.matchMedia(DARK_QUERY);
     const handleChange = (event: MediaQueryListEvent): void => setSystemDark(event.matches);
@@ -111,15 +117,25 @@ export function useTheme(storageKey: string = DEFAULT_STORAGE_KEY): [Theme, Them
     return () => query.removeEventListener("change", handleChange);
   }, []);
 
-  // The write happens here rather than inside a `setMode(prev => …)` updater:
-  // updaters must be pure, and React double-invokes them in StrictMode, so a
-  // localStorage write in there fires twice per click. (Idempotent today, but
-  // it is the kind of thing that stops being idempotent quietly.)
-  const cycleTheme = useCallback(() => {
-    const next = nextThemeMode(mode);
-    persistMode(storageKey, next);
-    setMode(next);
+  // Persist as an effect on `mode`, not inside `cycleTheme`.
+  //
+  // Two constraints pull against each other here. Writing inside a
+  // `setMode(prev => …)` updater is impure, and React double-invokes updaters in
+  // StrictMode, so the write fires twice per click. But computing `next` from a
+  // closed-over `mode` goes stale: two `cycleTheme()` calls in one tick both
+  // read the same `mode`, so a double click advances one step instead of two.
+  //
+  // Splitting them satisfies both — the updater is pure and reads the live
+  // previous value, and the write happens once per committed change. It also
+  // runs on mount, which is a no-op: it rewrites the value just read from
+  // storage, or removes a key that was already absent for `system`.
+  useEffect(() => {
+    persistMode(storageKey, mode);
   }, [mode, storageKey]);
+
+  const cycleTheme = useCallback(() => {
+    setMode(nextThemeMode);
+  }, []);
 
   return [theme, mode, cycleTheme];
 }

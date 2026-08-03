@@ -96,7 +96,13 @@
 /* Dark scrollbars follow the same two-branch rule as blokkit's dark variant:
    an explicit [data-theme="dark"], or [data-theme="system"] while the OS is
    dark. These were keyed on `.dark` and silently stopped matching the moment
-   the class mechanism was removed. */
+   the class mechanism was removed.
+
+   Deliberately NOT scoped to `html[data-theme=…]`, even though `useTheme` only
+   ever writes the attribute on <html>. blokkit's own variant is unscoped —
+   `&:where([data-theme="dark"] *, [data-theme="dark"])` — because a nested
+   `data-theme` is a supported way to theme a subtree differently. Scoping to
+   `html` here would diverge from the variant this PR exists to align with. */
 [data-theme="dark"] ::-webkit-scrollbar-track {
   background: #262626;
 }
