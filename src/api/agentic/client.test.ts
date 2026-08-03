@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createMessageStream } from "../stream-result.js";
 import { autoApproveResolver, callAgenticStream, denyAllResolver } from "./client.js";
+import type { AgenticStreamError } from "./errors.js";
+import { isAgenticStreamError } from "./errors.js";
 
 /**
  * Regression tests for PDEV-7330 — the SDK must never answer a tool-call
@@ -133,5 +136,286 @@ describe("callAgenticStream — tool-call approval (PDEV-7330)", () => {
 
     // Turn 1's prose plus turn 2's — a denied tool must not swallow the answer.
     expect(text).toBe("thinking… done");
+  });
+});
+
+/**
+ * PDEV-7333 — the frames the SDK never handled, and the ends it used to take
+ * silently.
+ *
+ * Every terminal case below used to be a bare `break`, which returned the text
+ * accumulated so far as though the turn had finished. `useChatStream` then wrote
+ * that half-answer into the message cache as the assistant's reply. These tests
+ * pin the distinction: an incomplete turn throws.
+ */
+
+const TOO_LARGE_FRAME = {
+  type: "data-tool-call-too-large",
+  data: { toolName: "createTicket" },
+};
+const SERVER_ERROR_FRAME = {
+  type: "data-error",
+  data: {
+    code: "TOOL_EXECUTION_FAILED",
+    errorClass: "MastraError",
+    message: "Graph call failed",
+    traceId: "trace-42",
+    retryable: true,
+    partial: false,
+  },
+};
+
+/** Stub fetch with one response per POST, in order — for multi-turn resume tests. */
+function stubSequence(...turns: object[][]): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn();
+  for (const frames of turns) fetchMock.mockResolvedValueOnce(sseResponse(frames));
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+/** Run the stream to completion and return whatever it threw, or null. */
+async function thrownBy(stream: AsyncIterable<string>): Promise<unknown> {
+  return drain(stream).then(
+    () => null,
+    (err: unknown) => err,
+  );
+}
+
+const DENY = { ...OPTIONS, approvalResolver: denyAllResolver };
+
+describe("callAgenticStream — fail-fast frames (PDEV-7333)", () => {
+  describe("data-tool-call-too-large", () => {
+    it("throws instead of returning a truncated turn", async () => {
+      stubSequence([{ type: "text-delta", textDelta: "partial" }, TOO_LARGE_FRAME]);
+
+      const err = await thrownBy(callAgenticStream(DENY));
+
+      expect(isAgenticStreamError(err)).toBe(true);
+      const streamError = err as AgenticStreamError;
+      expect(streamError.reason).toBe("tool-call-too-large");
+      expect(streamError.toolName).toBe("createTicket");
+      expect(streamError.partial).toBe(true);
+    });
+
+    it("does NOT auto-resume", async () => {
+      // The point of the server-side fail-fast: resuming regenerates the same
+      // oversized call and burns the budget for nothing.
+      const fetchMock = stubSequence([TOO_LARGE_FRAME]);
+
+      await thrownBy(callAgenticStream(DENY));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("wins over an approval frame in the same stream", async () => {
+      // The server emits it right before `finish`, so both can arrive in one
+      // stream. Resuming on the approval walks straight into the wall.
+      const fetchMock = stubSequence([APPROVAL_FRAME, TOO_LARGE_FRAME], []);
+
+      const err = await thrownBy(callAgenticStream(DENY));
+
+      expect((err as AgenticStreamError).reason).toBe("tool-call-too-large");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("data-error", () => {
+    it("throws with the server's classification attached", async () => {
+      stubSequence([SERVER_ERROR_FRAME]);
+
+      const err = await thrownBy(callAgenticStream(DENY));
+
+      expect(isAgenticStreamError(err)).toBe(true);
+      const streamError = err as AgenticStreamError;
+      expect(streamError.reason).toBe("server-error");
+      expect(streamError.code).toBe("TOOL_EXECUTION_FAILED");
+      expect(streamError.traceId).toBe("trace-42");
+      expect(streamError.retryable).toBe(true);
+      expect(streamError.message).toContain("Graph call failed");
+    });
+
+    it("does not resume", async () => {
+      const fetchMock = stubSequence([APPROVAL_FRAME, SERVER_ERROR_FRAME], []);
+
+      await thrownBy(callAgenticStream(DENY));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("passes through a code the SDK has never heard of", async () => {
+      // `AgenticErrorCode` lists what the server sends *today*; the SDK releases
+      // independently of it. A code typed as the closed union would let a
+      // consumer's `switch` claim exhaustiveness, so the wire-facing fields use
+      // the open `AgenticErrorCodeValue` and an unknown code reaches the caller
+      // intact rather than being dropped or coerced.
+      stubSequence([
+        {
+          type: "data-error",
+          data: {
+            code: "RATE_LIMITED",
+            errorClass: "TooManyRequests",
+            message: "slow down",
+            traceId: "t-9",
+            retryable: true,
+            partial: false,
+          },
+        },
+      ]);
+
+      const err = await thrownBy(callAgenticStream(DENY));
+
+      expect((err as AgenticStreamError).code).toBe("RATE_LIMITED");
+      expect((err as AgenticStreamError).retryable).toBe(true);
+    });
+  });
+
+  describe("the resume budget", () => {
+    it("throws a distinguishable terminal error when exhausted", async () => {
+      stubSequence(
+        [{ type: "text-delta", textDelta: "a" }, APPROVAL_FRAME],
+        [{ type: "text-delta", textDelta: "b" }, APPROVAL_FRAME],
+        [{ type: "text-delta", textDelta: "c" }, APPROVAL_FRAME],
+      );
+
+      const err = await thrownBy(callAgenticStream({ ...DENY, maxAutoResumes: 2 }));
+
+      expect(isAgenticStreamError(err)).toBe(true);
+      expect((err as AgenticStreamError).reason).toBe("resume-budget-exhausted");
+      // Text did reach the caller before the turn died — a surface may prefer to
+      // keep what it rendered rather than discard it.
+      expect((err as AgenticStreamError).partial).toBe(true);
+    });
+
+    it("throws on an exhausted suspend budget too", async () => {
+      stubSequence([SUSPEND_FRAME], [SUSPEND_FRAME]);
+
+      const err = await thrownBy(callAgenticStream({ ...DENY, maxAutoResumes: 1 }));
+
+      expect((err as AgenticStreamError).reason).toBe("resume-budget-exhausted");
+      expect((err as AgenticStreamError).partial).toBe(false);
+    });
+
+    it("stops at exactly maxAutoResumes resumes plus the initial POST", async () => {
+      const fetchMock = stubSequence([APPROVAL_FRAME], [APPROVAL_FRAME], [APPROVAL_FRAME]);
+
+      await thrownBy(callAgenticStream({ ...DENY, maxAutoResumes: 2 }));
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe("the MessageStream contract", () => {
+    it("rejects `final` on a truncated turn instead of resolving partial text", async () => {
+      // The link in the chain that makes the hook test meaningful: the client
+      // throwing only prevents a bad commit if createMessageStream turns it into
+      // a rejected `final`. Before this ticket the turn ended with `break`, so
+      // `final` RESOLVED with "half an answer" and every consumer treated it as
+      // the assistant's complete reply.
+      stubSequence([{ type: "text-delta", textDelta: "half an answer" }, TOO_LARGE_FRAME]);
+
+      const stream = createMessageStream(callAgenticStream(DENY));
+
+      await expect(stream.final).rejects.toThrow(/ran out of output tokens/);
+      await expect(stream.final).rejects.toMatchObject({ reason: "tool-call-too-large" });
+    });
+
+    it("re-throws into textDeltas so a delta-only consumer also sees the failure", async () => {
+      stubSequence([{ type: "text-delta", textDelta: "half" }, TOO_LARGE_FRAME]);
+
+      const stream = createMessageStream(callAgenticStream(DENY));
+      const seen: string[] = [];
+      const err = await (async () => {
+        try {
+          for await (const delta of stream.textDeltas) seen.push(delta);
+          return null;
+        } catch (e: unknown) {
+          return e;
+        }
+      })();
+
+      // The text still arrived — it is the *commit* that must not happen.
+      expect(seen).toEqual(["half"]);
+      expect(isAgenticStreamError(err)).toBe(true);
+    });
+  });
+
+  describe("non-terminal observations", () => {
+    it("reports a failed tool call without ending the turn", async () => {
+      stubSequence([
+        { type: "tool-output-error", toolCallId: "t9", error: { message: "403 from Graph" } },
+        { type: "text-delta", textDelta: "I could not read that mailbox." },
+      ]);
+      const onToolError = vi.fn();
+
+      const text = await drain(callAgenticStream({ ...DENY, onToolError }));
+
+      expect(text).toBe("I could not read that mailbox.");
+      expect(onToolError).toHaveBeenCalledWith({
+        toolCallId: "t9",
+        error: { message: "403 from Graph" },
+      });
+    });
+
+    it("reports a missing integration so the surface can render a Connect card", async () => {
+      stubSequence([
+        {
+          type: "data-connect-integration",
+          id: "connect:t1:sharepoint_microsoft-tenant",
+          data: { providerKey: "sharepoint_microsoft-tenant", toolId: "listFiles" },
+        },
+        { type: "text-delta", textDelta: "Connect SharePoint to continue." },
+      ]);
+      const onConnectIntegration = vi.fn();
+
+      const text = await drain(callAgenticStream({ ...DENY, onConnectIntegration }));
+
+      expect(text).toBe("Connect SharePoint to continue.");
+      expect(onConnectIntegration).toHaveBeenCalledWith({
+        providerKey: "sharepoint_microsoft-tenant",
+        toolId: "listFiles",
+      });
+    });
+
+    it("survives an observer that throws", async () => {
+      // An observer is a notification, not control flow. A bug in a Connect card
+      // renderer must not abort an agent run that is still producing an answer.
+      stubSequence([
+        { type: "tool-output-error", toolCallId: "t9" },
+        { type: "data-connect-integration", data: { providerKey: "p", toolId: "t" } },
+        { type: "text-delta", textDelta: "answer survived" },
+      ]);
+
+      const text = await drain(
+        callAgenticStream({
+          ...DENY,
+          onToolError: () => {
+            throw new Error("renderer blew up");
+          },
+          onConnectIntegration: () => {
+            throw new Error("card blew up");
+          },
+        }),
+      );
+
+      expect(text).toBe("answer survived");
+    });
+
+    it("tolerates a malformed connect-integration frame with no data", async () => {
+      stubSequence([{ type: "data-connect-integration" }, { type: "text-delta", textDelta: "ok" }]);
+      const onConnectIntegration = vi.fn();
+
+      await expect(drain(callAgenticStream({ ...DENY, onConnectIntegration }))).resolves.toBe("ok");
+      expect(onConnectIntegration).not.toHaveBeenCalled();
+    });
+
+    it("ignores both frames when no callback is supplied", async () => {
+      stubSequence([
+        { type: "tool-output-error", toolCallId: "t9" },
+        { type: "data-connect-integration", data: { providerKey: "p", toolId: "t" } },
+        { type: "text-delta", textDelta: "still fine" },
+      ]);
+
+      await expect(drain(callAgenticStream(DENY))).resolves.toBe("still fine");
+    });
   });
 });

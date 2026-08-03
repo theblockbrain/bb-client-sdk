@@ -99,7 +99,7 @@ setAnalyticsAdapter(
 // `login()` already binds identity on success (PDEV-6855) — nothing to do there.
 // Only a session RESTORED from storage (no login() call this session) needs it:
 identifyUser(profile.sub);                                  // Zitadel `sub` — never PII
-// `Profile.orgId` is `string | null` (src/auth/jwt.ts) — guard it. Passing null would
+// `Profile.orgId` is `string | null` (src/auth/jwt-claims.ts) — guard it. Passing null would
 // register `tenant_id: null` as a sticky super-prop for the whole session.
 if (profile.orgId) setAnalyticsGroup(profile.orgId);
 ```

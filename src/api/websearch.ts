@@ -88,13 +88,20 @@ export async function getConversationWebSearch(
   ctx: AuthContext,
   convoId: string,
 ): Promise<ConversationWebSearchSettings> {
+  // One string for both the request and the error: `BBApiError.endpoint` must
+  // describe the path actually requested. A raw convoId containing `/`, `?` or a
+  // space would otherwise report an endpoint that was never called — and once
+  // PDEV-7009 makes `throwIfNotOk` the single `api_error` emit point, that wrong
+  // string becomes the telemetry key too. Matches the `const endpoint` pattern
+  // the integrations endpoints already use.
+  const path = `/cortex/conversation/${encodeURIComponent(convoId)}`;
   const res = await request(ctx, {
     host: "blocky",
-    path: `/cortex/conversation/${encodeURIComponent(convoId)}`,
+    path,
     method: "GET",
     headers: authHeaders(ctx.token, ctx.orgId),
   });
-  await throwIfNotOk(res, `/cortex/conversation/${convoId}`);
+  await throwIfNotOk(res, path);
 
   const data = await res.json<
     { body?: ConversationWebSearchSettings } & ConversationWebSearchSettings

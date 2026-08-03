@@ -40,6 +40,28 @@ function stub(res: Partial<TransportResponse> & { body?: unknown }) {
   return { transport, sent, last: () => sent[sent.length - 1] };
 }
 
+/**
+ * The request body as text. `TransportRequest.body` is `string | FormData`, and a
+ * bare `String()` on the latter yields `"[object FormData]"` — a token grant is
+ * always form-encoded, so anything else is the test lying to itself.
+ */
+function bodyText(req: TransportRequest): string {
+  if (typeof req.body !== "string") throw new Error("expected a form-encoded string body");
+  return req.body;
+}
+
+/** The Error a call rejected with — fails loudly if it resolved instead. */
+async function rejection(call: Promise<unknown>): Promise<Error> {
+  let caught: unknown;
+  try {
+    await call;
+  } catch (err) {
+    caught = err;
+  }
+  if (!(caught instanceof Error)) throw new Error("expected the call to reject");
+  return caught;
+}
+
 const TOKENS = {
   access_token: "at",
   id_token: "it",
@@ -98,7 +120,7 @@ describe("postToken — endpoint decomposition", () => {
 
     const req = s.last();
     expect(req.headers?.["Content-Type"]).toBe("application/x-www-form-urlencoded");
-    expect(String(req.body)).toContain("code_verifier=the-verifier");
+    expect(bodyText(req)).toContain("code_verifier=the-verifier");
     // The verifier must never be a query parameter — it would land in access logs.
     expect(JSON.stringify(req.query ?? {})).not.toContain("the-verifier");
   });
@@ -122,14 +144,9 @@ describe("failed token calls — what the error is allowed to say", () => {
   it("exchangeCode leaks neither the description nor the echoed grant", async () => {
     const s = stub({ status: 400, ok: false, body: LEAKY_BODY });
 
-    const err = await exchangeCode(
-      "c",
-      "v",
-      "https://app.example.test/cb",
-      "client",
-      undefined,
-      s.transport,
-    ).catch((e: unknown) => e as Error);
+    const err = await rejection(
+      exchangeCode("c", "v", "https://app.example.test/cb", "client", undefined, s.transport),
+    );
 
     expect(err.message).not.toContain("SECRET");
     expect(err.message).not.toContain("error_description");
@@ -144,14 +161,9 @@ describe("failed token calls — what the error is allowed to say", () => {
       body: { error: "sensitive internal detail: token=SECRET" },
     });
 
-    const err = await exchangeCode(
-      "c",
-      "v",
-      "https://app.example.test/cb",
-      "client",
-      undefined,
-      s.transport,
-    ).catch((e: unknown) => e as Error);
+    const err = await rejection(
+      exchangeCode("c", "v", "https://app.example.test/cb", "client", undefined, s.transport),
+    );
 
     expect(err.message).toBe("Token exchange failed: 400");
     expect(err.message).not.toContain("SECRET");
@@ -188,6 +200,6 @@ describe("failed token calls — what the error is allowed to say", () => {
     const s = stub({ body: TOKENS });
     await refreshTokens("rt", "client", undefined, s.transport);
 
-    expect(String(s.last().body)).not.toContain("scope");
+    expect(bodyText(s.last())).not.toContain("scope");
   });
 });
