@@ -117,6 +117,27 @@ SDK-specific governance on top of that:
 - **Branch name** `type/TICKET-123/description` (`pre-push` hook): e.g. `feat/PDEV-123/react-query-layer`. `main` + `release*` exempt.
 - **No `any`, typed errors:** every `./api` call throws `BBApiError` (`statusCode`, `endpoint`, `responseBody`) on non-2xx — handle with `isBBApiError(err)` / `err.statusCode` (README: `401` → re-auth, `503` → not configured). Never log `responseBody` raw (may carry tokens — Invariant D).
 - **Fix the diagnostic, never silence it.** `biome-ignore`, `eslint-disable`, `@ts-ignore`/`@ts-expect-error`/`@ts-nocheck`, and `as any`/`as unknown as T` casts are **last resorts, not tools**. A lint or type error is information about the code — resolve the underlying issue instead. Even an `ℹ`-level Biome diagnostic that exits 0 counts: a clean `npm run lint` is the standard. Before reaching for a suppression, restructure. If a rule genuinely must be waived, that is a **config decision** in `biome.json`/`eslint.config.js` with a written rationale — reviewable in one place — not an inline comment scattered through `src/`. Any suppression that does survive review must name the rule and give a reason on the same line, and a reviewer may ask for it to be removed. Current inventory to work down, not to imitate: `src/api/stream-result.ts:40,100,130`. (`src/ui/useTheme.ts`'s pair came off the list in PDEV-7000 — the one-shot mount effect became an effect keyed on `mode`, which needs no suppression.)
+- **Server-supplied enums: closed type for OUR use, open type on the wire.** When a backend
+  defines a fixed set of string values (an SSE frame's `code`, a status, a kind), declare the
+  closed union — it is the contract, it gives autocomplete, and it lets a consumer write
+  `Record<TheUnion, Copy>` so adding a value is a compile error where it matters. But **the field
+  that holds a value read off the wire must be the open form**, `TheUnion | (string & {})`:
+
+  ```ts
+  export type AgenticErrorCode = "TOOL_EXECUTION_FAILED" | "MASTRA_ERROR" | …;   // the known set
+  export type AgenticErrorCodeValue = AgenticErrorCode | (string & {});          // what arrives
+  interface StreamErrorData { code: AgenticErrorCodeValue }                      // wire-facing
+  ```
+
+  Why: the SDK ships independently of the backend, and nothing validates these values —
+  `parseSseDataLine` casts parsed JSON straight to the frame union. A closed union on a wire
+  field is a promise the runtime does not keep: a consumer writes an exhaustive `switch` with no
+  `default`, TypeScript agrees it is exhaustive, the server adds `RATE_LIMITED`, and the new code
+  is silently dropped. Bare `string` is also wrong — it throws away the contract and the
+  autocomplete, and it is what reviewers (rightly) flag. The open union is the honest middle.
+  Where a value must be narrowed for real, **coerce at runtime with a fallback** rather than
+  asserting — `coerceChatTopic` (`src/telemetry/taxonomy.ts`) maps anything unrecognised to
+  `other`. Same rule, enforced instead of declared.
 - **Functional-first.** Prefer pure functions over stateful helpers; immutable data over in-place mutation (`map`/`filter`/`reduce` and spreads over `push`/index assignment/`splice`); expressions and early returns over accumulator variables; `readonly` / `as const` on anything not meant to change (the SDK already does this for `AUTH_SCOPES`, `LoginOptions.scopes`, adapter trait records). Where the runtime forces imperative code — SSE reader loops, `AbortSignal` plumbing, the process-wide analytics adapter, React effects — keep the mutation **local and contained** behind a pure boundary, exactly as `parseAgenticStream` wraps its reader loop in an `AsyncIterable` and `createRefreshGuard` hides its in-flight promise. Never export a mutable binding; never mutate a caller's object or an argument.
 
 ---
