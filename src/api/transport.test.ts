@@ -397,3 +397,256 @@ describe("createFetchTransport — defaults", () => {
     }
   });
 });
+
+/**
+ * PDEV-7340 — retry and the 401 replay.
+ *
+ * Both are opt-in. The default transport does neither, because a silent retry
+ * changes timing every consumer already tuned around.
+ */
+describe("retry (PDEV-7340)", () => {
+  const ok = () => new Response("{}", { status: 200 });
+  const fail = (status: number) => new Response("{}", { status });
+
+  it("retries a transient fetch rejection and returns the eventual success", async () => {
+    // Retry covers a rejecting fetch as well as a retriable status, but only the
+    // status path was covered — so nothing pinned the `catch` branch that keeps
+    // going when `i < extra`. A DNS blip or a dropped socket is exactly the case
+    // retry exists for.
+    const doFetch = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(ok());
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 2, baseDelayMs: 1 } });
+
+    const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(res.status).toBe(200);
+    expect(doFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("still throws kind 'network' when every attempt rejects", async () => {
+    const doFetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 2, baseDelayMs: 1 } });
+
+    await expect(t.send({ host: "blocky", path: "/x", method: "GET" })).rejects.toMatchObject({
+      kind: "network",
+      statusCode: 0,
+    });
+    expect(doFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("sends the request even when the policy is nonsense", async () => {
+    // A negative or NaN `attempts` made `i <= extra` false on the very first
+    // iteration, so the loop body never ran: the request was never sent and the
+    // caller got a fabricated "aborted" error from the tail throw.
+    for (const attempts of [-1, Number.NaN, -0.5]) {
+      const doFetch = vi.fn().mockResolvedValue(ok());
+      const t = createFetchTransport({ fetch: doFetch, retry: { attempts, baseDelayMs: 1 } });
+
+      const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+      expect(res.status).toBe(200);
+      expect(doFetch).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("treats an unusable baseDelayMs as unset rather than propagating NaN", async () => {
+    const doFetch = vi.fn().mockResolvedValueOnce(fail(503)).mockResolvedValueOnce(ok());
+    const t = createFetchTransport({
+      fetch: doFetch,
+      retry: { attempts: 1, baseDelayMs: Number.NaN },
+    });
+
+    const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(res.status).toBe(200);
+    expect(doFetch).toHaveBeenCalledTimes(2);
+  }, 10_000);
+
+  it("releases the body of a response it discards before retrying", async () => {
+    // An unconsumed body holds the connection until GC; undici warns about it.
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const retriable = new Response("{}", { status: 503 });
+    Object.defineProperty(retriable, "body", { value: { cancel }, configurable: true });
+
+    const doFetch = vi.fn().mockResolvedValueOnce(retriable).mockResolvedValueOnce(ok());
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 2, baseDelayMs: 1 } });
+
+    await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry unless a policy is configured", async () => {
+    const doFetch = vi.fn().mockResolvedValue(fail(503));
+    const t = createFetchTransport({ fetch: doFetch });
+
+    await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a 503 on GET and returns the eventual success", async () => {
+    const doFetch = vi.fn().mockResolvedValueOnce(fail(503)).mockResolvedValueOnce(ok());
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 2, baseDelayMs: 1 } });
+
+    const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(2);
+    expect(res.ok).toBe(true);
+  });
+
+  it("retries a 429", async () => {
+    const doFetch = vi.fn().mockResolvedValueOnce(fail(429)).mockResolvedValueOnce(ok());
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 2, baseDelayMs: 1 } });
+
+    await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("never retries a 4xx that is not 429 — it would fail identically", async () => {
+    const doFetch = vi.fn().mockResolvedValue(fail(404));
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 3, baseDelayMs: 1 } });
+
+    await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("never retries a POST — it could double-send a message", async () => {
+    const doFetch = vi.fn().mockResolvedValue(fail(503));
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 3, baseDelayMs: 1 } });
+
+    await t.send({ host: "blocky", path: "/x", method: "POST", body: "{}" });
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up after the configured attempts and surfaces the last response", async () => {
+    // A fresh Response per call, not one shared instance: a body is single-use by
+    // spec, so a real fetch cannot hand back the same Response three times. The
+    // shared-instance version only passed while discarded bodies were left
+    // unread — cancelling them (as the runtime wants) makes the fixture's
+    // unreality visible.
+    const doFetch = vi.fn().mockImplementation(() => Promise.resolve(fail(503)));
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 2, baseDelayMs: 1 } });
+
+    const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(3); // first + 2 retries
+    expect(res.status).toBe(503);
+  });
+});
+
+/**
+ * PDEV-7340 review finding: `send()` disposed the abort plan on its success paths
+ * but not when it threw. `dispose` clears the deadline timer and detaches the
+ * caller-abort listener, so a failing request left both behind — in Node an
+ * uncleared timer also keeps the event loop alive for the remainder of the
+ * timeout, and a long-lived caller signal accumulates a listener per failed call.
+ */
+describe("abort-plan disposal on failure", () => {
+  it("detaches the caller abort listener when the request throws", async () => {
+    const controller = new AbortController();
+    const remove = vi.spyOn(controller.signal, "removeEventListener");
+    const doFetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    const t = createFetchTransport({ fetch: doFetch });
+
+    await expect(
+      t.send({ host: "blocky", path: "/x", method: "GET", signal: controller.signal }),
+    ).rejects.toMatchObject({ kind: "network" });
+
+    expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+  });
+
+  it("detaches it when the refresh hook itself throws", async () => {
+    // onUnauthorized is consumer code, so it can throw. That path escaped
+    // disposal entirely before.
+    const controller = new AbortController();
+    const remove = vi.spyOn(controller.signal, "removeEventListener");
+    const t = createFetchTransport({
+      fetch: vi.fn().mockImplementation(() => Promise.resolve(new Response("{}", { status: 401 }))),
+      onUnauthorized: () => Promise.reject(new Error("refresh exploded")),
+    });
+
+    await expect(
+      t.send({ host: "blocky", path: "/x", method: "GET", signal: controller.signal }),
+    ).rejects.toThrow("refresh exploded");
+
+    expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+  });
+
+  it("clears the deadline timer when the request throws", async () => {
+    const cleared = vi.spyOn(globalThis, "clearTimeout");
+    const doFetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    const t = createFetchTransport({ fetch: doFetch, timeoutMs: 30_000 });
+
+    await expect(t.send({ host: "blocky", path: "/x", method: "GET" })).rejects.toMatchObject({
+      kind: "network",
+    });
+
+    expect(cleared).toHaveBeenCalled();
+  });
+});
+
+describe("401 refresh (PDEV-7340)", () => {
+  const unauthorized = () => new Response("{}", { status: 401 });
+  const ok = () => new Response('{"v":1}', { status: 200 });
+
+  it("refreshes once and replays with the new token", async () => {
+    const doFetch = vi.fn().mockResolvedValueOnce(unauthorized()).mockResolvedValueOnce(ok());
+    const onUnauthorized = vi.fn().mockResolvedValue("fresh-token");
+    const t = createFetchTransport({ fetch: doFetch, onUnauthorized });
+
+    const res = await t.send({
+      host: "blocky",
+      path: "/x",
+      method: "GET",
+      headers: { Authorization: "Bearer stale" },
+    });
+
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(res.ok).toBe(true);
+    // The replay must carry the NEW token — replaying with the stale one would
+    // just 401 again and look like a refresh that "didn't work".
+    const replayHeaders = doFetch.mock.calls[1][1].headers as Record<string, string>;
+    expect(replayHeaders.authorization).toBe("Bearer fresh-token");
+  });
+
+  it("does not loop when the refreshed token is also rejected", async () => {
+    // Two 401s means an authorisation problem, not a stale token. Retrying is
+    // how a login loop starts.
+    const doFetch = vi.fn().mockResolvedValue(unauthorized());
+    const onUnauthorized = vi.fn().mockResolvedValue("fresh-token");
+    const t = createFetchTransport({ fetch: doFetch, onUnauthorized });
+
+    const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(2);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(401);
+  });
+
+  it("lets the 401 through when refresh returns null", async () => {
+    // The honest answer when the refresh token itself has expired.
+    const doFetch = vi.fn().mockResolvedValue(unauthorized());
+    const t = createFetchTransport({ fetch: doFetch, onUnauthorized: () => Promise.resolve(null) });
+
+    const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(401);
+  });
+
+  it("does nothing on a 401 when no handler is configured", async () => {
+    const doFetch = vi.fn().mockResolvedValue(unauthorized());
+    const t = createFetchTransport({ fetch: doFetch });
+
+    const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+    expect(doFetch).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(401);
+  });
+});
