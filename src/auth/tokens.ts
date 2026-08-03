@@ -41,8 +41,8 @@ export async function exchangeCode(
   const res = await postToken(tokenEndpoint, params, transport);
 
   if (!res.ok) {
-    const text = await res.text().catch(() => res.status.toString());
-    throw new Error(`Token exchange failed: ${text}`);
+    const code = await oauthErrorCode(res);
+    throw new Error(`Token exchange failed: ${describeTokenFailure(res.status, code)}`);
   }
 
   return res.json<TokenResult>();
@@ -64,7 +64,13 @@ export async function exchangeCode(
  * other call gets. Auth is the last call that should be on its own code path.
  *
  * `tokenEndpoint` stays an absolute URL in the public signature so no caller has
- * to change; it is split into the `auth` host and a path here.
+ * to change; it is split into the `auth` host, a path and a query here.
+ *
+ * The query is carried in `TransportRequest.query`, not appended to `path` —
+ * `path` is contractually "path only" and the transport has a field for this.
+ * RFC 6749 §3.2 allows the token endpoint to carry a query component and
+ * requires it to be **retained** when further parameters are added, so dropping
+ * it would silently break any IdP or proxy that uses one.
  */
 async function postToken(
   tokenEndpoint: string,
@@ -73,13 +79,55 @@ async function postToken(
 ): Promise<TransportResponse> {
   const endpoint = new URL(tokenEndpoint);
   const send = transport ?? createFetchTransport({ hosts: { auth: endpoint.origin } });
+  const query = Object.fromEntries(endpoint.searchParams);
   return send.send({
     host: "auth",
     path: endpoint.pathname,
+    ...(Object.keys(query).length > 0 ? { query } : {}),
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),
   });
+}
+
+/** RFC 6749 §5.2 — the closed set of token-endpoint error codes. */
+const OAUTH_ERROR_CODES: readonly string[] = [
+  "invalid_request",
+  "invalid_client",
+  "invalid_grant",
+  "unauthorized_client",
+  "unsupported_grant_type",
+  "invalid_scope",
+];
+
+/**
+ * The RFC 6749 §5.2 `error` code off a failed token response, or `null`.
+ *
+ * An **allowlist, not a passthrough**. The raw body of a failed token call must
+ * never reach a thrown message or a log line: `error_description` is free text
+ * from the AS, a misconfigured proxy can echo the submitted grant (which carries
+ * `code_verifier` / `refresh_token`), and a non-OAuth failure returns whatever
+ * HTML the edge produced. Consumers routinely stringify a thrown error into
+ * Sentry, so anything in the message is effectively published (invariant D).
+ *
+ * Matching against the spec's fixed vocabulary keeps the one genuinely useful
+ * diagnostic — `invalid_grant` vs `invalid_client` — while making it impossible
+ * for server-controlled text to ride along. Never throws: it is called while
+ * building an error, and failing there would mask the real failure.
+ */
+async function oauthErrorCode(res: TransportResponse): Promise<string | null> {
+  try {
+    const body = await res.json<{ error?: unknown }>();
+    const code = body?.error;
+    return typeof code === "string" && OAUTH_ERROR_CODES.includes(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `"401 (invalid_grant)"` when the code is a known one, else `"401"`. */
+function describeTokenFailure(status: number, code: string | null): string {
+  return code ? `${status} (${code})` : String(status);
 }
 
 /**
@@ -110,10 +158,12 @@ export async function refreshTokens(
   const res = await postToken(tokenEndpoint, params, transport);
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    // Status only — the body of a failed token call can echo the grant.
-    console.error("[auth] refreshTokens failed:", res.status, text);
-    throw new Error(`Token refresh failed: ${res.status}`);
+    // Status + the allowlisted OAuth code only. This previously logged the raw
+    // body immediately below a comment warning that the body can echo the grant.
+    const code = await oauthErrorCode(res);
+    const detail = describeTokenFailure(res.status, code);
+    console.error("[auth] refreshTokens failed:", detail);
+    throw new Error(`Token refresh failed: ${detail}`);
   }
 
   return res.json<TokenResult>();

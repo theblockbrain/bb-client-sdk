@@ -58,8 +58,15 @@ import type { IdentityAdapter } from "./identity.js";
 
 /** `Office.AsyncResult` — only `status`, `value` and `error` are read. */
 export interface OfficeAsyncResult<T> {
-  /** Compared against {@link OfficeGlobal.AsyncResultStatus}. Numeric enum at runtime. */
-  status: number;
+  /**
+   * Compared against {@link OfficeGlobal.AsyncResultStatus}.
+   *
+   * A **string** enum in Office.js (`"succeeded"` / `"failed"`), not numeric —
+   * verified against a real `Office` object, having first assumed otherwise.
+   * Typing it `number` made the whole namespace fail to satisfy `OfficeGlobal`,
+   * which is the kind of thing only compiling against the real thing catches.
+   */
+  status: string;
   value: T;
   error?: { code?: number; message?: string };
 }
@@ -116,7 +123,7 @@ export interface OfficeGlobal {
     DialogEventReceived: string;
   };
   AsyncResultStatus: {
-    Failed: number;
+    Failed: string;
   };
 }
 
@@ -130,8 +137,21 @@ export interface OfficeIdentityAdapterConfig {
    * host, so this stays caller-supplied rather than being derived here.
    */
   redirectUri: string;
-  /** Dialog sizing. Defaults to 60% × 30%, never iframed. */
-  dialog?: OfficeDialogOptions;
+  /**
+   * Dialog sizing. Defaults to 60% × 30%.
+   *
+   * `displayInIframe` is deliberately not settable here. It is part of
+   * {@link OfficeDialogOptions} because that interface also types the real
+   * `displayDialogAsync` parameter, but for this adapter's one use — an IdP
+   * authorize page — `true` is broken in every supported configuration: the IdP
+   * sends `X-Frame-Options`/CSP `frame-ancestors` and the dialog renders blank.
+   * A same-origin proxied IdP would be the one case where framing could work,
+   * and that is not a supported deployment (`authorizeEndpoint` stays pinned to
+   * the prod authority — see the audience-pinning invariant). So the option is
+   * omitted rather than accepted-and-ignored: a caller who passes it gets a
+   * compile error instead of a blank dialog to debug.
+   */
+  dialog?: Omit<OfficeDialogOptions, "displayInIframe">;
 }
 
 /** Office's code for "the user closed the dialog", worth its own message. */
@@ -156,7 +176,14 @@ const DEFAULT_DIALOG: OfficeDialogOptions = {
  */
 export function createOfficeIdentityAdapter(config: OfficeIdentityAdapterConfig): IdentityAdapter {
   const { office, redirectUri } = config;
-  const dialogOptions = { ...DEFAULT_DIALOG, ...config.dialog };
+  // `config.dialog` cannot carry `displayInIframe` (see the field's doc), so the
+  // default's `false` always survives the spread. Ordering it last anyway keeps
+  // that true if the option type is ever widened.
+  const dialogOptions: OfficeDialogOptions = {
+    ...DEFAULT_DIALOG,
+    ...config.dialog,
+    displayInIframe: false,
+  };
 
   return {
     getRedirectUri: () => redirectUri,

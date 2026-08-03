@@ -8,6 +8,12 @@
  * `ApprovalResolver` interface (default: auto-approve). The resume loop re-POSTs
  * to the same endpoint with `runId` + `resumeData` until the stream terminates
  * without a suspend/approval event.
+ *
+ * Any end that is not a completed answer throws `AgenticStreamError` — the
+ * server's fail-fast signal, a structured server error, or an exhausted resume
+ * budget. Ending quietly would make a truncated turn indistinguishable from a
+ * short one, which is how a half-finished answer used to reach the message cache
+ * labelled as final (PDEV-7333).
  */
 import { AGENTIC_BASE_URL } from "../../config.js";
 import type { AuthContext } from "../../settings/auth-mode.js";
@@ -15,16 +21,23 @@ import { request } from "../_send.js";
 import { BBApiError } from "../errors.js";
 import type { Transporter } from "../transport.js";
 import { normalizeUrl } from "../url.js";
+import { AgenticStreamError } from "./errors.js";
 import { agenticHeaders } from "./headers.js";
 import { parseAgenticStream } from "./sse.js";
 import {
   type AgenticRequestBody,
   type AgenticResumeData,
   type AgenticSseFrame,
+  type AgenticStreamErrorData,
   type AgenticUIMessage,
+  type ConnectIntegrationData,
+  isConnectIntegrationFrame,
+  isStreamErrorFrame,
   isTextDeltaFrame,
   isToolCallApprovalFrame,
   isToolCallSuspendedFrame,
+  isToolCallTooLargeFrame,
+  isToolOutputErrorFrame,
 } from "./types.js";
 
 // ─── ApprovalResolver ─────────────────────────────────────────────────────────
@@ -57,6 +70,22 @@ export interface ApprovalResult {
 export interface SuspendResult {
   answers?: Record<string, string>;
   cancelled?: boolean;
+}
+
+// ─── Observable non-terminal events ───────────────────────────────────────────
+
+/**
+ * A tool call executed and failed.
+ *
+ * Not terminal: the agent is told the tool failed and usually continues in
+ * prose, so the turn still produces an answer. Reported so a surface can show
+ * *which* step failed instead of silently rendering an answer that quietly
+ * omits it.
+ */
+export interface ToolErrorEvent {
+  toolCallId: string;
+  /** Raw server-supplied error payload — shape is not guaranteed. */
+  error: unknown;
 }
 
 /**
@@ -139,10 +168,39 @@ export interface AgenticCallOptions {
    */
   approvalResolver: ApprovalResolver;
   /**
-   * Maximum number of consecutive auto-resume cycles to prevent infinite loops.
-   * Default: 3. Mirrors `MAX_AUTO_RESUMES` in v1-frontend AgenticChatBridge.
+   * Maximum number of resume cycles per turn, to bound a runaway loop.
+   * Default: 3.
+   *
+   * **Cumulative for the whole turn, not consecutive** — the counter is never
+   * reset, so this is a hard cap of 3 approvals/suspends per user message. The
+   * previous "consecutive" wording described behaviour the code does not have;
+   * `continue`/`break` are the only exits from the loop, so there is no point at
+   * which a reset could occur.
+   *
+   * This diverges from the v1-frontend `AgenticChatBridge` it cites: there,
+   * `MAX_AUTO_RESUMES` bounds only `finishReason: 'length'` continuations, and
+   * the approval and suspend branches **reset the counter to 0** — a
+   * human-in-the-loop gate is not a runaway-loop risk when a human clicks every
+   * one. The SDK cannot assume a human: `autoApproveResolver` answers
+   * unattended, so a bound on approvals is load-bearing here in a way it is not
+   * in the browser. Whether to raise it, or to give approvals their own larger
+   * budget, is a product decision — see PDEV-7333.
+   *
+   * Exhaustion is no longer silent: it throws {@link AgenticStreamError} with
+   * `reason: "resume-budget-exhausted"`.
    */
   maxAutoResumes?: number;
+  /**
+   * Called when a tool call fails (`tool-output-error`). Non-terminal — the
+   * stream continues. Optional; the SDK ignores tool failures without it.
+   */
+  onToolError?: (event: ToolErrorEvent) => void;
+  /**
+   * Called when a tool needs a Nango provider the user has not connected
+   * (`data-connect-integration`). Non-terminal — the agent answers in prose.
+   * Render an inline "Connect <provider>" card from this.
+   */
+  onConnectIntegration?: (event: ConnectIntegrationData) => void;
   /**
    * Cancels the turn (PDEV-7339). An agentic run has no deadline — it can
    * legitimately last minutes — so this is the only way to end one early.
@@ -159,6 +217,28 @@ export interface AgenticCallOptions {
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_MAX_AUTO_RESUMES = 3;
+
+/**
+ * Invoke a caller-supplied observer without letting it end the turn.
+ *
+ * `onToolError` / `onConnectIntegration` are notifications, not control flow —
+ * they typically drive rendering. A throw from one (a setState on an unmounted
+ * component, a bug in a Connect card) would otherwise propagate out of the frame
+ * loop and abort an agent run that was still producing a perfectly good answer:
+ * the observer would kill the thing it was only meant to watch.
+ *
+ * Swallowed silently, matching `trackEvent` in `./analytics` — the same
+ * "instrumentation must never break the product flow" rule, applied to the same
+ * category of callback.
+ */
+function notifyObserver<T>(observer: ((event: T) => void) | undefined, event: T): void {
+  if (!observer) return;
+  try {
+    observer(event);
+  } catch {
+    // A consumer's observer must never break the stream it is observing.
+  }
+}
 
 /**
  * Derive the full Agentic stream URL from the base URL.
@@ -238,8 +318,13 @@ async function postAgenticStream(
  *
  * The generator terminates when:
  * - The stream ends without an approval/suspend event (normal completion).
- * - `maxAutoResumes` consecutive resume cycles are exhausted.
- * - An error is thrown (propagated to the caller).
+ * - It throws {@link AgenticStreamError} — the turn ended without a complete
+ *   answer (fail-fast tool-call, server error, or resume budget exhausted).
+ * - It throws `BBApiError` — the request itself failed.
+ *
+ * Every abnormal end throws. Returning quietly would make a truncated turn look
+ * like a short one, and `useChatStream` would commit it to the message cache as
+ * the assistant's final answer.
  *
  * Callers receive a clean `AsyncIterable<string>` of text deltas.
  */
@@ -257,6 +342,8 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
     transport,
     approvalResolver,
     maxAutoResumes = DEFAULT_MAX_AUTO_RESUMES,
+    onToolError,
+    onConnectIntegration,
   } = options;
 
   // The agentic protocol has no AuthContext of its own — it is called with a
@@ -299,17 +386,26 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
   };
 
   let resumeCount = 0;
+  // Tracks whether any text reached the caller, across every resume cycle — a
+  // terminal failure after partial output is a different user experience from
+  // one that produced nothing, and the surface decides what to do about it.
+  let sawText = false;
 
   while (true) {
     const frames = await postAgenticStream(ctx, path, headers, body, signal);
 
     let approvalData: { runId?: string; toolCallId?: string; toolName?: string } | null = null;
     let suspendData: { runId?: string; toolCallId?: string } | null = null;
+    let tooLargeToolName: string | null = null;
+    let serverError: AgenticStreamErrorData | null = null;
 
     for await (const frame of frames) {
       if (isTextDeltaFrame(frame)) {
         const delta = frame.textDelta ?? frame.delta ?? "";
-        if (delta) yield delta;
+        if (delta) {
+          sawText = true;
+          yield delta;
+        }
         continue;
       }
 
@@ -320,14 +416,71 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
 
       if (isToolCallSuspendedFrame(frame)) {
         suspendData = frame.data;
+        continue;
+      }
+
+      if (isToolCallTooLargeFrame(frame)) {
+        tooLargeToolName = frame.data?.toolName ?? "unknown";
+        continue;
+      }
+
+      if (isStreamErrorFrame(frame)) {
+        // Keep the last one: the server writes at most one, but if that ever
+        // changes the most recent classification is the most specific.
+        if (frame.data) serverError = frame.data;
+        continue;
+      }
+
+      if (isToolOutputErrorFrame(frame)) {
+        notifyObserver(onToolError, { toolCallId: frame.toolCallId, error: frame.error });
+        continue;
+      }
+
+      // `data` is required by the server's contract, but the guard only checks
+      // `type` — a malformed frame would otherwise hand the observer `undefined`
+      // typed as a populated object, and the first property read would throw.
+      if (isConnectIntegrationFrame(frame) && frame.data) {
+        notifyObserver(onConnectIntegration, frame.data);
       }
 
       // All other frames (tool-input-start, message-start/stop, custom data events, unknown) — ignored
     }
 
+    // ── Terminal conditions, checked before any resume ───────────────────────
+    // Order matters: a fail-fast signal must win over a pending approval. The
+    // server emits `data-tool-call-too-large` right before `finish`, so both can
+    // be present in one stream — resuming on the approval would walk straight
+    // into the wall the fail-fast exists to prevent.
+    if (tooLargeToolName !== null) {
+      throw new AgenticStreamError(
+        `Agentic turn stopped: the model ran out of output tokens while generating a ` +
+          `call to "${tooLargeToolName}", so the tool never ran. Resuming would ` +
+          `regenerate the same oversized call. Split the request into smaller steps.`,
+        "tool-call-too-large",
+        { partial: sawText, toolName: tooLargeToolName },
+      );
+    }
+
+    if (serverError !== null) {
+      throw new AgenticStreamError(`Agentic turn failed: ${serverError.message}`, "server-error", {
+        partial: serverError.partial || sawText,
+        code: serverError.code,
+        traceId: serverError.traceId,
+        retryable: serverError.retryable,
+      });
+    }
+
     // After stream exhausted: check if we need to resume
     if (approvalData !== null) {
-      if (resumeCount >= maxAutoResumes) break;
+      if (resumeCount >= maxAutoResumes) {
+        throw new AgenticStreamError(
+          `Agentic turn stopped: the ${maxAutoResumes}-resume budget was exhausted with a ` +
+            `tool call still awaiting approval. The answer so far is incomplete. ` +
+            `Send a new message to continue.`,
+          "resume-budget-exhausted",
+          { partial: sawText },
+        );
+      }
       resumeCount++;
 
       const result = await approvalResolver.resolveApproval(approvalData);
@@ -346,7 +499,15 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
     }
 
     if (suspendData !== null) {
-      if (resumeCount >= maxAutoResumes) break;
+      if (resumeCount >= maxAutoResumes) {
+        throw new AgenticStreamError(
+          `Agentic turn stopped: the ${maxAutoResumes}-resume budget was exhausted while the ` +
+            `agent was waiting on a user answer. The answer so far is incomplete. ` +
+            `Send a new message to continue.`,
+          "resume-budget-exhausted",
+          { partial: sawText },
+        );
+      }
       resumeCount++;
 
       const result = await approvalResolver.resolveSuspend(suspendData);

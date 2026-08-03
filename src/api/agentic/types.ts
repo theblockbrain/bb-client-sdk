@@ -103,6 +103,115 @@ export interface ToolOutputErrorFrame {
   error?: unknown;
 }
 
+// ─── Server fail-fast / diagnostic frames ──────────────────────────────────────
+
+/**
+ * The stream ended with the model still mid-tool-call.
+ *
+ * Emitted by mastra-operators immediately before the terminal `finish` chunk
+ * when the model hit its output-token ceiling while generating a tool call, so
+ * the tool never executed (`agent-stream-v2.ts` → `shouldEmitToolCallTooLarge`).
+ *
+ * **This frame must suppress auto-resume.** Resuming regenerates the same
+ * oversized call and loops until the resume cap fires, leaving the user with
+ * nothing — which is precisely the loop the server-side fail-fast exists to
+ * prevent. `callAgenticStream` terminates the turn instead.
+ */
+export interface ToolCallTooLargeFrame {
+  type: "data-tool-call-too-large";
+  /** `toolName` falls back to `"unknown"` server-side when it cannot be resolved. */
+  data?: { toolName?: string };
+}
+
+/**
+ * The error identifiers the server emits today from its structured-error path
+ * (`sse-error-emit.ts`), where the list is deliberately closed because the
+ * client renders copy from it.
+ *
+ * Use this to type a copy map — `Record<AgenticErrorCode, string>` — so adding
+ * a code is a compile error in the place that must handle it.
+ *
+ * **Do not use it as the type of a value read off the wire.** The server's list
+ * being closed is a server-side discipline, not a runtime guarantee: the SDK
+ * releases independently, `parseSseDataLine` casts parsed JSON without
+ * validating it, and a server that adds `RATE_LIMITED` ships before any SDK
+ * knows the name. Wire-facing fields are therefore typed
+ * {@link AgenticErrorCodeValue}, which keeps the autocomplete but refuses to
+ * promise exhaustiveness a `switch` cannot actually rely on.
+ */
+export type AgenticErrorCode =
+  | "TOOL_EXECUTION_FAILED"
+  | "MASTRA_ERROR"
+  | "HTTP_EXCEPTION"
+  | "UNKNOWN_ERROR";
+
+/**
+ * A code as it actually arrives: one of {@link AgenticErrorCode}, or any other
+ * string a newer server sends.
+ *
+ * `(string & {})` is the open-enum idiom — it keeps editor completion for the
+ * four known values while still accepting an unknown one, so a consumer's
+ * `switch` needs a `default` and cannot silently drop a code the SDK predates.
+ */
+export type AgenticErrorCodeValue = AgenticErrorCode | (string & {});
+
+/** Payload of a {@link StreamErrorFrame}. Mirrors the server's `StructuredSseError`. */
+export interface AgenticStreamErrorData {
+  code: AgenticErrorCodeValue;
+  /** Originating error class name, for diagnostics. */
+  errorClass: string;
+  /**
+   * Human-readable message. Already truncated (500 chars) and scrubbed
+   * server-side — `UNKNOWN_ERROR` is replaced with a fixed generic string so an
+   * unclassified error can never echo prompt or request content (PDEV-7075).
+   */
+  message: string;
+  traceId: string;
+  /** Whether a blind retry could plausibly succeed. */
+  retryable: boolean;
+  /** True when UI chunks were already written before the error — the turn is partial. */
+  partial: boolean;
+}
+
+/**
+ * A server-side error raised mid-stream.
+ *
+ * Without this frame the SSE pipe simply closes and every backend failure looks
+ * like a short clean completion. `callAgenticStream` turns it into a thrown
+ * {@link AgenticStreamError} so the failure cannot be committed as an answer.
+ */
+export interface StreamErrorFrame {
+  type: "data-error";
+  data?: AgenticStreamErrorData;
+}
+
+/** Payload of a {@link ConnectIntegrationFrame}. */
+export interface ConnectIntegrationData {
+  /** Nango provider unique key, e.g. `sharepoint_microsoft-tenant`. */
+  providerKey: string;
+  /** Tool id that triggered the prompt. */
+  toolId: string;
+  /** Mastra tool-call id that triggered the prompt, when available. */
+  toolCallId?: string;
+}
+
+/**
+ * A tool could not run because the user has not connected the required Nango
+ * provider.
+ *
+ * This is a **graceful path, not an error**: the tool still returns
+ * `{needsConnection: true, …}`, the agent is told not to retry, and it answers
+ * in prose. The frame exists so the surface can render an inline "Connect
+ * <provider>" card next to that prose. Treating it as a failure — or ignoring
+ * it, as the SDK did — reduces a one-click fix to a bland sentence.
+ */
+export interface ConnectIntegrationFrame {
+  type: "data-connect-integration";
+  /** Server-generated part id, e.g. `connect:<toolCallId>:<providerKey>`. */
+  id?: string;
+  data: ConnectIntegrationData;
+}
+
 // ─── Custom BlockBrain data frames ─────────────────────────────────────────────
 
 /** Signals that the agent requires tool-call approval to continue. */
@@ -161,6 +270,9 @@ export type AgenticSseFrame =
   | ToolInputAvailableFrame
   | ToolOutputAvailableFrame
   | ToolOutputErrorFrame
+  | ToolCallTooLargeFrame
+  | StreamErrorFrame
+  | ConnectIntegrationFrame
   | ToolCallApprovalFrame
   | ToolCallSuspendedFrame
   | CompressingFrame
@@ -180,6 +292,24 @@ export function isToolCallApprovalFrame(frame: AgenticSseFrame): frame is ToolCa
 
 export function isToolCallSuspendedFrame(frame: AgenticSseFrame): frame is ToolCallSuspendedFrame {
   return frame.type === "data-tool-call-suspended";
+}
+
+export function isToolOutputErrorFrame(frame: AgenticSseFrame): frame is ToolOutputErrorFrame {
+  return frame.type === "tool-output-error";
+}
+
+export function isToolCallTooLargeFrame(frame: AgenticSseFrame): frame is ToolCallTooLargeFrame {
+  return frame.type === "data-tool-call-too-large";
+}
+
+export function isStreamErrorFrame(frame: AgenticSseFrame): frame is StreamErrorFrame {
+  return frame.type === "data-error";
+}
+
+export function isConnectIntegrationFrame(
+  frame: AgenticSseFrame,
+): frame is ConnectIntegrationFrame {
+  return frame.type === "data-connect-integration";
 }
 
 /**
