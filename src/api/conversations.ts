@@ -1,4 +1,5 @@
 import type { AuthContext } from "../settings/auth-mode.js";
+import { requestJson } from "./_send.js";
 import { fetchBotDetail } from "./bots.js";
 import { BBApiError } from "./errors.js";
 import { authHeaders } from "./headers.js";
@@ -55,27 +56,12 @@ export async function getConversationDetail(
   ctx: AuthContext,
   convoId: string,
 ): Promise<ConversationDetail> {
-  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}/general-info`;
-  const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}${endpoint}`, {
+  const envelope = await requestJson<ConvoGeneralInfoResponse>(ctx, {
+    host: "blocky",
+    path: `/cortex/conversation/${encodeURIComponent(convoId)}/general-info`,
     method: "GET",
     headers: authHeaders(ctx.token, ctx.orgId),
   });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
-
-  const envelope = (await res.json()) as ConvoGeneralInfoResponse;
   // Backend wraps in CommonResponseDTO: { code, key, body: {...} }.
   // Fall back to top-level fields for callers that receive unwrapped responses.
   const data: ConvoGeneralInfoDto = envelope.body ?? envelope;
@@ -351,28 +337,13 @@ export async function getConversationAttachments(
   ctx: AuthContext,
   convoId: string,
 ): Promise<AttachmentUploadResult[]> {
-  const endpoint = `/cortex/conversation/${encodeURIComponent(convoId)}/attachment`;
-  const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}${endpoint}`, {
+  // Response may be a plain array or wrapped in a CommonResponseDTO envelope
+  const raw = await requestJson<unknown>(ctx, {
+    host: "blocky",
+    path: `/cortex/conversation/${encodeURIComponent(convoId)}/attachment`,
     method: "GET",
     headers: authHeaders(ctx.token, ctx.orgId),
   });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
-
-  // Response may be a plain array or wrapped in a CommonResponseDTO envelope
-  const raw: unknown = await res.json();
   if (Array.isArray(raw)) return raw as AttachmentUploadResult[];
   const envelope = raw as ConversationAttachmentsEnvelope;
   return Array.isArray(envelope.body) ? envelope.body : [];

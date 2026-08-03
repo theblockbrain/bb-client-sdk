@@ -1,3 +1,4 @@
+import { INTEGRATIONS_API_PREFIX } from "../config.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 import {
   type AdminListingOptions,
@@ -6,6 +7,7 @@ import {
   buildIntegrationsUrl,
   throwIfNotOk,
 } from "./_auth-headers.js";
+import { requestJson } from "./_send.js";
 import type { MutationAckResponse } from "./mutation-ack.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -49,14 +51,13 @@ export async function fetchCapabilities(
   targetOrgId?: string,
   options?: AdminListingOptions,
 ): Promise<CapabilitySwitchesResponse> {
-  const endpoint = "capabilities";
-  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId, adminListingParams(options));
-  const res = await fetch(url, {
+  return requestJson<CapabilitySwitchesResponse>(ctx, {
+    host: "integrations",
+    path: `${INTEGRATIONS_API_PREFIX}/capabilities`,
     method: "GET",
+    query: { orgId: targetOrgId ?? ctx.orgId, ...adminListingParams(options) },
     headers: bbApiAuthHeaders(ctx),
   });
-  await throwIfNotOk(res, endpoint);
-  return res.json() as Promise<CapabilitySwitchesResponse>;
 }
 
 /**

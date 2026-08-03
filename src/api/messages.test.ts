@@ -43,6 +43,10 @@ function jsonResponse(payload: unknown): Response {
   return {
     ok: true,
     status: 200,
+    // Required since PDEV-7337 routed these reads through the Transporter, which
+    // records response headers. The `as unknown as Response` cast below is what
+    // let the stub omit it — a real Response always has them.
+    headers: new Headers(),
     json: () => Promise.resolve(payload),
     text: () => Promise.resolve(JSON.stringify(payload)),
   } as unknown as Response;

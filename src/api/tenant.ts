@@ -1,5 +1,5 @@
 import type { AuthContext } from "../settings/auth-mode.js";
-import { BBApiError } from "./errors.js";
+import { request, requestJson } from "./_send.js";
 import { authHeaders } from "./headers.js";
 import { normalizeUrl } from "./url.js";
 
@@ -19,16 +19,20 @@ export async function discoverFrontendUrls(
   token: string,
   orgId?: string | null,
 ): Promise<string[] | null> {
-  const url = normalizeUrl(baseUrl);
+  // Runs before an AuthContext exists, so it assembles the minimum the transport
+  // needs. `request` rather than `requestJson`: a non-2xx here means "this
+  // deployment has no custom domains", not a failure — see decision 3 in
+  // transport.ts.
+  const ctx: AuthContext = { baseUrl, token, orgId: orgId ?? "", mode: "api-key" };
   try {
-    const res = await fetch(`${url}/user-tenant/domains`, {
-      headers: {
-        ...authHeaders(token, orgId),
-        "Content-Type": "application/json",
-      },
+    const res = await request(ctx, {
+      host: "blocky",
+      path: "/user-tenant/domains",
+      method: "GET",
+      headers: { ...authHeaders(token, orgId), "Content-Type": "application/json" },
     });
     if (!res.ok) return null;
-    const raw = (await res.json()) as { content?: string[]; body?: string[] } | string[];
+    const raw = await res.json<{ content?: string[]; body?: string[] } | string[]>();
     const domains =
       (raw as { content?: string[] }).content ??
       (raw as { body?: string[] }).body ??
@@ -97,30 +101,6 @@ export async function listTenants(
   ctx: AuthContext,
   options?: ListTenantsOptions,
 ): Promise<ListTenantsResponse> {
-  const endpoint = "/tenant";
-  const params = new URLSearchParams({
-    name: options?.name ?? "",
-    page: String(options?.page ?? 1),
-    size: String(options?.size ?? 20),
-  });
-  const res = await fetch(`${normalizeUrl(ctx.baseUrl)}${endpoint}?${params}`, {
-    method: "GET",
-    headers: authHeaders(ctx.token, ctx.orgId),
-  });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`Tenant list failed: ${res.status}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
-
   type RawTenant = {
     _id?: string;
     id?: string;
@@ -131,7 +111,17 @@ export async function listTenants(
     acceptSuffix: string[];
   };
   type RawList = { totalCount: number; currentPage: number; data: RawTenant[] };
-  const json = (await res.json()) as { body?: RawList } | RawList;
+  const json = await requestJson<{ body?: RawList } | RawList>(ctx, {
+    host: "blocky",
+    path: "/tenant",
+    method: "GET",
+    query: {
+      name: options?.name ?? "",
+      page: options?.page ?? 1,
+      size: options?.size ?? 20,
+    },
+    headers: authHeaders(ctx.token, ctx.orgId),
+  });
   const payload = (json as { body?: RawList }).body ?? (json as RawList);
 
   return {
@@ -156,25 +146,6 @@ export async function listTenants(
  * tenant-scoped API calls (x-zitadel-org-id header).
  */
 export async function getTenantById(ctx: AuthContext, tenantId: string): Promise<TenantDetail> {
-  const endpoint = `/tenant/${tenantId}`;
-  const res = await fetch(`${normalizeUrl(ctx.baseUrl)}${endpoint}`, {
-    method: "GET",
-    headers: authHeaders(ctx.token, ctx.orgId),
-  });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`Tenant detail failed: ${res.status}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
-
   type RawDetail = {
     _id?: string;
     id?: string;
@@ -185,7 +156,12 @@ export async function getTenantById(ctx: AuthContext, tenantId: string): Promise
     acceptSuffix?: string[];
     zitadelOrgId: string;
   };
-  const json = (await res.json()) as { body?: RawDetail } | RawDetail;
+  const json = await requestJson<{ body?: RawDetail } | RawDetail>(ctx, {
+    host: "blocky",
+    path: `/tenant/${tenantId}`,
+    method: "GET",
+    headers: authHeaders(ctx.token, ctx.orgId),
+  });
   const t = (json as { body?: RawDetail }).body ?? (json as RawDetail);
 
   return {
