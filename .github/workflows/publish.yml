@@ -25,11 +25,41 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # PDEV-7001 — this job used to run only typecheck + build, so a tag could
+      # publish code that failed tests, failed lint, or shipped a broken export
+      # map. `ci.yml` on main was the only safety net, and it does not run here.
+      # A publish is the one job that must not be the weakest gate in the repo.
+      - name: Guard — tag must match package.json version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag v$TAG does not match package.json $PKG."
+            echo "A mismatch publishes a version nobody tagged, and leaves the tag"
+            echo "pointing at a release that does not exist on the registry."
+            exit 1
+          fi
+          echo "tag v$TAG matches package.json $PKG"
+
+      - name: Lint
+        run: npm run lint
+
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npm run build
+
+      - name: Package contract (publint + attw)
+        run: npm run check:package
+
+      # Installs the tarball outside the repo and imports every entry point.
+      # publint reads the export map statically; this proves it actually resolves.
+      - name: Clean-room install
+        run: npm run check:cleanroom
 
       - name: Publish
         run: npm publish
