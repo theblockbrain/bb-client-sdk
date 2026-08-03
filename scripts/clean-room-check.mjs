@@ -28,6 +28,23 @@ const pkg = JSON.parse(readFileSync(join(repo, "package.json"), "utf8"));
 /** Every JS entry point. The CSS asset is not importable, so it is excluded. */
 const subpaths = Object.keys(pkg.exports).filter(key => !key.endsWith(".css"));
 
+/**
+ * The React peers at the versions this package actually declares.
+ *
+ * A bare `npm install react` resolves to whatever is newest, so the day React
+ * ships a major outside the declared peer range this gate starts failing for a
+ * reason that has nothing to do with the SDK — a release gate that breaks on the
+ * calendar is worse than no gate. Derived from `package.json` rather than
+ * hardcoded so the two cannot drift apart.
+ */
+const peerRanges = pkg.peerDependencies ?? {};
+const peerSpecs = [
+  ...Object.entries(peerRanges).map(([name, range]) => `${name}@${range}`),
+  // Not a declared peer and nothing under src/ imports it, but React and
+  // react-dom ship in lockstep and peer graphs expect the pair to agree.
+  ...(peerRanges.react ? [`react-dom@${peerRanges.react}`] : []),
+];
+
 const run = (cmd, args, cwd) =>
   execFileSync(cmd, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
 
@@ -50,19 +67,7 @@ try {
 
   // React and @tanstack/react-query are optional peers — install them so the
   // React-only entry points can be imported too, rather than skipped.
-  run(
-    "npm",
-    [
-      "install",
-      "--silent",
-      "--no-audit",
-      "--no-fund",
-      "react",
-      "react-dom",
-      "@tanstack/react-query",
-    ],
-    dir,
-  );
+  run("npm", ["install", "--silent", "--no-audit", "--no-fund", ...peerSpecs], dir);
 
   const probe = subpaths
     .map(sub => {
@@ -82,6 +87,12 @@ try {
   process.stdout.write(run("node", ["probe.mjs"], dir));
 } catch (err) {
   failed = true;
+  // Echo the child's captured stdout BEFORE the summary. `run` pipes stdout, so
+  // when `probe.mjs` exits non-zero `execFileSync` throws and the per-subpath
+  // "FAIL <subpath> <reason>" lines are on the error, not the terminal. Without
+  // this a CI log says only that the gate failed, never which entry point.
+  const captured = typeof err?.stdout === "string" ? err.stdout : "";
+  if (captured.length > 0) process.stdout.write(captured);
   console.error("clean-room: FAILED —", err instanceof Error ? err.message : err);
 } finally {
   rmSync(dir, { recursive: true, force: true });

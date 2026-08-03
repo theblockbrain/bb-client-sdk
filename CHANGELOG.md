@@ -33,7 +33,7 @@ to light/dark in JS, because `@botticelli/blokkit` resolves it in CSS with its o
 branch dead and dark mode silently stops following the OS.
 
 **Migration:** replace `"auto"` with `"system"`. No consumer imports
-`bb-client-sdk/ui` today, so the practical cost is zero.
+`@theblockbrain/bb-client-sdk/ui` today, so the practical cost is zero.
 
 ### 2. `encodePKCEState` / `decodePKCEState` are removed
 
