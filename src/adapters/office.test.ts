@@ -20,7 +20,12 @@ vi.mock("../auth/tokens.js", () => ({
   computeExpiration: (seconds: number) => Date.now() + seconds * 1000,
 }));
 
-vi.mock("../auth/jwt.js", () => ({
+// Mocked so the flow under test does not depend on decoding the placeholder
+// id_token. Spreads the real module rather than replacing it: jwt-claims also
+// exports `subFromAccessToken` (used by settings/auth-mode.ts and api/messages.ts)
+// and a bare factory would blank those out for any transitive importer.
+vi.mock("../auth/jwt-claims.js", async importOriginal => ({
+  ...(await importOriginal<typeof import("../auth/jwt-claims.js")>()),
   extractProfile: () => ({ sub: "u1", orgId: "org1" }),
 }));
 
