@@ -7,6 +7,7 @@
  * `ctx`, and these helpers are where it is resolved.
  */
 
+import { trackApiError } from "../analytics/index.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 import { BBApiError } from "./errors.js";
 import {
@@ -70,6 +71,18 @@ export async function requestJson<T>(ctx: AuthContext, req: TransportRequest): P
  *
  * The body is read for diagnostics only, and a body that is not JSON is not
  * itself an error — the failure being reported is the status.
+ *
+ * **This is the SDK's single `api_error` emit point (PDEV-7009).** WS9 asks for
+ * telemetry emitted "from ONE point — inside the WS2 transport seam — not per
+ * call site", and this is the place that became possible once PDEV-7338
+ * collapsed the two error paths into one. Every non-2xx from every endpoint on
+ * every host now passes through here, so no endpoint has to remember to
+ * instrument itself and none can drift.
+ *
+ * `trackApiError` forwards only `statusCode` and `endpoint`. It never forwards
+ * `responseBody`, which can echo a token (invariant D), and it is a no-op with
+ * no adapter registered and swallows adapter faults — so it cannot alter what
+ * this function throws.
  */
 export async function throwIfNotOk(res: TransportResponse, endpoint: string): Promise<void> {
   if (res.ok) return;
@@ -81,8 +94,15 @@ export async function throwIfNotOk(res: TransportResponse, endpoint: string): Pr
     /* error bodies are frequently HTML or empty */
   }
 
-  throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
+  const error = new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
     endpoint,
     responseBody,
   });
+
+  // Fire-and-forget: emitted before the throw so the signal survives a caller
+  // that swallows the error, and deliberately not awaited — telemetry must never
+  // sit on the critical path of a failing request.
+  trackApiError(error);
+
+  throw error;
 }
