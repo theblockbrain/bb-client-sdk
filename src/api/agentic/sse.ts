@@ -6,7 +6,7 @@
  * decide what to do with them — no side effects here.
  *
  * Design:
- * - Splits incoming chunks at `\n\n` boundaries (SSE event delimiter).
+ * - Splits incoming chunks at `\n\n` or `\r\n\r\n` boundaries (SSE event delimiter).
  * - Extracts `data:` lines from each raw event.
  * - Parses each line via `parseSseDataLine` — tolerant of malformed data
  *   (unknown frame types are passed through as `UnknownFrame`, parse errors
@@ -17,11 +17,25 @@
 import { type AgenticSseFrame, parseSseDataLine } from "./types.js";
 
 /**
- * Parse a `ReadableStream<Uint8Array>` of Server-Sent Events into a typed async
+ * SSE event boundary. CRLF is tolerated because the spec allows it and a proxy
+ * in front of the agent host can rewrite line endings — `blocky-sse.ts` has
+ * always accepted both. Splitting on `\n\n` alone did not lose text (the
+ * post-close buffer flush recovered it) but it deferred every frame to the end
+ * of the stream, which silently costs incremental streaming and first-token
+ * latency on exactly the transports we cannot see in local testing.
+ */
+const EVENT_DELIMITER = /\r\n\r\n|\n\n/;
+
+/**
+ * Parse an `AsyncIterable<string>` of Server-Sent Event text into a typed async
  * iterable of `AgenticSseFrame` values.
  *
- * `[DONE]` data lines are skipped; the stream ends when the underlying
- * ReadableStream closes. Malformed `data:` lines are silently skipped.
+ * Takes decoded text rather than a `ReadableStream<Uint8Array>`: the transport
+ * owns byte decoding, so React Native — where `ReadableStream` is unreliable —
+ * can supply chunks from any source.
+ *
+ * `[DONE]` data lines are skipped; the stream ends when the source iterable
+ * is exhausted. Malformed `data:` lines are silently skipped.
  * Unknown frame types are yielded as `{ type: "<unknown>", ... }` — consumers
  * should ignore frame types they don't recognise.
  */
@@ -35,7 +49,7 @@ export async function* parseAgenticStream(
 
     // Split on the SSE event delimiter. The last element may be an incomplete
     // event — keep it in the buffer.
-    const parts = buffer.split(/\r\n\r\n|\n\n/);
+    const parts = buffer.split(EVENT_DELIMITER);
     buffer = parts.pop() ?? "";
 
     for (const rawEvent of parts) {

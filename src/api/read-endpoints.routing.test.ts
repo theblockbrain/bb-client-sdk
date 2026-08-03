@@ -9,7 +9,7 @@ import { sendMessage } from "./messages.js";
 import { createNote } from "./notes.js";
 import { getTenantConfig } from "./tenant-config.js";
 import type { Transporter, TransportRequest, TransportResponse } from "./transport.js";
-import { getAvailableWebSearchProviders } from "./websearch.js";
+import { getAvailableWebSearchProviders, getConversationWebSearch } from "./websearch.js";
 
 /**
  * PDEV-7337. What every migrated read actually puts on the wire.
@@ -170,6 +170,40 @@ describe("read endpoints — non-2xx", () => {
       name: "BBApiError",
       statusCode: 503,
       endpoint: "/cortex/active-bot/list",
+    });
+  });
+  it("getConversationWebSearch percent-encodes convoId in the path", async () => {
+    const rec = recorder({ enableWebSearch: true });
+    await getConversationWebSearch(ctxWith(rec.transport), "a/b c?d");
+
+    expect(rec.last()).toMatchObject({
+      host: "blocky",
+      method: "GET",
+      path: "/cortex/conversation/a%2Fb%20c%3Fd",
+    });
+  });
+
+  it("reports the encoded path as BBApiError.endpoint, not the raw id", async () => {
+    // The endpoint string is what BBApiError carries, so it has to be the path
+    // actually requested. It was built from the raw convoId while the request
+    // used the encoded one, so an id containing `/` or `?` reported an endpoint
+    // that was never called. PDEV-7009 keys the api_error event on this same
+    // string, which is what makes the mismatch worth a test rather than a shrug.
+    const transport: Transporter = {
+      send: (): Promise<TransportResponse> =>
+        Promise.resolve({
+          status: 404,
+          ok: false,
+          headers: {},
+          json: <T>() => Promise.resolve({} as T),
+          text: () => Promise.resolve(""),
+        }),
+    };
+
+    await expect(getConversationWebSearch(ctxWith(transport), "a/b c?d")).rejects.toMatchObject({
+      name: "BBApiError",
+      statusCode: 404,
+      endpoint: "/cortex/conversation/a%2Fb%20c%3Fd",
     });
   });
 });

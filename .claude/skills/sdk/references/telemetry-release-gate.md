@@ -181,7 +181,7 @@ The SDK emits **one** standard event set through the seam so every surface repor
 
 | Concept | Value | Source |
 |---|---|---|
-| **distinct id** | Zitadel **`sub`** | `AuthContext.userId` (OAuth mode) — derived via `subFromAccessToken()` in `src/utils/jwt.ts` when not threaded explicitly. **api-key mode has no `sub`** → identify anonymously / by service principal, never invent a user id. |
+| **distinct id** | Zitadel **`sub`** | `AuthContext.userId` (OAuth mode) — derived via `subFromAccessToken()` in `src/auth/jwt-claims.ts` when not threaded explicitly. **api-key mode has no `sub`** → identify anonymously / by service principal, never invent a user id. |
 | **group** | **org** (tenant) | `AuthContext.orgId` (the HOME org). Call `group(orgId)` so retention/activation roll up per tenant. |
 | **PII** | **NONE** | No email, name, message content, or free-text prompt. `sub` + `orgId` are opaque IDs — that is the whole identity. |
 
