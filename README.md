@@ -184,22 +184,54 @@ await beginBrowserLogin({ clientId, authorizeEndpoint, tokenEndpoint, redirectUr
 
 ## Theme system (React)
 
-`/ui` exports a canonical `useTheme` hook and `ThemeToggle` component. Both use
-the **class-strategy** (`<html class="dark">`), matching Tailwind's
-`@custom-variant dark (&:where(.dark, .dark *))` convention.
+`/ui` exports one theme mechanism: the `useTheme` hook, which writes
+`<html data-theme="light|dark|system">`. There is exactly one activation and one
+attribute — see *Why `system` is not resolved in JS* below.
 
 ```tsx
-import { useTheme, ThemeToggle } from "@theblockbrain/bb-client-sdk/ui";
+import { useTheme, nextThemeMode } from "@theblockbrain/bb-client-sdk/ui";
 
 function Header() {
   const [theme, mode, cycleTheme] = useTheme(); // default key: "bb-theme"
   // Per-tool key prevents cross-tool collisions on the same origin:
   // const [theme, mode, cycleTheme] = useTheme("bb-dashboard-theme");
 
-  return <ThemeToggle theme={theme} mode={mode} onToggle={cycleTheme} />;
-  // variant="login" for gradient entry screens
+  // `theme` is "light" | "dark" (system already resolved) — for JS branching.
+  // `mode`  is "light" | "dark" | "system" — the user's explicit preference.
+  return (
+    <button type="button" onClick={cycleTheme} aria-label={`Theme: ${mode}`}>
+      {mode}
+    </button>
+  );
 }
 ```
+
+The SDK deliberately ships **no toggle component**. Any component styled in
+default Tailwind palette classes (`bg-neutral-700`, `text-stone-300`) renders
+unstyled wherever `@botticelli/blokkit` is also loaded, because blokkit's
+generated `tailwind-reset.css` sets `--color-*: initial` and deletes that
+palette. Build the button in your surface, where you know which palette exists.
+`nextThemeMode(current)` is exported so you do not have to re-derive the
+light → dark → system cycle order.
+
+### Why `system` is not resolved in JS
+
+`useTheme` writes the user's preference to `data-theme` **verbatim**, including
+`system`. It does not collapse `system` to `light`/`dark`. That is deliberate:
+blokkit's dark variant resolves `system` in CSS, with its own media query.
+
+```css
+@custom-variant dark {
+  &:where([data-theme="dark"] *, [data-theme="dark"]) { @slot; }
+  &:where([data-theme="system"] *, [data-theme="system"]) {
+    @media (prefers-color-scheme: dark) { @slot; }
+  }
+}
+```
+
+Write a resolved value instead and that second branch never matches, so dark
+mode silently stops following the OS. The hook's first return value gives you
+the resolved theme when JS genuinely needs to branch on it.
 
 ### Shared CSS
 
@@ -209,25 +241,22 @@ Import the base stylesheet in your app's CSS (after `@import "tailwindcss"`):
 @import "@theblockbrain/bb-client-sdk/ui/theme-base.css";
 ```
 
-This includes the `@custom-variant dark` declaration, `.animate-fade-in`,
-`.dot-grid-*`, and scrollbar styles. The `@custom-variant` line replaces
-the one you'd otherwise copy into every app.
+This provides `.animate-fade-in`, `.dot-grid-*`, and scrollbar styles keyed on
+`data-theme`. It does **not** declare `@custom-variant dark` — that used to
+collide with blokkit's identically-named variant (two definitions, two
+selectors, last import wins). If your surface uses blokkit, it already has the
+variant; if it does not, copy the block above into your CSS once.
 
 ### Tailwind v4 — `@source` directive
 
-Tailwind v4 scans only your own source files by default. Add the SDK's `/ui`
-path so `ThemeToggle`'s Tailwind classes are included:
+The SDK no longer ships components carrying Tailwind classes, so the `@source`
+directive is only needed if you extend the SDK's CSS with your own utility
+classes. It is harmless to keep:
 
 ```css
 /* In your app's main CSS file, after @import "tailwindcss" */
 @source "../node_modules/@theblockbrain/bb-client-sdk/dist";
 ```
-
-Adjust the relative path to point at `node_modules` from your CSS file's
-location. Point at `dist` (not `src/` — source is not published) and scan the
-whole dist folder: tsup chunk-splits mean ThemeToggle's Tailwind classes may
-land in a root-level chunk, not only under `dist/ui/`. Without this, the
-`ThemeToggle` button styles will be stripped from the production build.
 
 ### `storageKey` parameter
 

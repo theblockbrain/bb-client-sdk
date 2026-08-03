@@ -1,6 +1,5 @@
 import type { AuthContext } from "../settings/auth-mode.js";
-import { bbApiAuthHeaders, throwIfNotOk } from "./_auth-headers.js";
-import { normalizeUrl } from "./url.js";
+import { bbApiAuthHeaders, buildIntegrationsUrl, throwIfNotOk } from "./_auth-headers.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -8,13 +7,11 @@ export interface TenantConfig {
   customAgentsEnabled: boolean;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 // ── API functions ─────────────────────────────────────────────────────────────
 
 /**
  * Fetch tenant config for the org.
- * GET /tenants?orgId=...
+ * `GET {integrations}/api/v1/tenants?orgId=...`
  * Returns { id, name, config: { customAgentsEnabled, ... } | null }
  *
  * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
@@ -26,9 +23,7 @@ export async function getTenantConfig(
   targetOrgId?: string,
 ): Promise<TenantConfig> {
   const endpoint = "tenants";
-  const base = normalizeUrl(ctx.baseUrl);
-  const params = new URLSearchParams({ orgId: targetOrgId ?? ctx.orgId });
-  const url = `${base}/${endpoint}?${params.toString()}`;
+  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
 
   const res = await fetch(url, {
     method: "GET",
@@ -46,7 +41,7 @@ export async function getTenantConfig(
 
 /**
  * Toggle the customAgentsEnabled flag for a tenant.
- * PATCH /tenants/config?orgId=...
+ * `PATCH {integrations}/api/v1/tenants/config?orgId=...`
  *
  * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
  */
@@ -56,9 +51,7 @@ export async function setCustomAgentsEnabled(
   targetOrgId?: string,
 ): Promise<void> {
   const endpoint = "tenants/config";
-  const base = normalizeUrl(ctx.baseUrl);
-  const params = new URLSearchParams({ orgId: targetOrgId ?? ctx.orgId });
-  const url = `${base}/${endpoint}?${params.toString()}`;
+  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
 
   const res = await fetch(url, {
     method: "PATCH",

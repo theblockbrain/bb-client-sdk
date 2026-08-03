@@ -1,6 +1,11 @@
 import type { AuthContext } from "../settings/auth-mode.js";
-import { bbApiAuthHeaders, throwIfNotOk } from "./_auth-headers.js";
-import { normalizeUrl } from "./url.js";
+import {
+  type AdminListingOptions,
+  adminListingParams,
+  bbApiAuthHeaders,
+  buildIntegrationsUrl,
+  throwIfNotOk,
+} from "./_auth-headers.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -20,42 +25,31 @@ export interface ApiResponse {
 /** API response shape: Record<agentId, Agent> */
 export type AgentsResponse = Record<string, Agent>;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Build a URL for the agents/capabilities API.
- *
- * @param targetOrgId - Operation target org (i.e. ?orgId= query param).
- *   Falls back to ctx.orgId (user's home) for self-tenant operations.
- */
-function buildUrl(
-  ctx: AuthContext,
-  path: string,
-  targetOrgId: string | undefined,
-  extra: Record<string, string> = {},
-): string {
-  const base = normalizeUrl(ctx.baseUrl);
-  const params = new URLSearchParams(extra);
-  params.set("orgId", targetOrgId ?? ctx.orgId);
-  return `${base}/${path}?${params.toString()}`;
-}
-
 // ── API functions ─────────────────────────────────────────────────────────────
 
 /**
- * Fetch all agents for the org (includes inactive and unavailable).
- * GET /agents?includeInactive=true&includeUnavailable=true&orgId=...
+ * Fetch the agents visible to the caller.
+ * `GET {integrations}/api/v1/agents?orgId=...`
+ *
+ * Returns the tenant's active, available agents by default — the set a normal user
+ * can actually use, and the response that carries the `isConfigured`
+ * "connect X first" signal.
  *
  * @param targetOrgId - Target tenant org. Defaults to ctx.orgId (self-tenant).
  *   For cross-tenant admin calls, pass the target's orgId while ctx.orgId
  *   remains the user's home org (used for x-zitadel-org-id header auth).
+ * @param options - {@link AdminListingOptions}. Both flags are **admin-only**: they
+ *   put the request on Botticelli's Admin/SuperAdmin branch, so a non-admin token
+ *   gets a 403. Omit them unless you are calling from an admin surface. Until
+ *   PDEV-7332 these were hardcoded to `"true"`, which 403'd every normal user.
  */
-export async function fetchAgents(ctx: AuthContext, targetOrgId?: string): Promise<AgentsResponse> {
+export async function fetchAgents(
+  ctx: AuthContext,
+  targetOrgId?: string,
+  options?: AdminListingOptions,
+): Promise<AgentsResponse> {
   const endpoint = "agents";
-  const url = buildUrl(ctx, endpoint, targetOrgId, {
-    includeInactive: "true",
-    includeUnavailable: "true",
-  });
+  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId, adminListingParams(options));
   const res = await fetch(url, {
     method: "GET",
     headers: bbApiAuthHeaders(ctx),
@@ -77,7 +71,7 @@ export async function setAgentActive(
   targetOrgId?: string,
 ): Promise<ApiResponse> {
   const endpoint = "agents/set-active";
-  const url = buildUrl(ctx, endpoint, targetOrgId);
+  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
   const res = await fetch(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
@@ -100,7 +94,7 @@ export async function setAgentAvailability(
   targetOrgId?: string,
 ): Promise<ApiResponse> {
   const endpoint = "agents/set-availability";
-  const url = buildUrl(ctx, endpoint, targetOrgId);
+  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
   const effectiveOrgId = targetOrgId ?? ctx.orgId;
   const res = await fetch(url, {
     method: "PATCH",
