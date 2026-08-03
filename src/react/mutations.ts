@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  type AgentsResponse,
-  type CapabilitiesResponse,
+  type AgentSwitchesResponse,
+  type CapabilitySwitchesResponse,
   type CreateNoteParams,
   createConversation,
   createNote,
@@ -35,11 +35,11 @@ export function useSetAgentActive(targetOrgId?: string) {
       setAgentActive(getAuthContext(), agentId, active, targetOrgId),
     onMutate: async ({ agentId, active }) => {
       await qc.cancelQueries({ queryKey: key });
-      const previous = qc.getQueryData<AgentsResponse>(key);
+      const previous = qc.getQueryData<AgentSwitchesResponse>(key);
       if (previous) {
         const current = previous[agentId];
         if (current) {
-          qc.setQueryData<AgentsResponse>(key, {
+          qc.setQueryData<AgentSwitchesResponse>(key, {
             ...previous,
             [agentId]: { ...current, active },
           });
@@ -84,11 +84,11 @@ export function useSetCapabilityActive(targetOrgId?: string) {
       setCapabilityActive(getAuthContext(), capabilityId, active, targetOrgId),
     onMutate: async ({ capabilityId, active }) => {
       await qc.cancelQueries({ queryKey: key });
-      const previous = qc.getQueryData<CapabilitiesResponse>(key);
+      const previous = qc.getQueryData<CapabilitySwitchesResponse>(key);
       if (previous) {
         const current = previous[capabilityId];
         if (current) {
-          qc.setQueryData<CapabilitiesResponse>(key, {
+          qc.setQueryData<CapabilitySwitchesResponse>(key, {
             ...previous,
             [capabilityId]: { ...current, active },
           });

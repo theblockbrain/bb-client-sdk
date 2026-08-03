@@ -44,26 +44,22 @@ export async function generateChallenge(verifier: string): Promise<string> {
   return base64urlEncode(digest);
 }
 
-/**
- * @deprecated The `state` parameter must NOT carry the `code_verifier` — doing so
- * leaks the verifier into browser history and IdP logs, defeating PKCE's
- * interception defence (CWE-200). Use `generateStateNonce()` for the state value
- * and store the verifier separately in sessionStorage keyed by that nonce.
+/*
+ * REMOVED in 0.18.0 (PDEV-7684): `encodePKCEState` / `decodePKCEState`.
  *
- * This export is kept for backwards compatibility with existing consumers.
- * Internal SDK code no longer calls it.
+ * They base64'd `{verifier}` into the OAuth `state` parameter, which puts the
+ * code verifier in the authorize URL — and therefore in browser history, the
+ * Referer header, and IdP access logs. That is CWE-200, and it defeats the
+ * single thing PKCE exists to do: make an intercepted authorization code
+ * useless without the verifier.
+ *
+ * The replacement is already here and is what the SDK's own flows use:
+ * `generateStateNonce()` for an independent CSRF nonce, with the verifier held
+ * out of band — local scope in `login()`, or `sessionStorage` keyed by the
+ * nonce in `browser-redirect.ts`. `src/auth/pkce.test.ts` pins that the
+ * verifier never reaches the URL.
+ *
+ * Deliberately deleted rather than left `@deprecated`: a deprecation notice on
+ * a security defect only works if someone reads it, and it had been sitting
+ * unread long enough for a live surface to build on it.
  */
-export function encodePKCEState(state: { verifier: string }): string {
-  const json = JSON.stringify(state);
-  return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-}
-
-/**
- * @deprecated Counterpart to the deprecated `encodePKCEState`. Kept for
- * backwards compatibility; internal SDK code no longer calls it.
- */
-export function decodePKCEState(encoded: string): { verifier: string } {
-  const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
-  const json = atob(base64);
-  return JSON.parse(json) as { verifier: string };
-}

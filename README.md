@@ -27,7 +27,7 @@ The package is published to GitHub Packages (private, `theblockbrain` org). Cons
 import { generateVerifier, login }   from "@theblockbrain/bb-client-sdk/auth";
 import { fetchBotList, sendMessage }  from "@theblockbrain/bb-client-sdk/api";
 import { getAuthContext, Settings }   from "@theblockbrain/bb-client-sdk/settings";
-import { siteKey, createLock }        from "@theblockbrain/bb-client-sdk/utils";
+import { extractJson, extractCode }   from "@theblockbrain/bb-client-sdk/text";
 import type { StorageAdapter, IdentityAdapter } from "@theblockbrain/bb-client-sdk/adapters";
 import { AUTH_AUTHORITY, TOKEN_ENDPOINT }       from "@theblockbrain/bb-client-sdk/config";
 ```
@@ -148,7 +148,7 @@ Parse JSON from LLM output — handles markdown fences, embedded JSON in prose, 
 unescaped quotes inside string values:
 
 ```ts
-import { extractJson } from "@theblockbrain/bb-client-sdk/utils";
+import { extractJson } from "@theblockbrain/bb-client-sdk/text";
 
 extractJson('```json\n{"a":1}\n```')              // { a: 1 }
 extractJson('Result: {"name":"foo \\"bar\\""}')    // { name: 'foo "bar"' }

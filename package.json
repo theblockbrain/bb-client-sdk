@@ -30,21 +30,21 @@
       "types": "./dist/utils/index.d.ts",
       "import": "./dist/utils/index.js"
     },
+    "./text": {
+      "types": "./dist/text/index.d.ts",
+      "import": "./dist/text/index.js"
+    },
     "./adapters": {
       "types": "./dist/adapters/index.d.ts",
       "import": "./dist/adapters/index.js"
     },
+    "./adapters/office": {
+      "types": "./dist/adapters/office.d.ts",
+      "import": "./dist/adapters/office.js"
+    },
     "./config": {
       "types": "./dist/config.d.ts",
       "import": "./dist/config.js"
-    },
-    "./prompt": {
-      "types": "./dist/prompt/index.d.ts",
-      "import": "./dist/prompt/index.js"
-    },
-    "./actions": {
-      "types": "./dist/actions/index.d.ts",
-      "import": "./dist/actions/index.js"
     },
     "./ui": {
       "types": "./dist/ui/index.d.ts",

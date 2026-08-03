@@ -38,8 +38,8 @@ Answer each question. Any "yes" pulls in the linked phase's checks. Cheap change
 
 | # | Does the change touch… | How to tell | If yes → required |
 |---|---|---|---|
-| 1 | a **public export**? | edits a file re-exported from any `src/**/index.ts` behind a `package.json` `"exports"` subpath (`.`, `./auth`, `./api`, `./settings`, `./utils`, `./adapters`, `./config`, `./prompt`, `./actions`, `./ui`, `./react`) | **Phase 3** (contract test + semver) **and** **Phase 4** (canary) |
-| 2 | the **framework-agnostic core**? | edits under `src/api` `src/auth` `src/settings` `src/utils` `src/adapters` `src/prompt` `src/actions` `src/config.ts` | **Phase 2** (runtime audit). Invariant A: core must import **zero React**. |
+| 1 | a **public export**? | edits a file re-exported from any `src/**/index.ts` behind a `package.json` `"exports"` subpath (`.`, `./auth`, `./api`, `./settings`, `./text`, `./utils`, `./adapters`, `./adapters/office`, `./config`, `./ui`, `./react`) | **Phase 3** (contract test + semver) **and** **Phase 4** (canary) |
+| 2 | the **framework-agnostic core**? | edits under `src/api` `src/auth` `src/settings` `src/text` `src/utils` `src/adapters` `src/config.ts` | **Phase 2** (runtime audit). Invariant A: core must import **zero React**. |
 | 3 | **auth**? | `src/auth/*`, `src/settings/auth-mode.ts`, `src/config.ts` OAuth constants | **Phase 2** + auth sub-checks below + **Phase 5** (auth-flow column) |
 | 4 | **streaming / transport**? | `src/api/messages.ts`, `stream-result.ts`, `blocky-sse.ts`, `src/api/agentic/sse.ts`, any `fetch(`/`getReader`/`ReadableStream` | **Phase 2** (transport seam) + **Phase 5** (streaming column) |
 | 5 | **types only**? | `export type` / `interface` change, no runtime code | **Phase 3** — the contract test snapshots **types too** (`./adapters` is entirely `export type`), so a type change still trips it. Decide semver. |
@@ -50,7 +50,7 @@ Answer each question. Any "yes" pulls in the linked phase's checks. Cheap change
 - `AuthContext.orgId` is the **HOME** org (`x-zitadel-org-id`). Cross-tenant admin passes a separate `targetOrgId` to individual API fns → `?orgId=` query. **Never** put a target tenant's org in `AuthContext.orgId` — this is the tenant-isolation boundary (invariant D; zero cross-tenant tolerance, esp. bb-slack-integrations).
 - OAuth `baseUrl` is hardcoded to `OAUTH_BACKEND_URL` (`src/config.ts` → `https://blocky.theblockbrain.ai`); `settings.bbUrl` is **ignored** in OAuth mode (audience pinning). Don't "fix" this to read `bbUrl`.
 - Refresh stays **single-flight** via `src/auth/refresh-singleton.ts` — no refresh storms.
-- PKCE stays **S256-only** with state/CSRF separation (`test/auth/pkce-state-separation.test.ts`, currently `bun:test` / vitest-excluded — roadmap WS1).
+- PKCE stays **S256-only** with state/CSRF separation — enforced by `src/auth/pkce.test.ts`, which runs in CI and asserts the verifier never reaches the authorize URL (PDEV-7684).
 
 ---
 
@@ -60,7 +60,7 @@ The core must not assume the browser. No direct `window`/`document`/`localStorag
 
 ```bash
 grep -rnE '\b(window|document|localStorage|sessionStorage|navigator|EventSource)\b|crypto\.subtle|\bfetch\(' \
-  src/api src/auth src/settings src/utils src/adapters src/prompt src/actions src/config.ts
+  src/api src/auth src/settings src/text src/utils src/adapters src/config.ts
 ```
 
 Compare against the **known/sanctioned** hits. A hit **not** on this list is a defect — reroute it through an adapter or capability check.
@@ -77,7 +77,7 @@ Compare against the **known/sanctioned** hits. A hit **not** on this list is a d
 
 ```bash
 grep -rnE "from ['\"]react|from ['\"]@tanstack/react-query|useState|useEffect" \
-  src/api src/auth src/settings src/utils src/adapters src/prompt src/actions src/config.ts
+  src/api src/auth src/settings src/text src/utils src/adapters src/config.ts
 ```
 
 Expect **zero** matches. React may appear only under `src/react` and `src/ui`. `check:package` (attw/publint) verifies `./api` and `./auth` tree-shake with no React in the graph; keep it that way.
@@ -168,4 +168,4 @@ A change is done only when **all** boxes are checked:
 - [ ] **Security invariants hold** (invariant D) — tokens never logged (scrub `BBApiError.responseBody`), storage only via `StorageAdapter`, orgId vs `targetOrgId` discipline (0 cross-tenant), OAuth audience pinning intact, `extractJson` still never throws, markdown output sanitized.
 - [ ] **Telemetry release-gate acknowledged** (invariant E) — no surface ships to production without **both** product analytics (Mixpanel: Zitadel `sub` as distinct id, org as group, no PII) **and** health telemetry (Sentry + Grafana Faro RUM). The `AnalyticsAdapter` seam is **on `main`** (**WS9** — PDEV-6854/6855, unreleased): register an adapter via `setAnalyticsAdapter` from `@theblockbrain/bb-client-sdk/analytics` (or `createMixpanelAdapter` from `…/analytics/mixpanel`) and forward the standard event taxonomy (`auth_success`/`auth_failed`, `message_send`, `stream_start`/`stream_first_token`/`stream_complete`/`stream_dropped`, `api_error{statusCode,endpoint}` — the typed `AnalyticsEventMap` in [`./telemetry-release-gate.md`](./telemetry-release-gate.md) §1) to Mixpanel + Sentry/Faro; wiring it stays a per-surface release-checklist item.
 - [ ] **Conventional Commit + branch name** pass lefthook — `type(TICKET-123): …` and `type/TICKET-123/description`.
-- [ ] **STATUS/roadmap honesty** — if the change touches a known gap (best-effort cancellation WS2, device-code auth, transport seam WS2/WS7, publish-gate SLO E2, bun:test legacy WS1), update `docs/react-layer.md` rather than silently papering over it.
+- [ ] **STATUS/roadmap honesty** — if the change touches a known gap (best-effort cancellation WS2, device-code auth, transport seam WS2/WS7, publish-gate SLO E2), update `docs/react-layer.md` rather than silently papering over it.

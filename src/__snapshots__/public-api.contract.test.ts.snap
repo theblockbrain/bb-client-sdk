@@ -6,11 +6,9 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "AUTHORIZE_ENDPOINT",
   "AUTH_AUTHORITY",
   "AUTH_SCOPES",
-  "AVAILABLE_ACTIONS",
-  "ActionResult",
-  "ActionStep",
   "AdminListingOptions",
-  "Agent",
+  "AgentSwitch",
+  "AgentSwitchesResponse",
   "AgenticApprovalResumeData",
   "AgenticAskUserQuestionResumeData",
   "AgenticCallOptions",
@@ -24,14 +22,12 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "AgenticStreamErrorData",
   "AgenticStreamErrorReason",
   "AgenticUIMessage",
-  "AgentsResponse",
   "AnalyticsAdapter",
   "AnalyticsErrorContext",
   "AnalyticsEventMap",
   "AnalyticsEventName",
   "AnalyticsEventProps",
   "AnalyticsIdentity",
-  "ApiResponse",
   "ApprovalContext",
   "ApprovalResolver",
   "ApprovalResult",
@@ -46,8 +42,8 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "BotDetail",
   "BrowserLoginResult",
   "BrowserRedirectOptions",
-  "CapabilitiesResponse",
-  "Capability",
+  "CapabilitySwitch",
+  "CapabilitySwitchesResponse",
   "ConnectIntegrationData",
   "ConnectIntegrationFrame",
   "ConversationDetail",
@@ -68,10 +64,10 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "MessageItem",
   "MessageListBody",
   "MessageStream",
+  "MutationAckResponse",
   "NoteResult",
   "OAUTH_BACKEND_URL",
   "OAuthTokens",
-  "ParsedResponse",
   "Profile",
   "SendMessageOptions",
   "SendMessageStreamOptions",
@@ -115,11 +111,9 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "createNote",
   "createRefreshGuard",
   "decodeJwtPayload",
-  "decodePKCEState",
   "deleteConversation",
   "denyAllResolver",
   "discoverFrontendUrls",
-  "encodePKCEState",
   "exchangeCode",
   "extractCode",
   "extractJson",
@@ -164,14 +158,12 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "nextThemeMode",
   "normalizeUrl",
   "parseAgenticStream",
-  "parseResponse",
   "parseSseDataLine",
   "refreshTokens",
   "renderMarkdown",
   "renderMarkdownInto",
   "repairUnescapedQuotes",
   "resetAnalyticsAdapter",
-  "runActions",
   "sendMessage",
   "setAgentActive",
   "setAgentAvailability",
@@ -193,15 +185,6 @@ exports[`public API surface > exports of "." are stable 1`] = `
 ]
 `;
 
-exports[`public API surface > exports of "./actions" are stable 1`] = `
-[
-  "AVAILABLE_ACTIONS",
-  "ActionResult",
-  "ActionStep",
-  "runActions",
-]
-`;
-
 exports[`public API surface > exports of "./adapters" are stable 1`] = `
 [
   "AnalyticsAdapter",
@@ -212,6 +195,18 @@ exports[`public API surface > exports of "./adapters" are stable 1`] = `
   "AnalyticsIdentity",
   "IdentityAdapter",
   "StorageAdapter",
+]
+`;
+
+exports[`public API surface > exports of "./adapters/office" are stable 1`] = `
+[
+  "OfficeAsyncResult",
+  "OfficeDialog",
+  "OfficeDialogEventArgs",
+  "OfficeDialogOptions",
+  "OfficeGlobal",
+  "OfficeIdentityAdapterConfig",
+  "createOfficeIdentityAdapter",
 ]
 `;
 
@@ -295,7 +290,8 @@ exports[`public API surface > exports of "./analytics/mixpanel" are stable 1`] =
 exports[`public API surface > exports of "./api" are stable 1`] = `
 [
   "AdminListingOptions",
-  "Agent",
+  "AgentSwitch",
+  "AgentSwitchesResponse",
   "AgenticApprovalResumeData",
   "AgenticAskUserQuestionResumeData",
   "AgenticCallOptions",
@@ -309,8 +305,6 @@ exports[`public API surface > exports of "./api" are stable 1`] = `
   "AgenticStreamErrorData",
   "AgenticStreamErrorReason",
   "AgenticUIMessage",
-  "AgentsResponse",
-  "ApiResponse",
   "ApprovalContext",
   "ApprovalResolver",
   "ApprovalResult",
@@ -319,8 +313,8 @@ exports[`public API surface > exports of "./api" are stable 1`] = `
   "BBErrorKind",
   "Bot",
   "BotDetail",
-  "CapabilitiesResponse",
-  "Capability",
+  "CapabilitySwitch",
+  "CapabilitySwitchesResponse",
   "ConnectIntegrationData",
   "ConnectIntegrationFrame",
   "ConversationDetail",
@@ -333,6 +327,7 @@ exports[`public API surface > exports of "./api" are stable 1`] = `
   "MessageItem",
   "MessageListBody",
   "MessageStream",
+  "MutationAckResponse",
   "NoteResult",
   "SendMessageOptions",
   "SendMessageStreamOptions",
@@ -420,8 +415,6 @@ exports[`public API surface > exports of "./auth" are stable 1`] = `
   "computeExpiration",
   "createRefreshGuard",
   "decodeJwtPayload",
-  "decodePKCEState",
-  "encodePKCEState",
   "exchangeCode",
   "extractOrgIdFromClaims",
   "extractProfile",
@@ -431,6 +424,7 @@ exports[`public API surface > exports of "./auth" are stable 1`] = `
   "isTokenExpired",
   "login",
   "refreshTokens",
+  "subFromAccessToken",
 ]
 `;
 
@@ -447,13 +441,6 @@ exports[`public API surface > exports of "./config" are stable 1`] = `
   "INTEGRATIONS_BASE_URL",
   "OAUTH_BACKEND_URL",
   "TOKEN_ENDPOINT",
-]
-`;
-
-exports[`public API surface > exports of "./prompt" are stable 1`] = `
-[
-  "ParsedResponse",
-  "parseResponse",
 ]
 `;
 
@@ -593,6 +580,14 @@ exports[`public API surface > exports of "./telemetry/cookiebot" are stable 1`] 
 ]
 `;
 
+exports[`public API surface > exports of "./text" are stable 1`] = `
+[
+  "extractCode",
+  "extractJson",
+  "repairUnescapedQuotes",
+]
+`;
+
 exports[`public API surface > exports of "./ui" are stable 1`] = `
 [
   "MarkdownOptions",
@@ -610,9 +605,5 @@ exports[`public API surface > exports of "./ui" are stable 1`] = `
 exports[`public API surface > exports of "./utils" are stable 1`] = `
 [
   "createLock",
-  "extractCode",
-  "extractJson",
-  "repairUnescapedQuotes",
-  "subFromAccessToken",
 ]
 `;

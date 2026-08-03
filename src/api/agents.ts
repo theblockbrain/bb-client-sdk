@@ -6,10 +6,20 @@ import {
   buildIntegrationsUrl,
   throwIfNotOk,
 } from "./_auth-headers.js";
+import type { MutationAckResponse } from "./mutation-ack.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface Agent {
+/**
+ * A tenant's on/off switches for one agent.
+ *
+ * Renamed from `Agent` (PDEV-7684). This is **not** an agent you can run — it is
+ * the admin toggle row that decides whether a tenant sees one. The runnable agent
+ * lives in `./agentic`, which `./api` re-exports wholesale, so a bare `Agent`
+ * imported from `./api` was genuinely ambiguous between "the thing that executes"
+ * and "the checkbox that reveals it".
+ */
+export interface AgentSwitch {
   id: string;
   name: string;
   active: boolean;
@@ -17,13 +27,8 @@ export interface Agent {
   capabilityIds?: string[];
 }
 
-export interface ApiResponse {
-  ok: boolean;
-  error?: string;
-}
-
-/** API response shape: Record<agentId, Agent> */
-export type AgentsResponse = Record<string, Agent>;
+/** Switch state keyed by agent id. */
+export type AgentSwitchesResponse = Record<string, AgentSwitch>;
 
 // ── API functions ─────────────────────────────────────────────────────────────
 
@@ -47,7 +52,7 @@ export async function fetchAgents(
   ctx: AuthContext,
   targetOrgId?: string,
   options?: AdminListingOptions,
-): Promise<AgentsResponse> {
+): Promise<AgentSwitchesResponse> {
   const endpoint = "agents";
   const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId, adminListingParams(options));
   const res = await fetch(url, {
@@ -55,7 +60,7 @@ export async function fetchAgents(
     headers: bbApiAuthHeaders(ctx),
   });
   await throwIfNotOk(res, endpoint);
-  return res.json() as Promise<AgentsResponse>;
+  return res.json() as Promise<AgentSwitchesResponse>;
 }
 
 /**
@@ -69,7 +74,7 @@ export async function setAgentActive(
   agentId: string,
   active: boolean,
   targetOrgId?: string,
-): Promise<ApiResponse> {
+): Promise<MutationAckResponse> {
   const endpoint = "agents/set-active";
   const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
   const res = await fetch(url, {
@@ -78,7 +83,7 @@ export async function setAgentActive(
     body: JSON.stringify({ agentId, active }),
   });
   await throwIfNotOk(res, endpoint);
-  return res.json() as Promise<ApiResponse>;
+  return res.json() as Promise<MutationAckResponse>;
 }
 
 /**
@@ -92,7 +97,7 @@ export async function setAgentAvailability(
   agentId: string,
   available: boolean,
   targetOrgId?: string,
-): Promise<ApiResponse> {
+): Promise<MutationAckResponse> {
   const endpoint = "agents/set-availability";
   const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
   const effectiveOrgId = targetOrgId ?? ctx.orgId;
@@ -102,5 +107,5 @@ export async function setAgentAvailability(
     body: JSON.stringify({ agentId, available, orgId: effectiveOrgId }),
   });
   await throwIfNotOk(res, endpoint);
-  return res.json() as Promise<ApiResponse>;
+  return res.json() as Promise<MutationAckResponse>;
 }

@@ -32,7 +32,7 @@ once — treat it that way.
 
 The public surface is the JS entry points declared in `package.json`
 `"exports"` — **14 today** (`.`, `./auth`, `./api`, `./agentic`, `./settings`, `./utils`,
-`./adapters`, `./config`, `./prompt`, `./actions`, `./ui`, `./react`, `./analytics`,
+`./adapters`, `./adapters/office`, `./config`, `./text`, `./ui`, `./react`, `./analytics`,
 `./analytics/mixpanel`; the `./ui/theme-base.css` asset subpath is not a module surface).
 `./agentic`, `./analytics` and `./analytics/mixpanel` are on `main`
 but **not in a published release** — the newest tag, `v0.17.0`, predates them.

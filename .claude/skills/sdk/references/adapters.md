@@ -64,7 +64,7 @@ Wiring the `AnalyticsAdapter` (register via `setAnalyticsAdapter` from `@thebloc
 Grouped by the invariants they enforce (**A** framework-agnostic core, **B** no runtime assumptions, **D** security). Check the group that matches the runtimes your change touches.
 
 ### Node — `bb-slack-integrations`, `bb-integration-example` (BFF)
-- **No DOM.** No `window`, `document`, `localStorage`, `EventSource`, or Office/chrome globals. Any core code (`./api`, `./auth`, `./settings`, `./utils`, `./adapters`, `./config`, `./prompt`, `./actions`) that touches a browser global crashes Slack at import (invariant **A/B**).
+- **No DOM.** No `window`, `document`, `localStorage`, `EventSource`, or Office/chrome globals. Any core code (`./api`, `./auth`, `./settings`, `./text`, `./utils`, `./adapters`, `./config`) that touches a browser global crashes Slack at import (invariant **A/B**).
 - **Storage is server-side.** Always go through `StorageAdapter` (a Node key-value/DB store here) — never a global. The interface is already `async` (`get`/`set`/`remove` return Promises), which fits a server store.
 - **Auth is api-key / service.** No dialog, no redirect. In api-key mode `AuthContext.userId` is `undefined`, so the **Agentic path is unavailable** (`src/settings/auth-mode.ts` — Agentic is OAuth-only). Don't route Slack through Agentic.
 - **3-second Slack ack deadline** and **0 cross-tenant** tolerance. Respect the `orgId` vs `targetOrgId` boundary (invariant **D**) — never put a target tenant's org in `AuthContext.orgId`.
@@ -102,4 +102,4 @@ Grouped by the invariants they enforce (**A** framework-agnostic core, **B** no 
 - **Canary before `latest`**: `canary.yml` (label `release:canary`). Note the publish gap — `publish.yml` runs only typecheck + build, **not** test/lint/`check:package`; `ci.yml` on `main` is the safety net (target SLO E2: CI + publish both gated on tests).
 - **Telemetry / event taxonomy** (the canonical `AnalyticsEvent` union, identity model, release gate): `references/telemetry-release-gate.md`.
 - **Org code-style baseline** (import order, no `any`, early returns, error handling, verification checklist): the org **Code Cleanup & Refactoring** standard.
-- **React layer honest gaps** (cancellation, missing hook tests, legacy `bun:test` at `test/auth/pkce-state-separation.test.ts:7`): `docs/react-layer.md`.
+- **React layer honest gaps** (cancellation, missing hook tests): `docs/react-layer.md`. The `bun:test` legacy is gone — the PKCE state-separation test is now `src/auth/pkce.test.ts` and runs in CI (PDEV-7684).

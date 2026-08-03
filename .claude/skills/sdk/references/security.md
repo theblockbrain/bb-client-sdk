@@ -64,7 +64,7 @@ capability requirement, not a browser assumption (see invariant B).
 | Concern | Implementation (verified) | Notes / gaps |
 |---|---|---|
 | **S256 only** | `generateChallenge()` = base64url(SHA-256(verifier)); the authorize URL sets `code_challenge_method=S256`. Verifier = 32 random bytes → 43-char base64url (RFC 7636), **not** `randomUUID()`. | `src/auth/pkce.ts`; `beginBrowserLogin` in `src/auth/browser-redirect.ts` |
-| **State / CSRF** | `generateStateNonce()` produces an independent 32-byte nonce (NOT derived from the verifier). `completeBrowserLogin` throws on missing state ("possible CSRF") and on a nonce with no stored verifier. | Regression test `test/auth/pkce-state-separation.test.ts` asserts the verifier never appears in the authorize URL. **CAVEAT: that test still imports `bun:test` and is EXCLUDED by `vitest.config.ts` (`include: src/**`), so it does NOT run in CI today** — migrating it to vitest is roadmap **WS1**. Until then, re-verify state separation manually on any auth change. |
+| **State / CSRF** | `generateStateNonce()` produces an independent 32-byte nonce (NOT derived from the verifier). `completeBrowserLogin` throws on missing state ("possible CSRF") and on a nonce with no stored verifier. The `encodePKCEState`/`decodePKCEState` helpers, which put the verifier *in* the state param, were **removed in 0.18.0** (PDEV-7684). | Regression test `src/auth/pkce.test.ts` asserts the verifier never appears in the authorize URL, S256 is always requested, and the verifier is cleared before the exchange. **It runs in CI.** (It previously did not: as `test/auth/pkce-state-separation.test.ts` on `bun:test`, outside vitest's `src/**` include, it was cited here as coverage while never executing.) |
 | **Redirect-URI allowlist** | `redirectUri` is caller-supplied and must be **pre-registered in the Zitadel app**; Zitadel rejects unregistered URIs. The SDK does not maintain its own allowlist. | `BrowserRedirectOptions.redirectUri`; adapter `IdentityAdapter.getRedirectUri` must return a registered value. |
 | **id_token / nonce validation** | The SDK does **client-side decode only, NO signature verification** — the server validates the token (`decodeJwtPayload` comment). An OIDC `nonce` is **not currently sent or validated** by `browser-redirect.ts`. | Treat id_token signature + nonce validation as a **server-side responsibility / SDK gap** — do not claim the SDK verifies them. If you need client-side nonce binding, it must be added (thread a nonce through authorize + validate in `completeBrowserLogin`). |
 | **Single-flight refresh** | `createRefreshGuard()` shares one in-flight promise across racing callers — prevents refresh storms and duplicate refresh-token spend. | `src/auth/refresh-singleton.ts`; expiry check `isTokenExpired` in `src/auth/tokens.ts` |
@@ -110,9 +110,9 @@ Everything coming back from a model, a tool, or a user is hostile until proven o
 
 | Concern | Implementation (verified) |
 |---|---|
-| **`extractJson` NEVER throws.** LLM JSON is malformed constantly; the parser returns `T \| null` and best-effort-repairs unescaped quotes. Callers **must handle `null`** — never assume a parse. | `extractJson` / `repairUnescapedQuotes` in `src/utils/extract-json.ts` |
+| **`extractJson` NEVER throws.** LLM JSON is malformed constantly; the parser returns `T \| null` and best-effort-repairs unescaped quotes. Callers **must handle `null`** — never assume a parse. | `extractJson` / `repairUnescapedQuotes` in `src/text/extract-json.ts` |
 | **Markdown rendering is XSS-safe by construction.** `renderMarkdown` builds a `DocumentFragment` with `createElement`/`createTextNode` — it **never `innerHTML`s raw input**. Raw HTML blocks and images are dropped. Links are validated with `new URL()` against a protocol allowlist (`https:`/`http:`/`mailto:`); `javascript:` and other schemes render as plain text. `markdownToHtml`'s single `innerHTML` read serializes a DOM the SDK built itself — safe. | `src/ui/markdown.ts` (`./ui` — React/DOM only) |
-| **Validate tool / action output** before acting on it — same posture as `extractJson`: parse defensively, handle the failure branch, never `eval`. | `src/actions/runner.ts`, `src/prompt/parse-response.ts` |
+| **Validate tool / action output** before acting on it — same posture as `extractJson`: parse defensively, handle the failure branch, never `eval`. | `src/text/extract-json.ts`; the `./actions` + `./prompt` runners were removed in 0.18.0 (PDEV-7684) |
 
 **Adapter obligation:** if you render assistant output yourself (custom UI, a non-React surface
 like Lit/blocky-chat, or Slack Block Kit), you must apply the same discipline — go through
@@ -153,7 +153,7 @@ Never `dangerouslySetInnerHTML` / `.innerHTML =` on model output.
 | **publint** | `check:package` | Package/export-map correctness (ESM resolution) |
 | **attw** (`@arethetypeswrong/cli`) | `check:package` (`--profile esm-only`) | Types resolve on every entry point → **no React leaks into `./api`/`./auth`** |
 | **Public-API contract test** | `src/public-api.contract.test.ts` (+ snapshot) | Anti-breakage tripwire — an undeclared change across the entry points (14 today) fails the test |
-| **PKCE state-separation test** | `test/auth/pkce-state-separation.test.ts` | Verifier never in authorize URL (CWE-200). **NOTE: `bun:test`, excluded from CI (WS1)** — run manually |
+| **PKCE state-separation test** | `src/auth/pkce.test.ts` | Verifier never in authorize URL (CWE-200); S256 enforced; verifier single-use. Runs in `npm test` / CI |
 | **npm audit / Dependabot** | dependency PRs | Known-vuln deps |
 | **gitleaks (secret-scan)** | target — **not in CI yet** | Committed tokens/keys |
 | **Sentry** | per-surface wiring | Crash/error telemetry (health half of invariant E) |

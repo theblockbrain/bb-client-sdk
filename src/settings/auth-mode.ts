@@ -1,7 +1,7 @@
+import { subFromAccessToken } from "../auth/jwt-claims.js";
 import { isTokenExpired } from "../auth/tokens.js";
 import type { BBHosts } from "../config.js";
 import { OAUTH_BACKEND_URL } from "../config.js";
-import { subFromAccessToken } from "../utils/jwt.js";
 import type { Settings } from "./schema.js";
 
 export type AuthMode = "oauth" | "api-key";
