@@ -35,9 +35,6 @@ export {
 } from "./conversations.js";
 export type { BBErrorKind } from "./errors.js";
 export { BBApiError, isBBApiError } from "./errors.js";
-// NOTE: `./transport.js` is deliberately NOT exported here. PDEV-7336 lands the
-// seam internally so it can be reviewed on its own; it becomes public when
-// PDEV-7337/7338 migrate the call sites onto it.
 export { authHeaders } from "./headers.js";
 export type { IntrospectResponse } from "./introspect.js";
 export { extractOrgIdFromIntrospect, introspectApiKey } from "./introspect.js";
@@ -64,6 +61,21 @@ export { discoverFrontendUrls, getTenantById, listTenants } from "./tenant.js";
 export type { TenantConfig } from "./tenant-config.js";
 export { getTenantConfig, setCustomAgentsEnabled } from "./tenant-config.js";
 export { transcribeAudio } from "./transcribe.js";
+// The transport seam, public since PDEV-7337/7338 migrated every call site onto
+// it. `AuthContext.transport` is typed `Transporter`, so withholding these made
+// that field impossible to populate — found by trying to inject one from
+// ms-outlook-addin.
+export type {
+  BBHost,
+  BBHosts,
+  TransportConfig,
+  Transporter,
+  TransportMethod,
+  TransportRequest,
+  TransportResponse,
+  UrlRewrite,
+} from "./transport.js";
+export { createFetchTransport, DEFAULT_HOSTS, DEFAULT_TIMEOUT_MS } from "./transport.js";
 export { normalizeUrl } from "./url.js";
 export type {
   ConversationWebSearchSettings,

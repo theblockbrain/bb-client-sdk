@@ -1,7 +1,6 @@
 import type { AuthContext } from "../settings/auth-mode.js";
 import { request, requestJson } from "./_send.js";
 import { authHeaders } from "./headers.js";
-import { normalizeUrl } from "./url.js";
 
 /**
  * Discover frontend URLs available for the authenticated tenant.

@@ -36,14 +36,15 @@ function makeJwt(payload: Record<string, unknown>): string {
 describe("decodeJwtPayload — padding", () => {
   // Not a regression guard (the residue that breaks atob is unreachable) but a
   // range check: every payload length must decode, whatever its mod-4 residue.
-  it.each([
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-  ])("decodes a payload whose base64 length %% 4 varies (padding case #%i)", n => {
-    // Vary the payload length by one char at a time so every length-mod-4
-    // residue is covered regardless of JSON overhead.
-    const payload = { sub: "u", pad: "x".repeat(n) };
-    expect(decodeJwtPayload(makeJwt(payload))).toMatchObject(payload);
-  });
+  it.each([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])(
+    "decodes a payload whose base64 length %% 4 varies (padding case #%i)",
+    n => {
+      // Vary the payload length by one char at a time so every length-mod-4
+      // residue is covered regardless of JSON overhead.
+      const payload = { sub: "u", pad: "x".repeat(n) };
+      expect(decodeJwtPayload(makeJwt(payload))).toMatchObject(payload);
+    },
+  );
 
   it("decodes a real-shaped token with padding stripped", () => {
     const token = makeJwt({ sub: "user-123", "urn:zitadel:iam:org:id": "org-abc" });

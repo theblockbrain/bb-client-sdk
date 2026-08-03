@@ -59,11 +59,10 @@ describe("login telemetry", () => {
     const idToken = makeJwt({ sub: "user-sub-123", "urn:zitadel:iam:org:id": "org-abc" });
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        access_token: "at",
-        id_token: idToken,
-        expires_in: 3600,
-      }),
+      status: 200,
+      headers: new Headers(),
+      // The transport buffers via text() so its deadline covers reading the body.
+      text: async () => JSON.stringify({ access_token: "at", id_token: idToken, expires_in: 3600 }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -104,7 +103,10 @@ describe("login telemetry", () => {
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ access_token: "at", id_token: idToken, expires_in: 3600 }),
+        status: 200,
+        headers: new Headers(),
+        text: async () =>
+          JSON.stringify({ access_token: "at", id_token: idToken, expires_in: 3600 }),
       }),
     );
 

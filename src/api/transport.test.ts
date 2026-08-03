@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { AGENTIC_BASE_URL, INTEGRATIONS_BASE_URL, OAUTH_BACKEND_URL } from "../config.js";
+import {
+  AGENTIC_BASE_URL,
+  AUTH_AUTHORITY,
+  INTEGRATIONS_BASE_URL,
+  OAUTH_BACKEND_URL,
+} from "../config.js";
 import { isBBApiError } from "./errors.js";
 import {
   createFetchTransport,
@@ -92,6 +97,9 @@ describe("createFetchTransport — URL construction", () => {
       blocky: OAUTH_BACKEND_URL,
       integrations: INTEGRATIONS_BASE_URL,
       agentic: AGENTIC_BASE_URL,
+      // PDEV-7339: the Zitadel authority is a host like any other, so token
+      // calls get the same proxy rewrite, timeout and retry as everything else.
+      auth: AUTH_AUTHORITY,
     });
   });
 

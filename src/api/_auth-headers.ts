@@ -1,43 +1,18 @@
-import { INTEGRATIONS_API_PREFIX, INTEGRATIONS_BASE_URL } from "../config.js";
 import type { AuthContext } from "../settings/auth-mode.js";
-import { BBApiError } from "./errors.js";
-import { normalizeUrl } from "./url.js";
 
-/**
- * Build a URL on the integrations host.
+/*
+ * PDEV-7338 removed two things from this module:
  *
- * THE WRONG-HOST FIX (PDEV-7332). Every caller of this previously built its URL from
- * `normalizeUrl(ctx.baseUrl)`, and `getAuthContext` sets `baseUrl` to
- * `OAUTH_BACKEND_URL` — the blocky host. So `agents`, `capabilities` and
- * `tenant-config` were all pointed at a host that does not serve them, which is why
- * `useAgents` / `useCapabilities` / `useTenantConfig` could not work through a single
- * `BBClientProvider`.
- *
- * Two things were wrong, not one. Verified against Botticelli on 2026-07-29:
- * `packages/integrations/src/index.ts:227` mounts `app.route('/api/v1/', v1Router)`,
- * so the prefix was missing too. See {@link INTEGRATIONS_API_PREFIX}.
- *
- * Consolidated here because `agents.ts` and `capabilities.ts` each carried a
- * byte-identical private `buildUrl`, and `tenant-config.ts` a third inline variant —
- * three places to get the host wrong.
- *
- * @param path - Route path relative to the API prefix, no leading slash. e.g. `"agents/set-active"`.
- * @param targetOrgId - Operation target org (the `?orgId=` param). Falls back to
- *   `ctx.orgId` (the user's home org) for self-tenant operations. Distinct from the
- *   `x-zitadel-org-id` header, which always carries the home org.
- * @param extra - Additional query params.
+ * - `buildIntegrationsUrl`, superseded by the transport's own host resolution.
+ *   The path prefix it applied is now `INTEGRATIONS_API_PREFIX` at each call site,
+ *   and the `?orgId=` it appended is a `query` entry — both visible in the request
+ *   rather than buried in a string builder.
+ * - `throwIfNotOk(res: Response, ...)`, which was the SECOND error-normalisation
+ *   path in the SDK. `_send.ts` now owns the only one. Two of them meant a
+ *   non-2xx produced a differently-shaped `BBApiError` depending on which host
+ *   you happened to call, which is precisely what stops `trackApiError` working
+ *   without per-endpoint instrumentation (WS9).
  */
-export function buildIntegrationsUrl(
-  ctx: AuthContext,
-  path: string,
-  targetOrgId?: string,
-  extra: Readonly<Record<string, string>> = {},
-): string {
-  const origin = normalizeUrl(ctx.hosts?.integrations ?? INTEGRATIONS_BASE_URL);
-  const params = new URLSearchParams(extra);
-  params.set("orgId", targetOrgId ?? ctx.orgId);
-  return `${origin}${INTEGRATIONS_API_PREFIX}/${path}?${params.toString()}`;
-}
 
 /**
  * Admin-only listing filters for agent and capability discovery.
@@ -97,20 +72,4 @@ export function bbApiAuthHeaders(ctx: AuthContext): Record<string, string> {
     headers["x-zitadel-org-id"] = ctx.orgId;
   }
   return headers;
-}
-
-/** Throw BBApiError on non-2xx responses. */
-export async function throwIfNotOk(res: Response, endpoint: string): Promise<void> {
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
 }

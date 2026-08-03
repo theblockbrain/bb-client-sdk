@@ -139,8 +139,13 @@ describe("PDEV-7332 — every integrations call targets the integrations host", 
     await fetchAgents(ctx, "org-target");
 
     expect(new URL(urls[0] ?? "").searchParams.get("orgId")).toBe("org-target");
-    const init = vi.mocked(globalThis.fetch).mock.calls[0]?.[1];
-    expect((init?.headers as Record<string, string>)["x-zitadel-org-id"]).toBe("org-home");
+    // The cast used to sit outside the optional chain — `(init?.headers as R)[k]`
+    // — so an undefined `init` threw a TypeError instead of failing the
+    // assertion. Biome 2.5.5's noUnsafeOptionalChaining caught it.
+    const headers = vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.headers as
+      | Record<string, string>
+      | undefined;
+    expect(headers?.["x-zitadel-org-id"]).toBe("org-home");
   });
 });
 

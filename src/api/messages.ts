@@ -1,15 +1,13 @@
 import { subFromAccessToken } from "../auth/jwt-claims.js";
 import type { AuthContext } from "../settings/auth-mode.js";
-import { requestJson } from "./_send.js";
+import { request, requestJson, throwIfNotOk } from "./_send.js";
 import type { ApprovalResolver } from "./agentic/client.js";
 import { callAgenticStream, denyAllResolver } from "./agentic/client.js";
 import { parseBlockySseStream } from "./blocky-sse.js";
 import { getConversationDetail } from "./conversations.js";
-import { BBApiError } from "./errors.js";
 import { authHeaders } from "./headers.js";
 import type { MessageStream } from "./stream-result.js";
 import { createMessageStream } from "./stream-result.js";
-import { normalizeUrl } from "./url.js";
 
 // ─── sendMessage ──────────────────────────────────────────────────────────────
 
@@ -26,6 +24,17 @@ export interface SendMessageOptions {
    * Replace to surface approval prompts to users without changing the call signature.
    */
   approvalResolver?: ApprovalResolver;
+  /**
+   * Cancels the turn (PDEV-7339).
+   *
+   * `useChatStream().stop()` was best-effort until now: it stopped consuming and
+   * bumped a run-id, but the request kept running server-side. The comment in
+   * `use-chat-stream.tsx` marking the enable point refers to this field.
+   *
+   * A streamed turn is sent with no deadline — a long agent run legitimately
+   * outlives any fixed one — so this signal is the only way to end it early.
+   */
+  signal?: AbortSignal;
 }
 
 export interface SendMessageStreamOptions extends SendMessageOptions {
@@ -193,13 +202,11 @@ export async function sendMessage(
 
   // ── Blocky path ──────────────────────────────────────────────────────────────
   const endpoint = "/cortex/completions/v2/user-input";
-  const url = normalizeUrl(ctx.baseUrl);
-  const res = await fetch(`${url}${endpoint}`, {
+  const res = await request(ctx, {
+    host: "blocky",
+    path: endpoint,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(ctx.token, ctx.orgId),
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders(ctx.token, ctx.orgId) },
     body: JSON.stringify({
       convoId,
       content,
@@ -207,30 +214,23 @@ export async function sendMessage(
       messageType: "user-question",
       enableStreaming: streaming,
     }),
+    // A streamed turn gets no deadline — a long agent run legitimately outlives
+    // any fixed one. Cancel it with `signal`.
+    stream: streaming,
+    signal: options.signal,
   });
-
-  if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      /* response may not be JSON */
-    }
-    throw new BBApiError(`API ${res.status} at ${endpoint}`, res.status, {
-      endpoint,
-      responseBody: body,
-    });
-  }
+  await throwIfNotOk(res, endpoint);
 
   if (streaming) {
     // Blocky returns `text/event-stream` when enableStreaming is true.
-    // Parse the SSE format: `event: new_token` frames carry text deltas.
-    if (!res.body) throw new Error("Blocky returned empty body for streaming request.");
-    return createMessageStream(parseBlockySseStream(res.body));
+    // `chunks` is decoded text, so the parser never touches a ReadableStream —
+    // which is what lets RN (XHR) and Lit (EventSource) supply one too.
+    if (!res.chunks) throw new Error("Blocky returned empty body for streaming request.");
+    return createMessageStream(parseBlockySseStream(res.chunks));
   }
 
   // Non-streaming: Blocky returns JSON with the full response in body.content.
-  const data = (await res.json()) as SendMessageResponse;
+  const data = await res.json<SendMessageResponse>();
   if (!data?.body?.content) throw new Error("No response received from bot.");
   return data.body.content;
 }

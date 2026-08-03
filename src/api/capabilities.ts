@@ -1,12 +1,6 @@
 import { INTEGRATIONS_API_PREFIX } from "../config.js";
 import type { AuthContext } from "../settings/auth-mode.js";
-import {
-  type AdminListingOptions,
-  adminListingParams,
-  bbApiAuthHeaders,
-  buildIntegrationsUrl,
-  throwIfNotOk,
-} from "./_auth-headers.js";
+import { type AdminListingOptions, adminListingParams, bbApiAuthHeaders } from "./_auth-headers.js";
 import { requestJson } from "./_send.js";
 import type { MutationAckResponse } from "./mutation-ack.js";
 
@@ -72,15 +66,14 @@ export async function setCapabilityActive(
   active: boolean,
   targetOrgId?: string,
 ): Promise<MutationAckResponse> {
-  const endpoint = "capabilities/set-active";
-  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
-  const res = await fetch(url, {
+  return requestJson<MutationAckResponse>(ctx, {
+    host: "integrations",
+    path: `${INTEGRATIONS_API_PREFIX}/capabilities/set-active`,
     method: "PATCH",
+    query: { orgId: targetOrgId ?? ctx.orgId },
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
     body: JSON.stringify({ capabilityId, active }),
   });
-  await throwIfNotOk(res, endpoint);
-  return res.json() as Promise<MutationAckResponse>;
 }
 
 /**
@@ -95,14 +88,12 @@ export async function setCapabilityAvailability(
   available: boolean,
   targetOrgId?: string,
 ): Promise<MutationAckResponse> {
-  const endpoint = "capabilities/set-availability";
-  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
-  const effectiveOrgId = targetOrgId ?? ctx.orgId;
-  const res = await fetch(url, {
+  return requestJson<MutationAckResponse>(ctx, {
+    host: "integrations",
+    path: `${INTEGRATIONS_API_PREFIX}/capabilities/set-availability`,
     method: "PATCH",
+    query: { orgId: targetOrgId ?? ctx.orgId },
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
-    body: JSON.stringify({ capabilityId, available, orgId: effectiveOrgId }),
+    body: JSON.stringify({ capabilityId, available, orgId: targetOrgId ?? ctx.orgId }),
   });
-  await throwIfNotOk(res, endpoint);
-  return res.json() as Promise<MutationAckResponse>;
 }

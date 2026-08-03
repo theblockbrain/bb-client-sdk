@@ -1,12 +1,7 @@
 import { INTEGRATIONS_API_PREFIX } from "../config.js";
 import type { AuthContext } from "../settings/auth-mode.js";
-import {
-  adminListingParams,
-  bbApiAuthHeaders,
-  buildIntegrationsUrl,
-  throwIfNotOk,
-} from "./_auth-headers.js";
-import { requestJson } from "./_send.js";
+import { bbApiAuthHeaders } from "./_auth-headers.js";
+import { request, requestJson, throwIfNotOk } from "./_send.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -54,13 +49,13 @@ export async function setCustomAgentsEnabled(
   enabled: boolean,
   targetOrgId?: string,
 ): Promise<void> {
-  const endpoint = "tenants/config";
-  const url = buildIntegrationsUrl(ctx, endpoint, targetOrgId);
-
-  const res = await fetch(url, {
+  const res = await request(ctx, {
+    host: "integrations",
+    path: `${INTEGRATIONS_API_PREFIX}/tenants/config`,
     method: "PATCH",
+    query: { orgId: targetOrgId ?? ctx.orgId },
     headers: { "Content-Type": "application/json", ...bbApiAuthHeaders(ctx) },
     body: JSON.stringify({ customAgentsEnabled: enabled }),
   });
-  await throwIfNotOk(res, endpoint);
+  await throwIfNotOk(res, `${INTEGRATIONS_API_PREFIX}/tenants/config`);
 }

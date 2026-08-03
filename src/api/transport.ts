@@ -51,8 +51,8 @@ import { normalizeUrl } from "./url.js";
 // `./api` and `./settings` can reach) and re-exported here so the transport reads as
 // self-contained. Proxy mode is a URL **rewrite** (see {@link UrlRewrite}), not a
 // fourth host — b2b rewrites an already-built URL rather than selecting an origin.
-export { DEFAULT_HOSTS };
 export type { BBHost, BBHosts };
+export { DEFAULT_HOSTS };
 
 /**
  * Deadline for non-streaming requests.

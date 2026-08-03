@@ -3,23 +3,50 @@ import { collectTextFromStream, parseAgenticStream } from "./sse.js";
 import type { AgenticSseFrame } from "./types.js";
 
 /**
- * Build a `ReadableStream<Uint8Array>` from string chunks, so a test can control
- * exactly where the network boundary falls — the split point is the whole point
- * of a buffering parser, and a single-chunk fixture would never exercise it.
+ * Build an `AsyncIterable<string>` from chunks, so a test can control exactly
+ * where the network boundary falls — the split point is the whole point of a
+ * buffering parser, and a single-chunk fixture would never exercise it.
+ *
+ * Was a `ReadableStream<Uint8Array>` before PDEV-7338 moved the parser onto the
+ * transport, which now owns byte decoding. Same fixtures, one less layer.
  */
-function streamOf(...chunks: string[]): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
-      controller.close();
-    },
-  });
+async function* streamOf(...chunks: string[]): AsyncIterable<string> {
+  for (const chunk of chunks) yield chunk;
 }
 
-async function collect(body: ReadableStream<Uint8Array>): Promise<AgenticSseFrame[]> {
+/** A source a test can feed and close by hand, to observe timing rather than totals. */
+function pushable() {
+  const queue: string[] = [];
+  let wake: (() => void) | null = null;
+  let closed = false;
+  const nudge = () => {
+    wake?.();
+    wake = null;
+  };
+  return {
+    push(chunk: string) {
+      queue.push(chunk);
+      nudge();
+    },
+    close() {
+      closed = true;
+      nudge();
+    },
+    async *[Symbol.asyncIterator](): AsyncIterator<string> {
+      while (true) {
+        for (const chunk of queue.splice(0)) yield chunk;
+        if (closed) return;
+        await new Promise<void>(resolve => {
+          wake = resolve;
+        });
+      }
+    },
+  };
+}
+
+async function collect(chunks: AsyncIterable<string>): Promise<AgenticSseFrame[]> {
   const out: AgenticSseFrame[] = [];
-  for await (const frame of parseAgenticStream(body)) out.push(frame);
+  for await (const frame of parseAgenticStream(chunks)) out.push(frame);
   return out;
 }
 
@@ -49,22 +76,15 @@ describe("parseAgenticStream", () => {
     // passed while every frame arrived in one burst at the end — first-token
     // latency silently became whole-response latency. Assert the FIRST frame is
     // available before the stream closes.
-    const encoder = new TextEncoder();
-    let controller!: ReadableStreamDefaultController<Uint8Array>;
-    const body = new ReadableStream<Uint8Array>({
-      start(c) {
-        controller = c;
-      },
-    });
-
-    const iterator = parseAgenticStream(body)[Symbol.asyncIterator]();
-    controller.enqueue(encoder.encode(`${delta("first")}\r\n\r\n`));
+    const source = pushable();
+    const iterator = parseAgenticStream(source)[Symbol.asyncIterator]();
+    source.push(`${delta("first")}\r\n\r\n`);
 
     const first = await iterator.next();
     expect(first.done).toBe(false);
     expect(first.value).toEqual({ type: "text-delta", textDelta: "first" });
 
-    controller.close();
+    source.close();
   });
 
   it("keeps a partial event buffered across chunk boundaries", async () => {
