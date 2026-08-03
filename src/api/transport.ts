@@ -185,6 +185,12 @@ export interface RetryPolicy {
  * surprise anyone. Note `getMessageList` is a POST and therefore never retried,
  * which is correct even though it only reads.
  */
+/** Retries beyond the first attempt, when a policy is configured but omits it. */
+const DEFAULT_RETRY_ATTEMPTS = 2;
+
+/** Backoff base in ms; attempt N waits `base * 2 ** (N - 1)`. */
+const DEFAULT_RETRY_BASE_DELAY_MS = 300;
+
 const REPLAYABLE = new Set<TransportMethod>(["GET"]);
 
 /** 5xx and 429 are worth a second go; a 4xx will fail identically. */
@@ -213,50 +219,60 @@ export function createFetchTransport(config: TransportConfig = {}): Transporter 
       const plan = planAbort(req.signal, timeoutMs);
       const doFetch = config.fetch ?? globalThis.fetch;
 
-      if (typeof doFetch !== "function") {
-        plan.dispose();
-        throw new BBApiError(
-          "No fetch implementation available. Pass one via TransportConfig.fetch.",
-          0,
-          { kind: "network", endpoint: req.path },
-        );
-      }
-
-      let res = await attempt(doFetch, url, req, plan, config.retry);
-
-      // ── 401 → refresh → replay once (PDEV-7340) ──────────────────────────
-      // Once, never in a loop: if the fresh token also gets a 401 the problem is
-      // authorisation, not staleness, and retrying is how a login loop starts.
-      // Applies to streamed requests too — an expired token fails a stream just
-      // as readily, and re-opening it is exactly what a surface would hand-roll.
-      if (res.status === 401 && config.onUnauthorized) {
-        const refreshed = await config.onUnauthorized();
-        if (refreshed) {
-          const replay: TransportRequest = {
-            ...req,
-            headers: { ...req.headers, Authorization: `Bearer ${refreshed}` },
-          };
-          res = await attempt(doFetch, url, replay, plan, config.retry);
+      // Every throwing path must dispose the plan. `dispose` clears the deadline
+      // timer and detaches the caller-abort listener; leaking the timer keeps a
+      // Node event loop alive for the rest of the timeout, and leaking the
+      // listener accumulates handlers on a long-lived caller signal. Success is
+      // handled separately per branch: buffered disposes after reading the body,
+      // streaming hands `dispose` to `decodeChunks` to run at stream end.
+      try {
+        if (typeof doFetch !== "function") {
+          throw new BBApiError(
+            "No fetch implementation available. Pass one via TransportConfig.fetch.",
+            0,
+            { kind: "network", endpoint: req.path },
+          );
         }
-      }
 
-      if (!streaming) {
-        // Buffer inside send() so the deadline covers reading the body too, and so
-        // the timer is always cleared exactly once. A TransportResponse is then a
-        // plain value — trivial to fake in a test or produce from an XHR transport.
-        const bodyText = await readBody(res, req, plan);
+        let res = await attempt(doFetch, url, req, plan, config.retry);
+
+        // ── 401 → refresh → replay once (PDEV-7340) ──────────────────────────
+        // Once, never in a loop: if the fresh token also gets a 401 the problem is
+        // authorisation, not staleness, and retrying is how a login loop starts.
+        // Applies to streamed requests too — an expired token fails a stream just
+        // as readily, and re-opening it is exactly what a surface would hand-roll.
+        if (res.status === 401 && config.onUnauthorized) {
+          const refreshed = await config.onUnauthorized();
+          if (refreshed) {
+            const replay: TransportRequest = {
+              ...req,
+              headers: { ...req.headers, Authorization: `Bearer ${refreshed}` },
+            };
+            res = await attempt(doFetch, url, replay, plan, config.retry);
+          }
+        }
+
+        if (!streaming) {
+          // Buffer inside send() so the deadline covers reading the body too, and so
+          // the timer is always cleared exactly once. A TransportResponse is then a
+          // plain value — trivial to fake in a test or produce from an XHR transport.
+          const bodyText = await readBody(res, req, plan);
+          plan.dispose();
+          return makeBufferedResponse(res, req, bodyText);
+        }
+
+        return {
+          status: res.status,
+          ok: res.ok,
+          headers: readHeaders(res),
+          json: <T>() => parseJson<T>("", req.path),
+          text: () => Promise.resolve(""),
+          chunks: decodeChunks(res.body, plan.dispose),
+        };
+      } catch (err) {
         plan.dispose();
-        return makeBufferedResponse(res, req, bodyText);
+        throw err;
       }
-
-      return {
-        status: res.status,
-        ok: res.ok,
-        headers: readHeaders(res),
-        json: <T>() => parseJson<T>("", req.path),
-        text: () => Promise.resolve(""),
-        chunks: decodeChunks(res.body, plan.dispose),
-      };
     },
   };
 }
@@ -273,6 +289,20 @@ export function createFetchTransport(config: TransportConfig = {}): Transporter 
  * extend the deadline would make the timeout unbounded, which is the opposite of
  * what a timeout is for.
  */
+/** Retries beyond the first attempt. Non-negative integer; unusable input → default. */
+function clampAttempts(attempts: number | undefined): number {
+  if (attempts === undefined || !Number.isFinite(attempts)) return DEFAULT_RETRY_ATTEMPTS;
+  return Math.max(0, Math.trunc(attempts));
+}
+
+/** Backoff base in ms. Non-negative finite; unusable input → default. */
+function clampDelay(baseDelayMs: number | undefined): number {
+  if (baseDelayMs === undefined || !Number.isFinite(baseDelayMs) || baseDelayMs < 0) {
+    return DEFAULT_RETRY_BASE_DELAY_MS;
+  }
+  return baseDelayMs;
+}
+
 async function attempt(
   doFetch: typeof globalThis.fetch,
   url: string,
@@ -280,8 +310,13 @@ async function attempt(
   plan: AbortPlan,
   policy: RetryPolicy | undefined,
 ): Promise<Response> {
-  const extra = policy && REPLAYABLE.has(req.method) ? (policy.attempts ?? 2) : 0;
-  const baseDelay = policy?.baseDelayMs ?? 300;
+  // Clamped because these are caller config. A negative or NaN `attempts` makes
+  // `i <= extra` false on the first iteration, so the loop body never runs: the
+  // request is never sent at all and the caller gets a fabricated "aborted"
+  // error from the tail throw. Silently not sending is the worst failure mode
+  // available, so an unusable value falls back rather than propagating.
+  const extra = policy && REPLAYABLE.has(req.method) ? clampAttempts(policy.attempts) : 0;
+  const baseDelay = clampDelay(policy?.baseDelayMs);
 
   let lastError: unknown;
   for (let i = 0; i <= extra; i++) {
@@ -300,6 +335,15 @@ async function attempt(
         signal: plan.signal,
       });
       if (i === extra || !isRetriableStatus(res.status)) return res;
+
+      // This response is being thrown away. Cancel its body so the runtime can
+      // release the connection instead of holding it until GC; `undici` warns
+      // about exactly this. Optional-chained (a 204 has no body) and the
+      // rejection is swallowed — failing to release is not worth losing the
+      // retry over.
+      res.body?.cancel().catch(() => {
+        /* releasing is best-effort */
+      });
     } catch (err) {
       // A timeout or a caller abort is terminal — only a transient network
       // failure is worth another go.
