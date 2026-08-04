@@ -33,8 +33,8 @@ export {
   updateConversation,
   uploadConversationAttachment,
 } from "./conversations.js";
-export type { BBErrorKind } from "./errors.js";
-export { BBApiError, isBBApiError } from "./errors.js";
+export type { BBErrorDescription, BBErrorKind } from "./errors.js";
+export { BBApiError, describeBBApiError, isBBApiError, isRetryableBBError } from "./errors.js";
 export { authHeaders } from "./headers.js";
 export type { IntrospectResponse } from "./introspect.js";
 export { extractOrgIdFromIntrospect, introspectApiKey } from "./introspect.js";

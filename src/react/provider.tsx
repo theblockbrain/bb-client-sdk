@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { isBBApiError } from "../api/index.js";
+import { isBBApiError, isRetryableBBError } from "../api/index.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 
 /**
@@ -21,10 +21,11 @@ import type { AuthContext } from "../settings/auth-mode.js";
  * - 5xx / network → retry up to 3×.
  */
 export function bbShouldRetryQuery(failureCount: number, error: unknown): boolean {
-  if (isBBApiError(error)) {
-    if (error.statusCode === 401) return false;
-    if (error.statusCode >= 400 && error.statusCode < 500) return false;
-  }
+  // Delegates the "is this worth retrying" decision to `isRetryableBBError` so the
+  // query client, the transport's retry policy and any surface's error UI cannot
+  // drift apart. This function keeps only the attempt budget, which is a
+  // react-query concern.
+  if (!isRetryableBBError(error)) return false;
   return failureCount < 3;
 }
 

@@ -105,6 +105,22 @@ tear down the turn.
 render path, so they cannot await; a throwing or absent provider degrades to the
 caller's fallback rather than breaking the feature it was meant to gate.
 
+### `describeBBApiError` + `isRetryableBBError` (L9)
+
+One status ladder instead of one per surface — `ms-outlook-addin` carries three
+near-identical copies in a single file. `describeBBApiError` returns
+`{ title, detail, retryable }` and deliberately ignores the response body and the
+error message, since server text can echo a submitted grant and this output is
+rendered. `bbShouldRetryQuery` now delegates to `isRetryableBBError`, so the query
+client, the transport's retry policy and any surface's error UI cannot drift apart.
+
+`503` gets no special case. It was documented as "capability not configured", but
+that meaning has no source: Botticelli emits 503 **nowhere** (0 occurrences across
+`packages/`, any language or config), no consumer branches on it, and the claim
+entered as a comment in a README example. With no application path emitting it, the
+realistic source is infrastructure mid-rollout — transient, and retryable per RFC
+9110. Removed from the README and the /sdk skill.
+
 ### The gate that would have caught all of this
 
 `npm run check:cleanroom` gained a second phase that installs the tarball with
