@@ -110,7 +110,7 @@
     "access": "restricted"
   },
   "dependencies": {
-    "marked": "^14.0.0"
+    "marked": "^18.0.7"
   },
   "peerDependencies": {
     "@tanstack/react-query": "^5.101.2",
@@ -127,6 +127,7 @@
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json && cp src/ui/theme-base.css dist/ui/theme-base.css",
     "typecheck": "tsc --noEmit",
+    "typecheck:ts7": "npx -y -p typescript@7.0.2 tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -148,24 +149,24 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
-    "@biomejs/biome": "^2.5.5",
-    "@tanstack/eslint-plugin-query": "^5.101.2",
-    "@tanstack/react-query": "^5.101.2",
+    "@biomejs/biome": "^2.5.6",
+    "@tanstack/eslint-plugin-query": "^5.101.4",
+    "@tanstack/react-query": "^5.101.4",
     "@testing-library/react": "^16.1.0",
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
+    "@types/node": "^22.20.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "@vitest/coverage-v8": "^4.1.10",
-    "eslint": "^10.7.0",
+    "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "jsdom": "^25.0.0",
+    "jsdom": "^30.0.1",
     "lefthook": "^2.1.10",
-    "publint": "0.3.21",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "publint": "0.3.22",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "tsup": "^8.3.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.63.0",
+    "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.10"
   }
 }
