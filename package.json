@@ -8,70 +8,94 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "react-native": "./dist/index.js",
       "import": "./dist/index.js"
     },
     "./auth": {
       "types": "./dist/auth/index.d.ts",
+      "react-native": "./dist/auth/index.js",
       "import": "./dist/auth/index.js"
     },
     "./api": {
       "types": "./dist/api/index.d.ts",
+      "react-native": "./dist/api/index.js",
       "import": "./dist/api/index.js"
     },
     "./agentic": {
       "types": "./dist/api/agentic/index.d.ts",
+      "react-native": "./dist/api/agentic/index.js",
       "import": "./dist/api/agentic/index.js"
     },
     "./settings": {
       "types": "./dist/settings/index.d.ts",
+      "react-native": "./dist/settings/index.js",
       "import": "./dist/settings/index.js"
     },
     "./utils": {
       "types": "./dist/utils/index.d.ts",
+      "react-native": "./dist/utils/index.js",
       "import": "./dist/utils/index.js"
     },
     "./text": {
       "types": "./dist/text/index.d.ts",
+      "react-native": "./dist/text/index.js",
       "import": "./dist/text/index.js"
     },
     "./adapters": {
       "types": "./dist/adapters/index.d.ts",
+      "react-native": "./dist/adapters/index.js",
       "import": "./dist/adapters/index.js"
     },
     "./adapters/office": {
       "types": "./dist/adapters/office.d.ts",
+      "react-native": "./dist/adapters/office.js",
       "import": "./dist/adapters/office.js"
     },
     "./config": {
       "types": "./dist/config.d.ts",
+      "react-native": "./dist/config.js",
       "import": "./dist/config.js"
     },
     "./ui": {
       "types": "./dist/ui/index.d.ts",
+      "react-native": "./dist/ui/index.js",
       "import": "./dist/ui/index.js"
+    },
+    "./ui/react": {
+      "types": "./dist/ui/react.d.ts",
+      "react-native": "./dist/ui/react.js",
+      "import": "./dist/ui/react.js"
     },
     "./react": {
       "types": "./dist/react/index.d.ts",
+      "react-native": "./dist/react/index.js",
       "import": "./dist/react/index.js"
     },
     "./analytics": {
       "types": "./dist/analytics/index.d.ts",
+      "react-native": "./dist/analytics/index.js",
       "import": "./dist/analytics/index.js"
     },
     "./analytics/mixpanel": {
       "types": "./dist/analytics/mixpanel.d.ts",
+      "react-native": "./dist/analytics/mixpanel.js",
       "import": "./dist/analytics/mixpanel.js"
     },
     "./telemetry": {
       "types": "./dist/telemetry/index.d.ts",
+      "react-native": "./dist/telemetry/index.js",
       "import": "./dist/telemetry/index.js"
     },
     "./telemetry/cookiebot": {
       "types": "./dist/telemetry/cookiebot.d.ts",
+      "react-native": "./dist/telemetry/cookiebot.js",
       "import": "./dist/telemetry/cookiebot.js"
     },
     "./ui/theme-base.css": "./dist/ui/theme-base.css"
   },
+  "sideEffects": [
+    "**/*.css"
+  ],
   "files": [
     "dist",
     "README.md"
@@ -85,7 +109,7 @@
   },
   "peerDependencies": {
     "@tanstack/react-query": "^5.101.2",
-    "react": "^19.2.7"
+    "react": ">=18 <20"
   },
   "peerDependenciesMeta": {
     "react": {

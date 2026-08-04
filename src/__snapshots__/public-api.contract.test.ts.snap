@@ -188,7 +188,6 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "transcribeAudio",
   "updateConversation",
   "uploadConversationAttachment",
-  "useTheme",
   "wrapStringAsStream",
 ]
 `;
@@ -203,6 +202,8 @@ exports[`public API surface > exports of "./adapters" are stable 1`] = `
   "AnalyticsIdentity",
   "IdentityAdapter",
   "StorageAdapter",
+  "SyncStorageAdapter",
+  "createWebStorageAdapter",
 ]
 `;
 
@@ -617,6 +618,13 @@ exports[`public API surface > exports of "./ui" are stable 1`] = `
   "renderMarkdown",
   "renderMarkdownInto",
   "timeAgo",
+]
+`;
+
+exports[`public API surface > exports of "./ui/react" are stable 1`] = `
+[
+  "Theme",
+  "ThemeMode",
   "useTheme",
 ]
 `;

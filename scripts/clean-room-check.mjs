@@ -85,6 +85,8 @@ try {
   writeFileSync(join(dir, "probe.mjs"), probe);
   console.log(`clean-room: importing ${subpaths.length} entry points`);
   process.stdout.write(run("node", ["probe.mjs"], dir));
+
+  bareNodeGate();
 } catch (err) {
   failed = true;
   // Echo the child's captured stdout BEFORE the summary. `run` pipes stdout, so
@@ -104,4 +106,59 @@ if (process.exitCode) {
   console.error("\nclean-room: at least one entry point is not importable from a real install.");
 } else {
   console.log(`\nclean-room: all ${subpaths.length} entry points import cleanly.`);
+}
+
+/**
+ * Second phase: import every React-free entry point from an install with **no**
+ * React at all — which is `bb-slack-integrations`' situation (Node, no DOM, no
+ * React) and a bare-Node smoke test's.
+ *
+ * The phase above cannot catch a React leak because it installs the peers first.
+ * That is exactly how `.` shipped in 0.18.0 re-exporting `./ui` -> `useTheme`:
+ * every gate was green and the root barrel was still unimportable without React.
+ *
+ * `./react` and `./ui/react` are expected to fail here — they are the React
+ * layers. Asserting they DO fail keeps this gate honest: if they ever import
+ * cleanly, React stopped being a real peer and the split lost its meaning.
+ */
+function bareNodeGate() {
+  const reactOnly = new Set(["./react", "./ui/react"]);
+  const bare = mkdtempSync(join(tmpdir(), "bb-sdk-barenode-"));
+  try {
+    writeFileSync(
+      join(bare, "package.json"),
+      JSON.stringify({ name: "barenode", private: true, type: "module" }, null, 2),
+    );
+    run("npm", ["install", "--silent", "--no-audit", "--no-fund", join(repo, tarball)], bare);
+
+    const checks = subpaths
+      .map(sub => {
+        const spec = sub === "." ? pkg.name : `${pkg.name}/${sub.slice(2)}`;
+        const wantFail = reactOnly.has(sub);
+        return `try {
+  await import(${JSON.stringify(spec)});
+  ${
+    wantFail
+      ? `console.log("  FAIL ${sub}  imported without react — it is meant to need it");
+  process.exitCode = 1;`
+      : `console.log("  ok   ${sub}");`
+  }
+} catch (err) {
+  const msg = (err && err.message ? err.message : String(err)).slice(0, 100);
+  ${
+    wantFail
+      ? `console.log("  ok   ${sub}  (correctly needs react)");`
+      : `console.log("  FAIL ${sub}  " + msg);
+  process.exitCode = 1;`
+  }
+}`;
+      })
+      .join("\n");
+
+    writeFileSync(join(bare, "probe.mjs"), checks);
+    console.log(`\nclean-room: importing ${subpaths.length} entry points with NO react installed`);
+    process.stdout.write(run("node", ["probe.mjs"], bare));
+  } finally {
+    rmSync(bare, { recursive: true, force: true });
+  }
 }

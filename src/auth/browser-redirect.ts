@@ -1,3 +1,5 @@
+import type { SyncStorageAdapter } from "../adapters/storage.js";
+import { createWebStorageAdapter } from "../adapters/web-storage.js";
 import { AUTH_SCOPES, AUTHORIZE_ENDPOINT, TOKEN_ENDPOINT } from "../config.js";
 import { extractProfile } from "./jwt-claims.js";
 import type { LoginResult } from "./login.js";
@@ -24,6 +26,25 @@ export interface BrowserRedirectOptions {
   tokenEndpoint?: string;
   /** Redirect-URI registered in the Zitadel app */
   redirectUri: string;
+  /**
+   * Where the per-nonce PKCE verifier is held across the redirect. Defaults to
+   * `sessionStorage`, which is correct for a browser tab: it is cleared when the
+   * tab closes, and the verifier is single-use anyway.
+   *
+   * Injectable because this is the seam, not because another backing is expected
+   * here — a host that partitions storage (an iframed embed, a strict-mode
+   * browser blocking third-party `sessionStorage`) can supply its own.
+   */
+  storage?: SyncStorageAdapter;
+}
+
+/**
+ * The verifier store for a call. Resolved per call, so `sessionStorage` is only
+ * dereferenced when one of these browser-only functions actually runs — importing
+ * this module stays safe where it does not exist.
+ */
+function verifierStore(opts: BrowserRedirectOptions): SyncStorageAdapter {
+  return opts.storage ?? createWebStorageAdapter(sessionStorage);
 }
 
 export interface BrowserLoginResult extends LoginResult {
@@ -48,7 +69,7 @@ export async function beginBrowserLogin(opts: BrowserRedirectOptions): Promise<n
   const state = generateStateNonce();
 
   // Store the verifier keyed by the nonce so completeBrowserLogin can recover it.
-  sessionStorage.setItem(`${VERIFIER_KEY_PREFIX}${state}`, verifier);
+  verifierStore(opts).set(`${VERIFIER_KEY_PREFIX}${state}`, verifier);
 
   const url = new URL(authorizeEndpoint);
   url.searchParams.set("client_id", clientId);
@@ -111,7 +132,8 @@ export async function completeBrowserLogin(
   }
 
   const verifierKey = `${VERIFIER_KEY_PREFIX}${returnedState}`;
-  const verifier = sessionStorage.getItem(verifierKey);
+  const store = verifierStore(opts);
+  const verifier = store.get(verifierKey);
   if (!verifier) {
     // No entry for this nonce: either a CSRF attempt or the user refreshed mid-auth.
     throw new Error(
@@ -120,7 +142,7 @@ export async function completeBrowserLogin(
   }
 
   // Clear eagerly so the verifier cannot be read again after this point.
-  sessionStorage.removeItem(verifierKey);
+  store.remove(verifierKey);
   const tokens = await exchangeCode(code, verifier, opts.redirectUri, clientId, tokenEndpoint);
   const profile = extractProfile(tokens.id_token, tokens.access_token);
   const expiresAt = computeExpiration(tokens.expires_in);
