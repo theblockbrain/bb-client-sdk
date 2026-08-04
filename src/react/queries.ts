@@ -20,6 +20,7 @@ import {
   type MessageListBody,
 } from "../api/index.js";
 import type { AuthContext } from "../settings/auth-mode.js";
+import { cachePolicyFor } from "../settings/cache-policy.js";
 import { bbKeys } from "./keys.js";
 import { useBBContext } from "./provider.js";
 
@@ -190,7 +191,8 @@ export function messagesInfiniteOptions(
       return loaded < total ? lastPageParam + 1 : undefined; // undefined ⇒ no more pages
     },
     enabled: !!convoId,
-    staleTime: 0, // messages are live; treat the server as source of truth on open
+    // Live: the policy says staleMs 0 — the server is source of truth on open.
+    staleTime: cachePolicyFor("messages").staleMs,
     placeholderData: keepPreviousData, // smooth keyword-search transitions
   });
 }

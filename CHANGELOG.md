@@ -85,6 +85,17 @@ without `hermes-intl`). Every method falls back rather than throwing.
 `formatRelativeTime` emits `"5 minutes ago"`. Swapping one for the other would change
 every rendered timestamp in every surface, so surfaces opt in.
 
+### Cache policy moved out of the React layer (L13)
+
+TTLs lived as literals inside `react/provider.tsx` — React-only and unreadable, so a
+Lit or Node surface could not honour the same freshness rules. `BB_CACHE_POLICY` on
+`./settings` is now per-resource and framework-agnostic; `provider.tsx` and the
+`messages` override read from it.
+
+Behaviour is unchanged for every resource that had no override. Two now differ
+deliberately: `tenantConfig` and `capabilities` move to 30 minutes, since they change
+on an admin action rather than a navigation.
+
 ### New host ports: crypto, host capabilities, feature flags
 
 **`CryptoAdapter` (L7).** The SDK reached `crypto.randomUUID`, `crypto.getRandomValues`
