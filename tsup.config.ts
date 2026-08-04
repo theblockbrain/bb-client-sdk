@@ -12,6 +12,7 @@ export default defineConfig({
     "src/adapters/index.ts",
     "src/adapters/office.ts",
     "src/config.ts",
+    "src/i18n/index.ts",
     "src/ui/index.ts",
     "src/ui/react.ts",
     "src/react/index.ts",

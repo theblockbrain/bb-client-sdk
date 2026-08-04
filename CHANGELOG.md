@@ -69,6 +69,22 @@ script sharing the key keeps working.
 Additive: `useTheme(storageKey, storage?)` and `BrowserRedirectOptions.storage` are
 both optional and default to the previous behaviour.
 
+### New `./i18n` subpath: message keys + a formatter port (L12)
+
+The SDK owns the **vocabulary**, not the strings. `BBMessageKey` is a closed union
+so `Record<BBMessageKey, string>` makes a missing translation a compile error in the
+surface; catalogues stay with each surface. `describeBBApiError` now returns a `key`
+alongside `title`/`detail`, so its English output is a default rather than the only
+option.
+
+`FormatterAdapter` wraps dates, numbers and relative time, defaulting to `Intl`
+resolved lazily so the module imports where `Intl` is absent or partial (Hermes
+without `hermes-intl`). Every method falls back rather than throwing.
+
+**`timeAgo` is unchanged and not routed through the port.** It emits `"5m ago"`;
+`formatRelativeTime` emits `"5 minutes ago"`. Swapping one for the other would change
+every rendered timestamp in every surface, so surfaces opt in.
+
 ### New host ports: crypto, host capabilities, feature flags
 
 **`CryptoAdapter` (L7).** The SDK reached `crypto.randomUUID`, `crypto.getRandomValues`
