@@ -22,6 +22,50 @@ export interface MarkdownOptions {
   classPrefix?: string;
 }
 
+// ─── The DOM slice this renderer uses ─────────────────────────────────────────
+//
+// STRUCTURAL, the same approach `OfficeGlobal` and `WebStorageArea` take, so `./ui`
+// — and therefore the root barrel, which re-exports it — ships no DOM ambient types
+// in its declarations.
+//
+// Why this matters (PDEV-7724): `Document`, `Element` and `DocumentFragment` live
+// ONLY in TypeScript's `dom` lib. Unlike `URL` or `AbortSignal`, `@types/node` does
+// not declare them. So a Node or React-Native consumer whose `lib` excludes `dom`
+// failed to typecheck `"."` on declarations it never calls — the type-level half of
+// the same bug this ticket fixes at runtime, and one the clean-room gate could not
+// see because it only imports.
+//
+// A widening, not a break: a real `Document` / `Element` / `DocumentFragment`
+// satisfies these, so every call site and the JSDOM test double keep compiling
+// unchanged. Members are declared as methods on purpose — method parameters are
+// bivariant, which is what lets the real DOM types satisfy the narrower shapes.
+
+/** A node this renderer can append children to. */
+export interface MarkdownNode {
+  appendChild(child: MarkdownNode): MarkdownNode;
+}
+
+/** The fragment `renderMarkdown` builds. */
+export type MarkdownFragment = MarkdownNode;
+
+/** An element this renderer creates, styles, or renders into. */
+export interface MarkdownElement extends MarkdownNode {
+  className: string;
+  textContent: string | null;
+  innerHTML: string;
+  readonly firstChild: MarkdownNode | null;
+  readonly ownerDocument: MarkdownDocument | null;
+  setAttribute(name: string, value: string): void;
+  removeChild(child: MarkdownNode): MarkdownNode;
+}
+
+/** The document used for element creation. */
+export interface MarkdownDocument {
+  createElement(tagName: string): MarkdownElement;
+  createTextNode(data: string): MarkdownNode;
+  createDocumentFragment(): MarkdownFragment;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -48,17 +92,17 @@ function cls(opts: Required<MarkdownOptions>, suffix: string): string {
   return opts.classPrefix ? opts.classPrefix + suffix : "";
 }
 
-function setClass(el: HTMLElement, className: string): void {
+function setClass(el: MarkdownElement, className: string): void {
   if (className) el.className = className;
 }
 
 // ─── Inline walker ────────────────────────────────────────────────────────────
 
 function appendInlineTokens(
-  parent: Node,
+  parent: MarkdownNode,
   tokens: Token[],
   opts: Required<MarkdownOptions>,
-  doc: Document,
+  doc: MarkdownDocument,
 ): void {
   for (const token of tokens) {
     appendInlineToken(parent, token, opts, doc);
@@ -66,10 +110,10 @@ function appendInlineTokens(
 }
 
 function appendInlineToken(
-  parent: Node,
+  parent: MarkdownNode,
   token: Token,
   opts: Required<MarkdownOptions>,
-  doc: Document,
+  doc: MarkdownDocument,
 ): void {
   switch (token.type) {
     case "text": {
@@ -168,10 +212,10 @@ function appendInlineToken(
 // ─── Block walker ─────────────────────────────────────────────────────────────
 
 function appendBlockTokens(
-  parent: Node,
+  parent: MarkdownNode,
   tokens: Token[],
   opts: Required<MarkdownOptions>,
-  doc: Document,
+  doc: MarkdownDocument,
 ): void {
   for (const token of tokens) {
     appendBlockToken(parent, token, opts, doc);
@@ -179,16 +223,16 @@ function appendBlockTokens(
 }
 
 function appendBlockToken(
-  parent: Node,
+  parent: MarkdownNode,
   token: Token,
   opts: Required<MarkdownOptions>,
-  doc: Document,
+  doc: MarkdownDocument,
 ): void {
   switch (token.type) {
     case "heading": {
       const ht = token as Tokens.Heading;
       const depth = Math.min(6, Math.max(1, ht.depth));
-      const tag = `h${depth}` as keyof HTMLElementTagNameMap;
+      const tag = `h${depth}`;
       const el = doc.createElement(tag);
       setClass(el, cls(opts, `-h${depth}`));
       appendInlineTokens(el, ht.tokens ?? [], opts, doc);
@@ -340,8 +384,8 @@ function appendBlockToken(
 export function renderMarkdown(
   text: string,
   options?: MarkdownOptions,
-  doc: Document = document,
-): DocumentFragment {
+  doc: MarkdownDocument = document,
+): MarkdownFragment {
   const opts: Required<MarkdownOptions> = {
     allowedProtocols: options?.allowedProtocols ?? DEFAULT_ALLOWED_PROTOCOLS,
     target: options?.target ?? "_blank",
@@ -361,7 +405,7 @@ export function renderMarkdown(
  */
 export function renderMarkdownInto(
   text: string,
-  container: Element,
+  container: MarkdownElement,
   options?: MarkdownOptions,
 ): void {
   // Use ownerDocument so this works in iframes and JSDOM
@@ -387,7 +431,7 @@ export function renderMarkdownInto(
 export function markdownToHtml(
   text: string,
   options?: MarkdownOptions,
-  doc: Document = document,
+  doc: MarkdownDocument = document,
 ): string {
   const container = doc.createElement("div");
   container.appendChild(renderMarkdown(text, options, doc));
