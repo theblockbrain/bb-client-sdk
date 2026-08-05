@@ -27,7 +27,7 @@ That fan-out is the whole design constraint: **this SDK is consumed by React app
 
 ## 2. Layer map — entry points
 
-Declared in `package.json` `"exports"` → source dir. **16 JS entry points** (plus the CSS asset subpath, which the contract test skips). The three newest — `./agentic`, `./analytics` and `./analytics/mixpanel` — are on `main` but **not in a published release yet** (last tag `v0.17.0` predates them). The public-API contract test derives its list from `package.json#exports` and snapshots every entry point.
+Declared in `package.json` `"exports"` → source dir. **17 JS entry points** (plus the CSS asset subpath, which the contract test skips). The three newest — `./agentic`, `./analytics` and `./analytics/mixpanel` — are on `main` but **not in a published release yet** (last tag `v0.17.0` predates them). The public-API contract test derives its list from `package.json#exports` and snapshots every entry point.
 
 | Entry point | Source | What lives there | Who may consume it |
 |---|---|---|---|

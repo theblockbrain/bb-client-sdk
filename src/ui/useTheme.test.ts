@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { nextThemeMode, useTheme } from "./useTheme.js";
+import { nextThemeMode } from "./theme-mode.js";
+import { useTheme } from "./useTheme.js";
 
 /**
  * PDEV-7000 Part A. The SDK used to ship two contradictory theme activations —
@@ -191,6 +192,36 @@ describe("useTheme", () => {
     expect(result.current[1]).toBe("system");
     // Correct only because the listener kept running through explicit modes.
     expect(result.current[0]).toBe("dark");
+  });
+
+  it("uses an injected SyncStorageAdapter instead of localStorage", () => {
+    // Proves the port is load-bearing rather than decorative (PDEV-7724): a host
+    // without Web Storage — Node, or React Native — supplies its own, and the
+    // hook must never reach a global behind its back.
+    stubMatchMedia(false);
+    const backing = new Map<string, string>([["k", "dark"]]);
+    const injected = {
+      get: (key: string) => backing.get(key) ?? null,
+      set: (key: string, value: string) => {
+        backing.set(key, value);
+      },
+      remove: (key: string) => {
+        backing.delete(key);
+      },
+    };
+
+    const { result } = renderHook(() => useTheme("k", injected));
+
+    // Read through the adapter on mount.
+    expect(result.current[1]).toBe("dark");
+
+    act(() => result.current[2]()); // dark -> system, stored as absence
+    expect(backing.has("k")).toBe(false);
+
+    act(() => result.current[2]()); // system -> light
+    expect(backing.get("k")).toBe("light");
+    // And nothing leaked to the real localStorage.
+    expect(localStorage.getItem("k")).toBeNull();
   });
 
   it("detaches its OS listener on unmount", () => {

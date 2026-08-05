@@ -29,6 +29,16 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Typecheck against the React peer floor (18)
+        # The `react` peer is `>=18 <20`. Without this the floor is a claim, not a
+        # fact — nothing else in CI ever compiles against React 18. `--no-save`
+        # keeps the dev pin on 19 for every other step.
+        run: |
+          npm install --no-save --silent react@18.3.1 react-dom@18.3.1 \
+            @types/react@18.3.12 @types/react-dom@18.3.1
+          npm run typecheck
+          npm ci
+
       - name: Test
         run: npm test
 
@@ -37,3 +47,6 @@ jobs:
 
       - name: Package contract (publint + attw)
         run: npm run check:package
+
+      - name: Clean-room install + bare-Node import gate
+        run: npm run check:cleanroom

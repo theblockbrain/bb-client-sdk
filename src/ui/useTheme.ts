@@ -1,49 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
-
-/**
- * What the user has explicitly chosen.
- *
- * `system` is a real, persisted value — **not** a placeholder the SDK resolves
- * away. It is written to `data-theme` verbatim, because `@botticelli/blokkit`
- * resolves it in CSS:
- *
- * ```css
- * &:where([data-theme="system"] *, [data-theme="system"]) {
- *   @media (prefers-color-scheme: dark) { … }
- * }
- * ```
- *
- * Resolving it in JS instead would write `dark` or `light` and blokkit's
- * `system` branch would never match — which is the bug this replaces.
- */
-export type ThemeMode = "light" | "dark" | "system";
-
-/** The effective theme, resolved for JS consumers that must branch on it. */
-export type Theme = "light" | "dark";
-
-const DEFAULT_STORAGE_KEY = "bb-theme";
-const DARK_QUERY = "(prefers-color-scheme: dark)";
-
-/**
- * Cycle order: light → dark → system → light → …
- *
- * Exported as a pure function so a surface can build its own toggle without
- * re-deriving the order. The SDK deliberately ships no toggle component: one
- * styled in default Tailwind palette classes breaks under blokkit's
- * `tailwind-reset.css`, which sets `--color-*: initial`.
- */
-export function nextThemeMode(current: ThemeMode): ThemeMode {
-  if (current === "light") return "dark";
-  if (current === "dark") return "system";
-  return "light";
-}
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { SyncStorageAdapter } from "../adapters/storage.js";
+import { createWebStorageAdapter } from "../adapters/web-storage.js";
+import type { Theme, ThemeMode } from "./theme-mode.js";
+import { DARK_QUERY, DEFAULT_STORAGE_KEY, nextThemeMode } from "./theme-mode.js";
 
 function prefersDark(): boolean {
   return window.matchMedia(DARK_QUERY).matches;
 }
 
-function readStoredMode(storageKey: string): ThemeMode {
-  const stored = localStorage.getItem(storageKey);
+function readStoredMode(storage: SyncStorageAdapter, storageKey: string): ThemeMode {
+  const stored = storage.get(storageKey);
   return stored === "light" || stored === "dark" ? stored : "system";
 }
 
@@ -52,12 +18,12 @@ function readStoredMode(storageKey: string): ThemeMode {
  * and writing it would make "never chose" and "chose system" indistinguishable
  * from a later migration's point of view.
  */
-function persistMode(storageKey: string, mode: ThemeMode): void {
+function persistMode(storage: SyncStorageAdapter, storageKey: string, mode: ThemeMode): void {
   if (mode === "system") {
-    localStorage.removeItem(storageKey);
+    storage.remove(storageKey);
     return;
   }
-  localStorage.setItem(storageKey, mode);
+  storage.set(storageKey, mode);
 }
 
 /**
@@ -85,8 +51,20 @@ function persistMode(storageKey: string, mode: ThemeMode): void {
  * @param storageKey  localStorage key for the preference. Pass a per-tool key
  *   (e.g. `"bb-dashboard-theme"`) when several tools share an origin.
  */
-export function useTheme(storageKey: string = DEFAULT_STORAGE_KEY): [Theme, ThemeMode, () => void] {
-  const [mode, setMode] = useState<ThemeMode>(() => readStoredMode(storageKey));
+export function useTheme(
+  storageKey: string = DEFAULT_STORAGE_KEY,
+  storage?: SyncStorageAdapter,
+): [Theme, ThemeMode, () => void] {
+  // Memoised on the caller's adapter, not created per render: the persist effect
+  // depends on it, and a fresh object each render would re-run that effect (and
+  // so re-write storage) on every render.
+  //
+  // `localStorage` is dereferenced here rather than at module scope, so importing
+  // this module stays safe in a runtime without it (invariant B). A host without
+  // Web Storage passes its own adapter — which is the point of the port.
+  const store = useMemo(() => storage ?? createWebStorageAdapter(localStorage), [storage]);
+
+  const [mode, setMode] = useState<ThemeMode>(() => readStoredMode(store, storageKey));
   const [systemDark, setSystemDark] = useState<boolean>(prefersDark);
 
   // Derived, not a third piece of state — the previous implementation kept
@@ -130,8 +108,8 @@ export function useTheme(storageKey: string = DEFAULT_STORAGE_KEY): [Theme, Them
   // runs on mount, which is a no-op: it rewrites the value just read from
   // storage, or removes a key that was already absent for `system`.
   useEffect(() => {
-    persistMode(storageKey, mode);
-  }, [mode, storageKey]);
+    persistMode(store, storageKey, mode);
+  }, [store, mode, storageKey]);
 
   const cycleTheme = useCallback(() => {
     setMode(nextThemeMode);

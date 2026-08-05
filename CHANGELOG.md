@@ -1,5 +1,83 @@
 # Changelog
 
+## 0.19.0 — a React-free root barrel
+
+### ⚠️ Breaking: `useTheme` moved to `./ui/react`
+
+The only symbol that leaves its old home. `./ui` is now React-free and everything
+else on it is unchanged, including on the root barrel.
+
+```diff
+-import { useTheme } from "@theblockbrain/bb-client-sdk/ui";
++import { useTheme } from "@theblockbrain/bb-client-sdk/ui/react";
+```
+
+`Theme` and `ThemeMode` are re-exported from both subpaths, so a type-only import
+needs no change.
+
+**Why.** Importing `"."` from Node with no React installed threw
+`Cannot find package 'react'` — that is `bb-slack-integrations`' exact situation.
+The root barrel re-exported `./ui`, which re-exported `useTheme`, which imports
+React. Invariant A says `./api` and `./auth` tree-shake with zero React in the
+graph; the shipped artifact did not honour it for `.`, and no gate caught it
+because the clean-room check installs the peers before probing.
+
+Re-exporting *anything* from a module that imports React pulls React in, so the
+pure `nextThemeMode` and the `Theme`/`ThemeMode` vocabulary moved to their own
+`theme-mode.ts` — leaving them beside the hook was enough to break the layer on
+its own.
+
+The root barrel keeps re-exporting `./ui`, which is safe once the hook is gone:
+`markdownToHtml`, `renderMarkdown`, `renderMarkdownInto`, `MarkdownOptions`,
+`timeAgo` and `nextThemeMode` all stay on `"."`. Dropping the whole layer would
+have removed seven working exports to fix one.
+
+### `react` peer widened to `>=18 <20`
+
+Was `^19.2.7`, which made React 18 an install-time failure unrelated to the code.
+Verified against `react@18.3.1` + `@types/react@18.3.12`: typecheck passes and the
+whole suite passes, so nothing in `src` uses a React-19-only API. Matches blokkit.
+
+### `react-native` export conditions
+
+Every entry now declares a `react-native` condition ahead of `import`. It resolves
+to the same artifact today — the point is that a per-platform implementation
+becomes possible without a further breaking change, and adding the condition after
+consumers pin is the disruptive order.
+
+### `sideEffects`
+
+Now declared as `["**/*.css"]`. Previously absent, so bundlers could not drop
+unused modules from a consumer's graph.
+
+### `SyncStorageAdapter` — storage is now actually behind the port
+
+`useTheme` reached `localStorage` and `beginBrowserLogin` / `completeBrowserLogin`
+reached `sessionStorage` directly, so "storage is always via `StorageAdapter`"
+(invariant B) was documented but not true. Both now go through a port.
+
+The existing `StorageAdapter` could not serve them: it is `Promise`-only, and
+`useTheme` reads inside a `useState` initialiser. Hence a second, **synchronous**
+port — the same reason zustand's `PersistStorage` is synchronous, and the reason a
+surface given only the async port writes its own storage layer instead.
+
+`SyncStorageAdapter` is string-valued, matching Web Storage and zustand's
+`StateStorage`. `createWebStorageAdapter(area)` is a pass-through, so **the stored
+bytes are unchanged** — existing preferences keep reading and a pre-paint theme
+script sharing the key keeps working.
+
+Additive: `useTheme(storageKey, storage?)` and `BrowserRedirectOptions.storage` are
+both optional and default to the previous behaviour.
+
+### The gate that would have caught all of this
+
+`npm run check:cleanroom` gained a second phase that installs the tarball with
+**no** React and imports every entry point. It also asserts `./react` and
+`./ui/react` *do* fail there — if they ever stop failing, React has stopped being
+a real peer and the split has lost its meaning.
+
+---
+
 ## 0.18.0 — the consolidation baseline
 
 The first release since `v0.17.0` (2026-06-23), and the baseline every adapter

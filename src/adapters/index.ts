@@ -7,4 +7,6 @@ export type {
   AnalyticsIdentity,
 } from "./analytics.js";
 export type { IdentityAdapter } from "./identity.js";
-export type { StorageAdapter } from "./storage.js";
+export type { StorageAdapter, SyncStorageAdapter } from "./storage.js";
+export type { WebStorageArea } from "./web-storage.js";
+export { createWebStorageAdapter } from "./web-storage.js";

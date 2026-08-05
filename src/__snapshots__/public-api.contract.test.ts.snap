@@ -61,6 +61,10 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "ListTenantsResponse",
   "LoginOptions",
   "LoginResult",
+  "MarkdownDocument",
+  "MarkdownElement",
+  "MarkdownFragment",
+  "MarkdownNode",
   "MarkdownOptions",
   "MessageItem",
   "MessageListBody",
@@ -188,7 +192,6 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "transcribeAudio",
   "updateConversation",
   "uploadConversationAttachment",
-  "useTheme",
   "wrapStringAsStream",
 ]
 `;
@@ -203,6 +206,9 @@ exports[`public API surface > exports of "./adapters" are stable 1`] = `
   "AnalyticsIdentity",
   "IdentityAdapter",
   "StorageAdapter",
+  "SyncStorageAdapter",
+  "WebStorageArea",
+  "createWebStorageAdapter",
 ]
 `;
 
@@ -609,6 +615,10 @@ exports[`public API surface > exports of "./text" are stable 1`] = `
 
 exports[`public API surface > exports of "./ui" are stable 1`] = `
 [
+  "MarkdownDocument",
+  "MarkdownElement",
+  "MarkdownFragment",
+  "MarkdownNode",
   "MarkdownOptions",
   "Theme",
   "ThemeMode",
@@ -617,6 +627,13 @@ exports[`public API surface > exports of "./ui" are stable 1`] = `
   "renderMarkdown",
   "renderMarkdownInto",
   "timeAgo",
+]
+`;
+
+exports[`public API surface > exports of "./ui/react" are stable 1`] = `
+[
+  "Theme",
+  "ThemeMode",
   "useTheme",
 ]
 `;

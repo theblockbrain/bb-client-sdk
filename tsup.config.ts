@@ -13,6 +13,7 @@ export default defineConfig({
     "src/adapters/office.ts",
     "src/config.ts",
     "src/ui/index.ts",
+    "src/ui/react.ts",
     "src/react/index.ts",
     "src/analytics/index.ts",
     "src/analytics/mixpanel.ts",
