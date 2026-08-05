@@ -89,8 +89,14 @@ every rendered timestamp in every surface, so surfaces opt in.
 
 TTLs lived as literals inside `react/provider.tsx` — React-only and unreadable, so a
 Lit or Node surface could not honour the same freshness rules. `BB_CACHE_POLICY` on
-`./settings` is now per-resource and framework-agnostic; `provider.tsx` and the
-`messages` override read from it.
+`./settings` is now per-resource and framework-agnostic, and **every `./react` query
+reads it**: `provider.tsx` takes `BB_CACHE_DEFAULT` for the client default, and each
+`queryOptions` factory takes its own resource's `staleMs` and `retainMs`.
+
+That last part is the whole point, and it is worth stating because the first cut of this
+change missed it: the policy table existed while only `messages` consumed it, so the
+30-minute entries below were dead data and those resources kept refetching on the
+5-minute default. A policy no caller reads is documentation, not policy.
 
 Behaviour is unchanged for every resource that had no override. Two now differ
 deliberately: `tenantConfig` and `capabilities` move to 30 minutes, since they change
