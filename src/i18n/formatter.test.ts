@@ -35,14 +35,39 @@ describe("FormatterAdapter", () => {
     expect(formatRelativeTime(0)).toBe("HOST-REL");
   });
 
-  it("formats a relative past instant with Intl by default", () => {
-    const fiveMinAgo = Date.now() - 5 * 60_000;
-    // `numeric: "auto"`, so this is words rather than the compact `timeAgo` form.
-    expect(formatRelativeTime(fiveMinAgo)).toMatch(/minute/);
+  it("formats a relative past instant in words, not the compact timeAgo form", () => {
+    // Locale is pinned: the assertion is about *wording*, and the module default takes the
+    // machine's locale — on a de_DE box this renders "vor 5 Minuten" and /minute/ fails.
+    const formatter = createIntlFormatter("en-US");
+    expect(formatter.relativeTime(Date.now() - 5 * 60_000)).toMatch(/minute/);
   });
 
   it("handles a future instant, which timeAgo could not express at all", () => {
-    expect(formatRelativeTime(Date.now() + 3 * 3_600_000)).toMatch(/hour/);
+    const formatter = createIntlFormatter("en-US");
+    expect(formatter.relativeTime(Date.now() + 3 * 3_600_000)).toMatch(/hour/);
+  });
+
+  it("routes formatRelativeTime through Intl, whatever the machine's locale", () => {
+    // Locale-independent: asserts only that the module-level function does NOT emit the
+    // compact fallback, which is the one thing that must remain true in every locale.
+    expect(formatRelativeTime(Date.now() - 5 * 60_000)).not.toBe("5m ago");
+  });
+
+  it("swallows a throwing host formatter and degrades to the Intl default", () => {
+    // `FormatterAdapter` says methods must not throw, but a host with a misconfigured
+    // locale library is exactly the case this port exists for. A formatter must never be
+    // the reason a screen fails to render — the same rule the flag port applies.
+    const explode = () => {
+      throw new Error("host locale lib exploded");
+    };
+    setFormatterAdapter({ date: explode, number: explode, relativeTime: explode });
+
+    expect(() => formatDate(0)).not.toThrow();
+    expect(() => formatNumber(1)).not.toThrow();
+    expect(() => formatRelativeTime(0)).not.toThrow();
+    // Not just "did not throw" — it produced the platform default's answer.
+    expect(formatDate(0)).toBe(createIntlFormatter().date(0));
+    expect(formatNumber(1234.5)).toBe(createIntlFormatter().number(1234.5));
   });
 
   it("falls back to a locale-independent string when Intl is absent", () => {
