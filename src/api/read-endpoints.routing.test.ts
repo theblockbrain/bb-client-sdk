@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { resetAnalyticsAdapter, setAnalyticsAdapter } from "../analytics/index.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 import { fetchAgents, setAgentActive } from "./agents.js";
 import { fetchBotDetail, fetchBotList } from "./bots.js";
@@ -302,5 +303,91 @@ describe("cancellation reaches the transport (PDEV-7339)", () => {
     await sendMessage(ctxWith(rec.transport), "c1", "hi").catch(() => undefined);
 
     expect(rec.sent.some(r => r.stream === true)).toBe(false);
+  });
+});
+
+/**
+ * PDEV-7009 — one `api_error` emit point.
+ *
+ * WS9 asks for telemetry emitted "from ONE point — inside the WS2 transport
+ * seam — not per call site". That only became possible once PDEV-7338 collapsed
+ * the two error paths into `throwIfNotOk`, so every non-2xx on every host now
+ * passes through a single function.
+ */
+describe("api_error is emitted once, from the seam (PDEV-7009)", () => {
+  function failing(status: number): Transporter {
+    return {
+      send: () =>
+        Promise.resolve({
+          status,
+          ok: false,
+          headers: {},
+          json: <T>() => Promise.resolve({ secret: "do-not-forward" } as T),
+          text: () => Promise.resolve(""),
+        }),
+    };
+  }
+
+  function recorderAdapter() {
+    const events: Array<{ event: string; props: Record<string, unknown> }> = [];
+    setAnalyticsAdapter({
+      track: (event, props) => events.push({ event, props }),
+      captureError: () => {},
+    });
+    return events;
+  }
+
+  afterEach(() => resetAnalyticsAdapter());
+
+  it("emits api_error with statusCode and endpoint, from an endpoint that never instruments itself", async () => {
+    const events = recorderAdapter();
+
+    await fetchBotList(ctxWith(failing(503))).catch(() => undefined);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      event: "api_error",
+      props: { statusCode: 503, endpoint: "/cortex/active-bot/list" },
+    });
+  });
+
+  it("NEVER forwards responseBody — it can echo a token", async () => {
+    // Invariant D. The error carries the body for local diagnostics; the event
+    // must not, because a surface forwards events straight to Mixpanel/Sentry.
+    const events = recorderAdapter();
+
+    await fetchBotList(ctxWith(failing(401))).catch(() => undefined);
+
+    expect(JSON.stringify(events)).not.toContain("do-not-forward");
+    expect(events[0].props).toEqual({ statusCode: 401, endpoint: "/cortex/active-bot/list" });
+  });
+
+  it("emits for the integrations host too — one point, not one per host", async () => {
+    const events = recorderAdapter();
+
+    await fetchAgents(ctxWith(failing(403))).catch(() => undefined);
+
+    expect(events[0]).toMatchObject({
+      event: "api_error",
+      props: { statusCode: 403, endpoint: "/api/v1/agents" },
+    });
+  });
+
+  it("still throws the original error when no adapter is registered", async () => {
+    resetAnalyticsAdapter();
+
+    await expect(fetchBotList(ctxWith(failing(500)))).rejects.toMatchObject({ statusCode: 500 });
+  });
+
+  it("a throwing adapter cannot break the request path", async () => {
+    // The sink swallows adapter faults; the caller must still get its BBApiError.
+    setAnalyticsAdapter({
+      track: () => {
+        throw new Error("adapter exploded");
+      },
+      captureError: () => {},
+    });
+
+    await expect(fetchBotList(ctxWith(failing(502)))).rejects.toMatchObject({ statusCode: 502 });
   });
 });
