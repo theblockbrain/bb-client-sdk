@@ -11,7 +11,15 @@
  * served from cache", independent of which cache honours it.
  */
 
-/** Resources the SDK caches, addressed by the same names `bbKeys` uses. */
+/**
+ * Resources the SDK caches.
+ *
+ * These are **flat policy names, not `bbKeys` segments** — the two vocabularies differ on
+ * purpose and it is worth not confusing them. `bbKeys` is hierarchical and per-tenant
+ * (`bots.detail(id)`, `tenant.config`, `websearch.providers`); a policy is one decision per
+ * resource, so `botDetail`, `tenantConfig` and `webSearch` are single names with no tenant
+ * in them. A policy keyed by cache key would need one entry per bot id.
+ */
 export type BBCachedResource =
   | "bots"
   | "botDetail"
