@@ -5,7 +5,13 @@
 //
 // `markdown.ts` touches the DOM, but never at module scope, so it imports fine
 // under bare Node. DOM-dependent is not React-dependent.
-export type { MarkdownOptions } from "./markdown.js";
+export type {
+  MarkdownDocument,
+  MarkdownElement,
+  MarkdownFragment,
+  MarkdownNode,
+  MarkdownOptions,
+} from "./markdown.js";
 export { markdownToHtml, renderMarkdown, renderMarkdownInto } from "./markdown.js";
 export type { Theme, ThemeMode } from "./theme-mode.js";
 export { nextThemeMode } from "./theme-mode.js";

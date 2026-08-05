@@ -29,4 +29,5 @@ export type {
 export { createHostCapabilityRegistry, routeToolCall } from "./host-capability.js";
 export type { IdentityAdapter } from "./identity.js";
 export type { StorageAdapter, SyncStorageAdapter } from "./storage.js";
+export type { WebStorageArea } from "./web-storage.js";
 export { createWebStorageAdapter } from "./web-storage.js";

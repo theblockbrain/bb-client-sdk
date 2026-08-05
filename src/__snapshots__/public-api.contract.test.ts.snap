@@ -61,6 +61,10 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "ListTenantsResponse",
   "LoginOptions",
   "LoginResult",
+  "MarkdownDocument",
+  "MarkdownElement",
+  "MarkdownFragment",
+  "MarkdownNode",
   "MarkdownOptions",
   "MessageItem",
   "MessageListBody",
@@ -208,6 +212,7 @@ exports[`public API surface > exports of "./adapters" are stable 1`] = `
   "IdentityAdapter",
   "StorageAdapter",
   "SyncStorageAdapter",
+  "WebStorageArea",
   "createHostCapabilityRegistry",
   "createWebCryptoAdapter",
   "createWebStorageAdapter",
@@ -626,6 +631,10 @@ exports[`public API surface > exports of "./text" are stable 1`] = `
 
 exports[`public API surface > exports of "./ui" are stable 1`] = `
 [
+  "MarkdownDocument",
+  "MarkdownElement",
+  "MarkdownFragment",
+  "MarkdownNode",
   "MarkdownOptions",
   "Theme",
   "ThemeMode",
