@@ -1,5 +1,6 @@
 import { type InfiniteData, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getCryptoAdapter } from "../adapters/crypto.js";
 import {
   type ApprovalResolver,
   type MessageItem,
@@ -148,7 +149,7 @@ export function useChatStream({
           const optimisticUser: MessageItem = {
             role: "user",
             content,
-            id: `optimistic-${crypto.randomUUID()}`,
+            id: `optimistic-${getCryptoAdapter().randomUUID()}`,
             pending: true,
           };
           qc.setQueryData<MessagesCache>(liveKey, prev => insertLiveMessage(prev, optimisticUser));

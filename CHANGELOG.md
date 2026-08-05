@@ -69,6 +69,42 @@ script sharing the key keeps working.
 Additive: `useTheme(storageKey, storage?)` and `BrowserRedirectOptions.storage` are
 both optional and default to the previous behaviour.
 
+### New `./i18n` subpath: message keys + a formatter port (L12)
+
+The SDK owns the **vocabulary**, not the strings. `BBMessageKey` is a closed union
+so `Record<BBMessageKey, string>` makes a missing translation a compile error in the
+surface; catalogues stay with each surface. `describeBBApiError` now returns a `key`
+alongside `title`/`detail`, so its English output is a default rather than the only
+option.
+
+`FormatterAdapter` wraps dates, numbers and relative time, defaulting to `Intl`
+resolved lazily so the module imports where `Intl` is absent or partial (Hermes
+without `hermes-intl`). Every method falls back rather than throwing.
+
+**`timeAgo` is unchanged and not routed through the port.** It emits `"5m ago"`;
+`formatRelativeTime` emits `"5 minutes ago"`. Swapping one for the other would change
+every rendered timestamp in every surface, so surfaces opt in.
+
+### New host ports: crypto, host capabilities, feature flags
+
+**`CryptoAdapter` (L7).** The SDK reached `crypto.randomUUID`, `crypto.getRandomValues`
+and `crypto.subtle.digest` on the global at seven sites — two on the mainline
+send-message path — with no injection point. On React Native that is a hard crash,
+not a degradation: Hermes has no Web Crypto and Expo's runtime does not install it.
+`setCryptoAdapter()` now accepts a host implementation; the default resolves the
+global lazily, so browser behaviour is unchanged. `digest` is pinned to SHA-256 so a
+host can satisfy it without a full WebCrypto polyfill.
+
+**`HostCapabilityRegistry` (L7).** Signatures and a router for tool calls only a host
+can serve (read the open mail item, insert at the Word cursor). No Office.js or Graph
+type enters the SDK. `routeToolCall` never throws — an unknown tool is a normal
+condition, since the agent can be newer than the host, and an exception there would
+tear down the turn.
+
+**`FlagAdapter` (L10).** A synchronous, total feature-flag port. Reads happen on a
+render path, so they cannot await; a throwing or absent provider degrades to the
+caller's fallback rather than breaking the feature it was meant to gate.
+
 ### The gate that would have caught all of this
 
 `npm run check:cleanroom` gained a second phase that installs the tarball with

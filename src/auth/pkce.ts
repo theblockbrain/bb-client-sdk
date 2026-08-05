@@ -1,7 +1,12 @@
 /**
  * PKCE helpers — RFC 7636 compliant.
- * No platform dependencies — uses Web Crypto API (available in all modern browsers + SW).
+ *
+ * Randomness and hashing go through the {@link CryptoAdapter} port rather than the
+ * `crypto` global, so a runtime without Web Crypto (React Native / Hermes) can
+ * supply its own. The default resolves the global lazily, so behaviour in a
+ * browser is unchanged.
  */
+import { getCryptoAdapter } from "../adapters/crypto.js";
 
 function base64urlEncode(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
@@ -19,7 +24,7 @@ function base64urlEncode(buf: ArrayBuffer): string {
  */
 export function generateVerifier(): string {
   const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
+  getCryptoAdapter().getRandomValues(bytes);
   return base64urlEncode(bytes.buffer);
 }
 
@@ -33,14 +38,14 @@ export function generateVerifier(): string {
  */
 export function generateStateNonce(): string {
   const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
+  getCryptoAdapter().getRandomValues(bytes);
   return base64urlEncode(bytes.buffer);
 }
 
 /** Derive the PKCE code challenge (S256) from the verifier. */
 export async function generateChallenge(verifier: string): Promise<string> {
   const encoded = new TextEncoder().encode(verifier);
-  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  const digest = await getCryptoAdapter().digest("SHA-256", encoded);
   return base64urlEncode(digest);
 }
 

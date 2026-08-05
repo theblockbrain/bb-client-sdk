@@ -15,6 +15,7 @@
  * short one, which is how a half-finished answer used to reach the message cache
  * labelled as final (PDEV-7333).
  */
+import { getCryptoAdapter } from "../../adapters/crypto.js";
 import { AGENTIC_BASE_URL } from "../../config.js";
 import type { AuthContext } from "../../settings/auth-mode.js";
 import { request } from "../_send.js";
@@ -265,7 +266,7 @@ function agenticStreamPath(agentId: string): string {
 /** Build a minimal UIMessage for the new user turn. */
 function makeUserMessage(content: string): AgenticUIMessage {
   return {
-    id: crypto.randomUUID(),
+    id: getCryptoAdapter().randomUUID(),
     role: "user",
     content,
     parts: [{ type: "text", text: content }],
@@ -375,7 +376,7 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
   // A stable message id prevents the server from creating duplicate user-message
   // records if it persists the `messages` array on resume turns.
   const userMessage = makeUserMessage(content);
-  const requestId = crypto.randomUUID();
+  const requestId = getCryptoAdapter().randomUUID();
 
   // Initial request body — only the new user message (server holds history via threadId)
   let body: AgenticRequestBody = {

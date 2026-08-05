@@ -56,6 +56,11 @@
       "react-native": "./dist/config.js",
       "import": "./dist/config.js"
     },
+    "./i18n": {
+      "types": "./dist/i18n/index.d.ts",
+      "react-native": "./dist/i18n/index.js",
+      "import": "./dist/i18n/index.js"
+    },
     "./ui": {
       "types": "./dist/ui/index.d.ts",
       "react-native": "./dist/ui/index.js",

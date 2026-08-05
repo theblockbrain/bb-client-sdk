@@ -11,13 +11,21 @@ a change that breaks any one adapter is a defect.
 
 Before doing **any** work in this repo, load the base skill:
 [`.claude/skills/sdk/SKILL.md`](.claude/skills/sdk/SKILL.md). It is the authoritative
-entry point: the layer map (14 entry points today), the five prime invariants, the adapter
+entry point: the layer map (18 entry points today), the five prime invariants, the adapter
 matrix, and the per-change verification loop. Then load the task sub-skill:
 
 - [`sdk-auth`](.claude/skills/sdk-auth/SKILL.md) — PKCE / tokens / refresh / `AuthContext` (security-critical)
 - [`sdk-streaming`](.claude/skills/sdk-streaming/SKILL.md) — SSE parsers / `MessageStream` / routing / cancellation
 - [`sdk-endpoint`](.claude/skills/sdk-endpoint/SKILL.md) — `./api` modules + `./react` hooks
 - [`sdk-release`](.claude/skills/sdk-release/SKILL.md) — cut a release / canary + the gates
+
+**Shared with GitHub Copilot.** Rules that both agents need live once, in
+[`.github/copilot-instructions.md`](.github/copilot-instructions.md) — the invariants, the
+style rules, the verification loop, and the PR-review bar. Copilot reads that file (plus the
+path-scoped [`.github/instructions/*.instructions.md`](.github/instructions/)) automatically
+on every completion and review; Claude should treat it as binding too. **Put a rule there if
+it applies to both, and here or in `/sdk` only if it is Claude-specific** — duplicating it in
+two places is how the two tools start contradicting each other.
 
 Reference docs (under `sdk/references/`):
 [adapter matrix](.claude/skills/sdk/references/adapters.md) ·
@@ -91,7 +99,13 @@ npm run typecheck       # tsc --noEmit
 npm test                # vitest — INCLUDES the public-API contract test
 npm run build           # tsup + tsc (dts)
 npm run check:package   # publint + attw (esm-only)
+npm run check:cleanroom # 3 phases: real install, no-React import, DOM-less typecheck
 ```
+
+`check:cleanroom` is the only gate that exercises the **published artifact** from a
+consumer's position — the others all read `src/` or the export map statically. It is also
+the last step before `npm publish`. Phases 2 and 3 exist because 0.18.0 shipped a root
+barrel that a Node surface could neither import nor typecheck, with every other gate green.
 
 A public-API change fails `src/public-api.contract.test.ts` on purpose — that is a conscious
 semver decision. If intentional, update the snapshot in the same PR (`npx vitest run -u
@@ -104,5 +118,14 @@ src/public-api.contract.test.ts`) and choose the version bump per
 - **Branches**: `type/TICKET-123/description` — e.g. `feat/PDEV-123/react-query-layer` (enforced by `pre-push`).
 - ESM-only; published to GitHub Packages (private, `@theblockbrain` scope). `dist/` is git-ignored
   — `file:`-linked consumers must `npm run build` here once after a fresh clone/pull.
-- Baseline code style follows the org **Code Cleanup & Refactoring** `SKILL.md` (import order, no
-  `any`, early returns, typed error handling, mandatory build in the verification checklist).
+- Baseline code style follows the org **Code Cleanup & Refactoring** `SKILL.md`, but only the
+  parts that apply here. That document was written for a **React application**; this is a
+  framework-agnostic library, so take from it: no `any` / no `Function` / no `var`, early
+  returns over nesting, no nested ternaries, typed error handling with no empty catches,
+  hoisting static values and pure helpers, magic numbers as named constants, modern idioms,
+  and the mandatory build in the verification checklist. **Ignore** its Tailwind v4 section
+  (this package ships one CSS file and consumes no Tailwind), its React component-ordering and
+  `useState`-generic rules (only 2 of 18 entry points touch React), and its lodash import
+  rules (`marked` is the only runtime dependency). Where the two disagree, the repo-specific
+  rules in [`.github/copilot-instructions.md`](.github/copilot-instructions.md) win — a
+  library's public `.d.ts` has constraints an app's internals do not.

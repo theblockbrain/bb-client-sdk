@@ -1,3 +1,4 @@
+import { getCryptoAdapter } from "../adapters/crypto.js";
 import { subFromAccessToken } from "../auth/jwt-claims.js";
 import type { AuthContext } from "../settings/auth-mode.js";
 import { request, requestJson, throwIfNotOk } from "./_send.js";
@@ -210,7 +211,7 @@ export async function sendMessage(
     body: JSON.stringify({
       convoId,
       content,
-      sessionId: crypto.randomUUID(),
+      sessionId: getCryptoAdapter().randomUUID(),
       messageType: "user-question",
       enableStreaming: streaming,
     }),
