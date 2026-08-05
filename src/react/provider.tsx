@@ -11,6 +11,7 @@ import {
 } from "react";
 import { isBBApiError, isRetryableBBError } from "../api/index.js";
 import type { AuthContext } from "../settings/auth-mode.js";
+import { BB_CACHE_DEFAULT } from "../settings/cache-policy.js";
 
 /**
  * Retry policy for React Query, keyed off `BBApiError` (not ky's `HTTPError`,
@@ -50,8 +51,10 @@ export function createBBQueryClient(opts: CreateBBQueryClientOptions = {}): Quer
     mutationCache: new MutationCache({ onError }),
     defaultOptions: {
       queries: {
-        staleTime: 5 * 60_000,
-        gcTime: 10 * 60_000, // v5 name (was cacheTime)
+        // From the SDK's own policy (L13), not literals: a Lit or Node surface
+        // reads the same numbers, and per-resource overrides live in one place.
+        staleTime: BB_CACHE_DEFAULT.staleMs,
+        gcTime: BB_CACHE_DEFAULT.retainMs, // v5 name (was cacheTime)
         retry: bbShouldRetryQuery,
         refetchOnWindowFocus: false,
         throwOnError: false,
