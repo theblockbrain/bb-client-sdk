@@ -81,7 +81,6 @@ try {
 } catch (err) {
   if (err instanceof BBApiError) {
     if (err.statusCode === 401) { /* re-auth */ }
-    if (err.statusCode === 503) { /* not configured */ }
     console.error(err.endpoint, err.responseBody);
   } else {
     throw err;

@@ -42,7 +42,7 @@
  */
 
 import { type BBHost, type BBHosts, DEFAULT_HOSTS } from "../config.js";
-import { BBApiError } from "./errors.js";
+import { BBApiError, isRetryableStatus } from "./errors.js";
 import { normalizeUrl } from "./url.js";
 
 // ─── Hosts ────────────────────────────────────────────────────────────────────
@@ -194,10 +194,6 @@ const DEFAULT_RETRY_BASE_DELAY_MS = 300;
 const REPLAYABLE = new Set<TransportMethod>(["GET"]);
 
 /** 5xx and 429 are worth a second go; a 4xx will fail identically. */
-function isRetriableStatus(status: number): boolean {
-  return status === 429 || (status >= 500 && status < 600);
-}
-
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
@@ -334,7 +330,10 @@ async function attempt(
         body: req.body,
         signal: plan.signal,
       });
-      if (i === extra || !isRetriableStatus(res.status)) return res;
+      // `isRetryableStatus` is the shared predicate from ./errors.js, so this loop and
+      // `describeBBApiError` cannot disagree. It is closed over `< 400`, which is what
+      // stops this line discarding a 2xx: every response passes through here.
+      if (i === extra || !isRetryableStatus(res.status)) return res;
 
       // This response is being thrown away. Cancel its body so the runtime can
       // release the connection instead of holding it until GC; `undici` warns
