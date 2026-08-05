@@ -28,11 +28,11 @@ npm run build              # tsup + tsc → dist/react/index.{js,d.ts}
    - `useChatStream` error path (optimistic user message rolled back on reject) and
      `stop()` (a late `final` after stop must NOT commit — the run-id guard).
 
-2. **Cancellation is best-effort.** `useChatStream().stop()` bumps a run-id and stops
-   consuming `textDeltas`, but the underlying request keeps running. True abort needs
-   the SDK to thread `AbortSignal` through `sendMessage` (roadmap **WS2**, transport
-   seam). The enable point is one commented line in `use-chat-stream.tsx`
-   (`// signal: controller.signal`).
+2. **Closed (PDEV-7339): cancellation is real.** `useChatStream().stop()` aborts the
+   underlying request — `use-chat-stream.tsx:166` passes `signal: controller.signal`
+   through the transport into both SSE parsers, and the run-id guard remains only as a
+   second line of defence against a late resolve. This entry previously described the
+   commented-out line as the enable point; that line is now live.
 
 3. **No agent-swap mutation.** There is no `setConversationAgent` endpoint today
    (a conversation's agent is fixed at create via `createConversation`), so no

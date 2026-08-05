@@ -69,6 +69,26 @@ script sharing the key keeps working.
 Additive: `useTheme(storageKey, storage?)` and `BrowserRedirectOptions.storage` are
 both optional and default to the previous behaviour.
 
+### New host ports: crypto, host capabilities, feature flags
+
+**`CryptoAdapter` (L7).** The SDK reached `crypto.randomUUID`, `crypto.getRandomValues`
+and `crypto.subtle.digest` on the global at seven sites — two on the mainline
+send-message path — with no injection point. On React Native that is a hard crash,
+not a degradation: Hermes has no Web Crypto and Expo's runtime does not install it.
+`setCryptoAdapter()` now accepts a host implementation; the default resolves the
+global lazily, so browser behaviour is unchanged. `digest` is pinned to SHA-256 so a
+host can satisfy it without a full WebCrypto polyfill.
+
+**`HostCapabilityRegistry` (L7).** Signatures and a router for tool calls only a host
+can serve (read the open mail item, insert at the Word cursor). No Office.js or Graph
+type enters the SDK. `routeToolCall` never throws — an unknown tool is a normal
+condition, since the agent can be newer than the host, and an exception there would
+tear down the turn.
+
+**`FlagAdapter` (L10).** A synchronous, total feature-flag port. Reads happen on a
+render path, so they cannot await; a throwing or absent provider degrades to the
+caller's fallback rather than breaking the feature it was meant to gate.
+
 ### The gate that would have caught all of this
 
 `npm run check:cleanroom` gained a second phase that installs the tarball with
