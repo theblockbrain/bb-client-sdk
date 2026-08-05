@@ -21,10 +21,10 @@ import type { AuthContext } from "../settings/auth-mode.js";
  * - 5xx / network → retry up to 3×.
  */
 export function bbShouldRetryQuery(failureCount: number, error: unknown): boolean {
-  // Delegates the "is this worth retrying" decision to `isRetryableBBError` so the
-  // query client, the transport's retry policy and any surface's error UI cannot
-  // drift apart. This function keeps only the attempt budget, which is a
-  // react-query concern.
+  // Delegates the "is this worth retrying" decision to `isRetryableBBError`, so this
+  // client, the transport's retry loop and any surface's error UI cannot drift apart —
+  // all three resolve to `isRetryableStatus` in ./api/errors.js. This function keeps
+  // only the attempt budget, which is a react-query concern.
   if (!isRetryableBBError(error)) return false;
   return failureCount < 3;
 }

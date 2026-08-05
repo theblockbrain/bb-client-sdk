@@ -109,10 +109,22 @@ caller's fallback rather than breaking the feature it was meant to gate.
 
 One status ladder instead of one per surface — `ms-outlook-addin` carries three
 near-identical copies in a single file. `describeBBApiError` returns
-`{ title, detail, retryable }` and deliberately ignores the response body and the
+`{ key, title, detail, retryable }` and deliberately ignores the response body and the
 error message, since server text can echo a submitted grant and this output is
-rendered. `bbShouldRetryQuery` now delegates to `isRetryableBBError`, so the query
-client, the transport's retry policy and any surface's error UI cannot drift apart.
+rendered. The `key` is a `BBMessageKey`, so the English `title`/`detail` are defaults
+rather than the only option.
+
+`isRetryableStatus(status)` is now the single source for "is this worth retrying", and
+all three consumers read it: `describeHttpStatus` (so `isRetryableBBError` and any
+surface's error UI agree), `bbShouldRetryQuery` in the query client, and the transport's
+retry loop — which previously kept its own `429 || 5xx` copy (PDEV-7341). They agreed on
+every status `>= 400`, but by coincidence rather than by construction.
+
+The predicate is deliberately **status-only and closed over `< 400`**. The transport
+evaluates it against *every* response, including 2xx, so a permissive default would make
+it discard successful responses and retry them until the attempt budget ran out. The
+`kind` cases (`network`/`timeout` retryable, `aborted`/`parse` not) stay in
+`describeBBApiError`, since a status cannot express them.
 
 `503` gets no special case. It was documented as "capability not configured", but
 that meaning has no source: Botticelli emits 503 **nowhere** (0 occurrences across

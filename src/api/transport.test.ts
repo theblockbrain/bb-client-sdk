@@ -6,7 +6,7 @@ import {
   INTEGRATIONS_BASE_URL,
   OAUTH_BACKEND_URL,
 } from "../config.js";
-import { isBBApiError } from "./errors.js";
+import { isBBApiError, isRetryableStatus } from "./errors.js";
 import {
   createFetchTransport,
   DEFAULT_HOSTS,
@@ -407,6 +407,41 @@ describe("createFetchTransport — defaults", () => {
 describe("retry (PDEV-7340)", () => {
   const ok = () => new Response("{}", { status: 200 });
   const fail = (status: number) => new Response("{}", { status });
+
+  it("never retries a success, whatever the shared predicate says about other statuses", async () => {
+    // The guard that makes the shared predicate safe here. This loop tests EVERY
+    // response, so a predicate that treated anything below 400 as retryable would make
+    // the transport discard 2xx responses and retry them until the budget ran out.
+    // `isRetryableStatus` is closed over `< 400` precisely to stop that.
+    for (const status of [200, 201, 204, 301, 304]) {
+      const doFetch = vi.fn().mockImplementation(() => new Response(null, { status }));
+      const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 3, baseDelayMs: 1 } });
+
+      const res = await t.send({ host: "blocky", path: "/x", method: "GET" });
+
+      expect(res.status).toBe(status);
+      expect(doFetch).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("retries exactly the statuses the shared predicate calls retryable", async () => {
+    // Pins the transport to `isRetryableStatus` rather than to a copy of its rule, so
+    // the loop and `describeBBApiError` cannot drift (PDEV-7766).
+    for (const status of [429, 500, 502, 503, 504]) {
+      const doFetch = vi.fn().mockImplementation(() => fail(status));
+      const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 1, baseDelayMs: 1 } });
+      await t.send({ host: "blocky", path: "/x", method: "GET" });
+      expect(isRetryableStatus(status)).toBe(true);
+      expect(doFetch).toHaveBeenCalledTimes(2);
+    }
+    for (const status of [400, 401, 403, 404, 409, 422]) {
+      const doFetch = vi.fn().mockImplementation(() => fail(status));
+      const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 1, baseDelayMs: 1 } });
+      await t.send({ host: "blocky", path: "/x", method: "GET" });
+      expect(isRetryableStatus(status)).toBe(false);
+      expect(doFetch).toHaveBeenCalledTimes(1);
+    }
+  });
 
   it("retries a transient fetch rejection and returns the eventual success", async () => {
     // Retry covers a rejecting fetch as well as a retriable status, but only the
