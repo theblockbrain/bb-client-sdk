@@ -11,7 +11,7 @@ a change that breaks any one adapter is a defect.
 
 Before doing **any** work in this repo, load the base skill:
 [`.claude/skills/sdk/SKILL.md`](.claude/skills/sdk/SKILL.md). It is the authoritative
-entry point: the layer map (18 entry points today), the five prime invariants, the adapter
+entry point: the layer map (19 entry points today), the five prime invariants, the adapter
 matrix, and the per-change verification loop. Then load the task sub-skill:
 
 - [`sdk-auth`](.claude/skills/sdk-auth/SKILL.md) — PKCE / tokens / refresh / `AuthContext` (security-critical)
@@ -51,11 +51,11 @@ Reference docs (under `sdk/references/`):
 
 ## Telemetry seam (`./analytics`)
 
-> **The seam and the `login()` instrumentation are both on `main`, neither is published.** The
+> **The seam and the `login()` instrumentation both ship in `0.18.0`.** The
 > `AnalyticsAdapter` seam and the `./analytics` subpath landed via PDEV-6854 (PR #19, consolidated
 > for `main` in PR #22); the `auth_*` instrumentation landed via PDEV-6855 (recovered from a dead
-> branch). The last published tag is `v0.17.0`, which predates them: a consumer on npm/GitHub
-> Packages cannot import `./analytics` until the next release; `file:`-linked or canary consumers can.
+> branch). They reach consumers with `0.18.0` — a surface still pinned to `^0.17.0` cannot import
+> `./analytics` until it bumps; `file:`-linked or canary consumers can.
 
 The `AnalyticsAdapter` seam is a peer of `StorageAdapter` / `IdentityAdapter`. Each surface
 implements it once and registers it at startup; the SDK emits a typed, PII-free event taxonomy

@@ -35,7 +35,7 @@ The public surface is the JS entry points declared in `package.json`
 `./adapters`, `./adapters/office`, `./config`, `./text`, `./ui`, `./react`, `./analytics`,
 `./analytics/mixpanel`; the `./ui/theme-base.css` asset subpath is not a module surface).
 `./agentic`, `./analytics` and `./analytics/mixpanel` are on `main`
-but **not in a published release** — the newest tag, `v0.17.0`, predates them.
+and first reach consumers in **`0.18.0`** — the previous tag, `v0.17.0`, predates them.
 Anything reachable through those
 subpaths — every exported value **and type** — is the contract. Internal files
 not re-exported from an entry `index.ts` are not.
@@ -55,9 +55,9 @@ not re-exported from an entry `index.ts` are not.
 | Widen/relax an input type, add an optional adapter method | **MINOR** | Additive |
 | Drop a Node version, raise a peer range, change ESM/CJS shape | **MAJOR** | Consumer environment/toolchain contract |
 
-> **Pre-1.0 caveat (we are `0.17.0`).** Under strict semver, `0.x` allows breaking
+> **Pre-1.0 caveat (we are `0.18.0`).** Under strict semver, `0.x` allows breaking
 > changes in a **minor**. We do **not** rely on that leniency: because consumers
-> pin `^0.x` (which under npm's rules locks the **minor**, e.g. `^0.17.0` →
+> pin `^0.x` (which under npm's rules locks the **minor**, e.g. `^0.18.0` →
 > `<0.18.0`), a breaking change **must** land as a **minor** bump (`0.17` → `0.18`)
 > **with a documented migration note**, never as a patch. Treat a `0.x` minor bump
 > as this package's "major". When the package reaches `1.0.0`, breaking → real MAJOR.
@@ -155,40 +155,43 @@ a PR. Do not skip for contract-affecting changes.
 
 **Phase 3 — Tag & publish.**
 - Tag `vX.Y.Z` on the release commit and push the tag:
-  `git tag v0.18.0 && git push origin v0.18.0`.
+  `git tag v0.19.0 && git push origin v0.19.0`.
 - Pushing a `v*` tag triggers `.github/workflows/publish.yml`:
-  `npm ci` → `npm run typecheck` → `npm run build` → `npm publish` (to
-  GitHub Packages, `access: restricted`, via the built-in `GITHUB_TOKEN`).
+  `npm ci` → tag ↔ `package.json` version guard → `npm run lint` →
+  `npm run typecheck` → `npm test` → `npm run build` → `npm run check:package`
+  → `npm run check:cleanroom` → `npm publish` (to GitHub Packages,
+  `access: restricted`, via the built-in `GITHUB_TOKEN`).
 
-### ⚠ KNOWN GAP — publish is not gated on the full CI
+### ✅ SLO E2 — closed: publish IS gated on the full suite
 
-`publish.yml` runs **only `typecheck` + `build`**. It does **not** run `test`,
-`lint` (biome + eslint), or `check:package` (publint + attw). `ci.yml` runs the
-full gate — but only on push/PR to `main`, **not** on the `v*` tag. So:
+`publish.yml` used to run **only `typecheck` + `build`**, so a `v*` tag could
+publish code whose tests never went green. PDEV-7001 closed it. The tag job now
+runs, in order:
 
-- Cutting a release does **not** currently re-run tests, lint, the **public-API
-  contract test**, or the package-export checks. A tag on a commit whose tests
-  never went green (or a tag on a non-`main` commit) can publish a broken
-  `latest`. Today `ci.yml`-on-`main` is the only safety net, and it is not
-  enforced at publish time.
+1. a **tag ↔ `package.json` version guard** — `v0.18.0` refuses to publish
+   unless `package.json` says `0.18.0`. A mismatch used to publish a version
+   nobody tagged and leave the tag pointing at a release that does not exist;
+2. `lint` (biome + eslint), `typecheck`, `test` (including the **public-API
+   contract test**), `build`, `check:package` (publint + attw), and
+   `check:cleanroom` — the same suite `ci.yml` runs on `main`;
+3. only then `npm publish`.
 
-**Prescribed fix (SLO E2 — "CI + publish both gated on tests"):**
+The chosen shape was **duplicate the steps in both workflows**, not a
+`workflow_call` reusable gate. That is the one thing to watch: the two lists can
+drift, and nothing enforces that they match. A step added to `ci.yml` should be
+added to `publish.yml` in the same PR.
 
-1. **Preferred — one gate, two callers.** Extract the CI steps
-   (`lint:biome` → `lint:types` → `typecheck` → `test` → `build` →
-   `check:package`) into a **reusable workflow** (`workflow_call`) and have both
-   `ci.yml` and `publish.yml` invoke it via `jobs.<id>.uses`. Publish's
-   `npm publish` step then `needs:` the gate job → the two workflows cannot
-   drift, and no release publishes without the full suite passing.
-2. **Alternative — require green CI on the tagged SHA.** Before publishing,
-   assert that the `CI` workflow concluded `success` for the tagged commit (e.g.
-   query `gh api` for the check-run status of `github.sha`) and fail the publish
-   job otherwise. Cheaper, but re-runs nothing and only works if the tag sits on
-   an already-tested `main` commit.
+**Two things the gate still cannot prove**, both of which stay manual:
 
-Until one of these lands, **Phase 0's local full-gate run is mandatory**, not
-optional — it is the manual stand-in for the missing publish gate. Flag this gap
-in any release PR that touches the workflows.
+- **that a consumer builds** — no gate in this repo installs the tarball into a
+  real surface. That is Phase 3's canary, and it remains mandatory for any
+  contract-affecting change;
+- **that the surface is instrumented** — the telemetry Definition of Done
+  (invariant E) is a per-surface promotion gate; see
+  [`./telemetry-release-gate.md`](./telemetry-release-gate.md).
+
+Run the local gate before tagging regardless. It fails in ninety seconds; a
+failed publish costs a version number.
 
 ---
 
@@ -198,7 +201,7 @@ in any release PR that touches the workflows.
 
 | Do | Don't |
 | --- | --- |
-| Pin `^0.MINOR.PATCH` (e.g. `^0.17.0`) so patches flow but a breaking minor does not arrive un-reviewed | Pin `*`, `latest`, or a range that crosses a minor (`>=0.17`) |
+| Pin `^0.MINOR.PATCH` (e.g. `^0.18.0`) so patches flow but a breaking minor does not arrive un-reviewed | Pin `*`, `latest`, or a range that crosses a minor (`>=0.18`) |
 | Read the migration note and bump the minor deliberately | Let a stale pin drift far behind (see the Outlook lesson) |
 | Use `@canary` / `@0.0.0-canary.<sha>` to trial an unreleased change | Ship a canary build to production |
 
@@ -212,7 +215,7 @@ the token.
 
 `ms-outlook-addin` — the **reference adopter** — sat on **`^0.7.3`** while the SDK
 reached **`0.17.0`**: ~10 minor eras behind. It was brought current in July 2026 and
-now pins **`^0.17.0`**, but the consequences of that drift map directly to the
+still pins **`^0.17.0`**, one era behind as of `0.18.0`; the consequences of the old drift map directly to the
 invariants and are why SLO E3 below exists:
 
 - A drifted surface cannot canary-test current changes (its code assumes an old
@@ -271,7 +274,7 @@ Notes:
 - [ ] `release:canary` label added; canary built **green in Outlook** (or the
       surface the change targets) — see [`./adapters.md`](./adapters.md)
 - [ ] Phase 0 full local gate run green (`lint` + `typecheck` + `test` + `build`
-      + `check:package`) — stand-in for the publish.yml gap
+      + `check:package` + `check:cleanroom`) — fails cheaper than the tag does
 - [ ] Version bumped; commit + branch follow the ticket-scoped convention (§5)
 - [ ] Tag `vX.Y.Z` pushed on the release commit; `publish.yml` succeeded
-- [ ] (If touching workflows) publish-gap fix considered per §3 / SLO E2
+- [ ] (If touching workflows) the publish gate still runs the full suite per §3

@@ -26,7 +26,7 @@ Legend — **Runtime**: BW = browser webview (Office.js) · SPFx = SharePoint Fr
 
 | Adapter | Runtime | Framework | Module / bundler constraints | Transport | Auth flow | StorageAdapter backend | CSP | On the SDK today? |
 |---|---|---|---|---|---|---|---|---|
-| **ms-outlook-addin** | BW | React | ESM | fetch | PKCE-dlg (`Office…displayDialogAsync`) | `Office.context.roamingSettings` (async, size-limited) | strict | **Yes — `^0.17.0`** (resolves 0.17.0, the latest published tag; it sat on a stale `^0.7.3` until 2026-07). Reference adopter; `api.ts` is a re-export barrel from the SDK. Client ID `373051238587049311` (`src/config.ts`). |
+| **ms-outlook-addin** | BW | React | ESM | fetch | PKCE-dlg (`Office…displayDialogAsync`) | `Office.context.roamingSettings` (async, size-limited) | strict | **Yes — `^0.17.0`** (one era behind as of `0.18.0`; it sat on a stale `^0.7.3` until 2026-07). Reference adopter; `api.ts` is a re-export barrel from the SDK. Client ID `373051238587049311` (`src/config.ts`). |
 | **ms-word-addin** | BW | React | ESM | fetch | PKCE-dlg | `roamingSettings` (async, size-limited) | strict | No (0%). **Migration target** — hand-rolls ~2,685 LOC of `api/*`, a ~124-line SSE loop, and PKCE. Slice order: types → endpoints → streaming → auth → flags. Office.js doc manipulation stays in the surface. |
 | **ms-powerpoint-addin** | BW | React | ESM | fetch | PKCE-dlg (reuses Outlook dialog auth) | `roamingSettings` (async, size-limited) | strict | No — **greenfield**. Direct-prompting task pane. |
 | **ms-excel-addin** | BW | React | ESM | fetch | PKCE-dlg (reuses Outlook dialog auth) | `roamingSettings` (async, size-limited) | strict | No — **greenfield**. Backend Excel Graph tools already exist. |
@@ -99,7 +99,7 @@ Grouped by the invariants they enforce (**A** framework-agnostic core, **B** no 
 - **Invariants A–E** and the security model: `/sdk` (base skill) **§3** — the invariant summaries live inline there (there is no separate `invariants.md`).
 - **The injection seams** (`IdentityAdapter`, `StorageAdapter`): `src/adapters/identity.ts`, `src/adapters/storage.ts`.
 - **The breakage tripwire**: `src/public-api.contract.test.ts` + `src/__snapshots__/public-api.contract.test.ts.snap` — an undeclared change to any entry point fails the test (14 today).
-- **Canary before `latest`**: `canary.yml` (label `release:canary`). Note the publish gap — `publish.yml` runs only typecheck + build, **not** test/lint/`check:package`; `ci.yml` on `main` is the safety net (target SLO E2: CI + publish both gated on tests).
+- **Canary before `latest`**: `canary.yml` (label `release:canary`) — still mandatory. `publish.yml` re-runs the full gate on the tag since PDEV-7001 (SLO E2 closed), but no gate in this repo can prove a **consumer** builds; only the canary does.
 - **Telemetry / event taxonomy** (the canonical `AnalyticsEvent` union, identity model, release gate): `references/telemetry-release-gate.md`.
 - **Org code-style baseline** (import order, no `any`, early returns, error handling, verification checklist): the org **Code Cleanup & Refactoring** standard.
 - **React layer honest gaps** (cancellation, missing hook tests): `docs/react-layer.md`. The `bun:test` legacy is gone — the PKCE state-separation test is now `src/auth/pkce.test.ts` and runs in CI (PDEV-7684).

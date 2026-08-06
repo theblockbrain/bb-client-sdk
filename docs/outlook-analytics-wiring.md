@@ -6,14 +6,14 @@ the SDK cannot see. The SDK's own catalog (`auth_*`, `message_send`, `stream_*`,
 `api_error`) is the *intended* division of labour — see the second blocker below.
 
 > **Blocker 1 — the subpath.** The add-in must consume an SDK build that exports
-> `./analytics` + `./analytics/mixpanel`. Both are on the SDK's `main` but **not in any
-> published release** — the newest tag is `v0.17.0` and the add-in pins `^0.17.0`, which
-> resolves to it. So this needs **the next release** (`0.18.0`, not cut yet), a **canary**
-> build (`npm i @theblockbrain/bb-client-sdk@canary`, published by adding the
-> `release:canary` label to an SDK PR), or a local **`file:` link** to a built SDK checkout.
+> `./analytics` + `./analytics/mixpanel`. Both ship in **`0.18.0`**, and the add-in still
+> pins `^0.17.0`, which resolves below it. So this needs the add-in **bumped to `^0.18.0`**
+> (the release's outstanding follow-up), a **canary** build
+> (`npm i @theblockbrain/bb-client-sdk@canary`, published by adding the `release:canary`
+> label to an SDK PR), or a local **`file:` link** to a built SDK checkout.
 >
 > **Blocker 2 — the SDK emits only the auth funnel.** The `login()` `auth_*` instrumentation
-> (PDEV-6855) is on `main`: `grep -rn "trackEvent(" src/` matches `src/analytics/` plus
+> (PDEV-6855) ships in `0.18.0`: `grep -rn "trackEvent(" src/` matches `src/analytics/` plus
 > `src/auth/login.ts`, which also binds identity/group on success — so registering an adapter
 > today gives you the auth funnel *and* correct user/tenant attribution for the four surface
 > events below. ⚠️ Still missing: `token_refresh`, `message_send` / `stream_*`, and `api_error`,

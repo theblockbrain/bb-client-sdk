@@ -15,7 +15,7 @@ Shared frontend SDK for BlockBrain apps (Chrome extension, Outlook add-in, futur
 ```jsonc
 // package.json
 "dependencies": {
-  "@theblockbrain/bb-client-sdk": "^0.17.0"
+  "@theblockbrain/bb-client-sdk": "^0.18.0"
 }
 ```
 
@@ -270,10 +270,11 @@ share the same origin:
 
 ## Testing an unreleased change in a consumer
 
-Some entry points live on `main` before they are published — `./agentic`, `./analytics` and
-`./analytics/mixpanel` all postdate the `v0.17.0` tag. A consumer pinning `^0.17.0` resolves to
-that tag and **cannot import them**, so testing an unreleased change needs one of the three
-routes below. Pick by blast radius: local link → canary → release.
+Entry points routinely live on `main` before they are published, and a consumer pinning `^0.18.0`
+resolves to the newest published tag and **cannot import them**. (`./agentic`, `./analytics`,
+`./analytics/mixpanel`, `./i18n`, `./media` and `./telemetry` all postdated `v0.17.0` and ship in
+`0.18.0`.) Testing an unreleased change needs one of the three routes below. Pick by blast radius:
+local link → canary → release.
 
 **1. `file:` link — no publish, fastest, includes uncommitted work.** npm points the consumer's
 `node_modules` entry at your local SDK checkout, so the surface builds against the exact `dist/`
@@ -298,11 +299,11 @@ refuses a duplicate version — so push a new commit or re-run via `workflow_dis
 
 **3. Cut a real release — the end state, and the highest blast radius.** A `vX.Y.Z` tag on `main`
 publishes to the `latest` dist-tag, where every consumer's `^` range can pick it up. New entry
-points are **additive → MINOR**, and at `0.x` a minor is this package's major (`^0.17.0` locks to
-`<0.18.0`), so new subpaths ship as `0.18.0` — never as a patch, which would silently upgrade
-every `^0.17.x` consumer with no opt-in. Do this only after a canary or link has been validated in
-a real consumer: `publish.yml` runs **only `typecheck` + `build`** on the tag, so `ci.yml` on
-`main` is the only thing that ever ran the tests.
+points are **additive → MINOR**, and at `0.x` a minor is this package's major (`^0.18.0` locks to
+`<0.19.0`), so new subpaths ship as `0.19.0` — never as a patch, which would silently upgrade
+every `^0.18.x` consumer with no opt-in. Do this only after a canary or link has been validated in
+a real consumer: `publish.yml` re-runs the full gate on the tag (PDEV-7001), but a gate proves the
+package builds — only a consumer proves the change works.
 
 ### Chronological steps
 
@@ -349,7 +350,7 @@ npm install @theblockbrain/bb-client-sdk@0.0.0-canary.<short-sha>   # exact buil
 npm install @theblockbrain/bb-client-sdk@canary                     # newest canary
 
 # 4. rollback in the consumer:
-npm install @theblockbrain/bb-client-sdk@^0.17.0
+npm install @theblockbrain/bb-client-sdk@^0.18.0
 ```
 
 > Consumer notification is **manual**: `canary.yml`'s `notify-consumers` job is dormant until an
@@ -383,5 +384,7 @@ for the semver-for-fan-out table.
 ## Release
 
 Push tag `vX.Y.Z` on main — the publish workflow triggers automatically and publishes to GitHub
-Packages. Run the full gate first: `publish.yml` executes **only `typecheck` + `build`** on the tag,
-so the tests never run again after `ci.yml` on `main`. Steps: [Option 3](#chronological-steps) above.
+Packages. `publish.yml` re-runs the full gate on the tag (version guard → lint → typecheck → test →
+build → `check:package` → `check:cleanroom`) and refuses to publish if the tag does not match
+`package.json`. Run the gate locally anyway, so a failure costs a minute rather than a burnt tag.
+Steps: [Option 3](#chronological-steps) above.

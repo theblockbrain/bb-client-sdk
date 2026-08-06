@@ -23,7 +23,7 @@ Follow these phases **exactly, in order**. Do not skip Phase 4.
 
 ## Phase 1 — Pre-release gate (reproduce the full CI locally)
 
-`publish.yml` runs **only `typecheck` + `build`** on the tag (see Phase 5's gap). `ci.yml`-on-`main` is the only place the full suite runs today, so you MUST reproduce it locally on the exact SHA you intend to release. Run the whole gate, in `ci.yml` order, from the repo root on Node 24:
+Since PDEV-7001, `publish.yml` re-runs the full gate on the tag, so a bad commit no longer publishes silently (see Phase 5). Reproduce it locally anyway on the exact SHA you intend to release — a failure there costs a minute, a failure on the tag costs a burnt version number. Run the whole gate, in `ci.yml` order, from the repo root on Node 24:
 
 ```bash
 nvm use                 # reads .nvmrc (24.18.0)
@@ -64,7 +64,7 @@ Did the public-API snapshot change in Phase 1, or did the runtime behavior of a 
 | Add a new export / entry point / optional param / optional returned field; widen an input type; add an optional adapter method | **MINOR** | Purely additive |
 | Bug fix with no surface/behavior change; docs; internal refactor | **PATCH** | Contract unchanged |
 
-> **We are `0.17.0` — treat a `0.x` minor as this package's "major".** Consumers pin `^0.x`, which npm locks to the minor (`^0.17.0` → `<0.18.0`). So a **breaking** change must land as a **minor** bump (`0.17` → `0.18`) **with a documented migration note** — never a patch. Do not rely on `0.x` semver leniency; that is what silently fans out to surfaces.
+> **We are `0.18.0` — treat a `0.x` minor as this package's "major".** Consumers pin `^0.x`, which npm locks to the minor (`^0.18.0` → `<0.19.0`). So a **breaking** change must land as a **minor** bump (`0.18` → `0.19`) **with a documented migration note** — never a patch. Do not rely on `0.x` semver leniency; that is what silently fans out to surfaces.
 
 If breaking: write the **migration note** now (README/CHANGELOG: what changed, before→after call site, which surfaces in [`../sdk/references/adapters.md`](../sdk/references/adapters.md) must act) and mark the landing commit with the breaking-change `!` (`feat(PDEV-XXXX)!: …`) so the semver decision is auditable. Do not bump `package.json` yet — the bump commit lands in Phase 5, after the canary proves the change in a real consumer.
 
@@ -103,7 +103,7 @@ Invariant E, documented and **non-negotiable**: nothing ships to production on a
 
 Walk the full checklist in [`../sdk/references/telemetry-release-gate.md`](../sdk/references/telemetry-release-gate.md). Do not promote a surface unless all of:
 
-- [ ] **`AnalyticsAdapter` wired** on the surface (peer of `StorageAdapter`/`IdentityAdapter`). The seam is **on `main`** (**WS9** — PDEV-6854/6855) but **not in a published release yet** (last tag `v0.17.0` predates it), so a surface needs a canary or `file:` link until the next release. Register a concrete adapter at startup via `setAnalyticsAdapter` (from `@theblockbrain/bb-client-sdk/analytics`) implementing the `AnalyticsAdapter` type (from `@theblockbrain/bb-client-sdk/adapters`), or use `createMixpanelAdapter` from `@theblockbrain/bb-client-sdk/analytics/mixpanel`. Registering an adapter today gets the surface the SDK's `auth_started`/`auth_success`/`auth_failed` funnel for free (`src/auth/login.ts`, PDEV-6855 — the only wired call site) plus its own events; `token_refresh`, `message_send`, `stream_*` and `api_error` are still unwired in the SDK.
+- [ ] **`AnalyticsAdapter` wired** on the surface (peer of `StorageAdapter`/`IdentityAdapter`). The seam (**WS9** — PDEV-6854/6855) ships in **`0.18.0`**; a surface still pinned to `^0.17.0` needs a canary or `file:` link until it bumps. Register a concrete adapter at startup via `setAnalyticsAdapter` (from `@theblockbrain/bb-client-sdk/analytics`) implementing the `AnalyticsAdapter` type (from `@theblockbrain/bb-client-sdk/adapters`), or use `createMixpanelAdapter` from `@theblockbrain/bb-client-sdk/analytics/mixpanel`. Registering an adapter today gets the surface the SDK's `auth_started`/`auth_success`/`auth_failed` funnel for free (`src/auth/login.ts`, PDEV-6855 — the only wired call site) plus its own events; `token_refresh`, `message_send`, `stream_*` and `api_error` are still unwired in the SDK.
 - [ ] **Minimum event set emitting**, mapped to the standard taxonomy: `auth_success` / `auth_failed`, `message_send`, `stream_start` / `stream_first_token` / `stream_complete` / `stream_dropped`, and `api_error{ statusCode, endpoint }`. The last maps directly off `BBApiError` (`src/api/errors.ts`), which carries `statusCode` and `endpoint` on every non-2xx — that is exactly why the core throws it. **Never** forward `BBApiError.responseBody` raw to Sentry/analytics; scrub it (it may echo secrets) and never log tokens (invariant D).
 - [ ] **Sentry + Grafana Faro live** on the surface (crash-free and error-rate reporting), verified receiving events — not merely configured.
 
@@ -131,10 +131,10 @@ Release from a **merged, CI-green `main` commit** (the one you verified in Phase
    git push origin v0.18.0
    ```
 
-> ### ⚠ KNOWN GAP — `publish.yml` is NOT gated on the full suite
-> On the `v*` tag, `publish.yml` runs **only `npm run typecheck` + `npm run build`** before `npm publish`. It does **not** run `test`, `lint:biome`, `lint:types`, the **public-API contract test**, or `check:package`. `ci.yml` runs the full gate — but only on push/PR to `main`, **not** on the tag. So the tag itself publishes with almost no gate.
+> ### ✅ CLOSED — `publish.yml` now runs the full gate (SLO E2)
+> PDEV-7001 closed the hole. On a `v*` tag, `publish.yml` runs a **tag ↔ `package.json` version guard** → `lint` → `typecheck` → `test` → `build` → `check:package` → `check:cleanroom`, and only then `npm publish`. A tag on a commit whose tests never went green now fails the publish instead of shipping it, and a tag whose number disagrees with `package.json` is rejected outright.
 >
-> **Because of this, the releaser MUST manually confirm the full gate passed on the exact tagged SHA** — that is Phase 1's local run **and** the green-CI check on the merged `main` commit. Never tag a SHA whose CI you have not confirmed `completed/success`. Flag this gap (SLO **E2** — "CI + publish both gated on tests") in any release PR that touches the workflows; the fix is a `workflow_call` reusable gate invoked by both `ci.yml` and `publish.yml`, or asserting the CI check-run conclusion on `github.sha` before publishing.
+> Two things this does **not** do, so keep doing them by hand: it does not prove the change works in a **consumer** (that is Phase 3's canary), and it does not check **telemetry** on the surface being promoted (Phase 4). Confirming `ci.yml` concluded `completed/success` on the merged `main` commit is still worth the ten seconds — it fails earlier and more cheaply than the tag does.
 
 After the tag: confirm `publish.yml` succeeded and that the version resolves from the registry under the `latest` dist-tag (`npm view @theblockbrain/bb-client-sdk version`).
 
@@ -144,7 +144,7 @@ After the tag: confirm `publish.yml` succeeded and that the version resolves fro
 
 A published version is worthless if surfaces never adopt it. Under `^` ranges a breaking change fans out silently; a **frozen** pin trades that for ever-growing migration debt.
 
-- **The cautionary tale.** `ms-outlook-addin` — the reference adopter — sat on **`^0.7.3`** while the SDK reached **`0.17.0`** (~10 minor eras behind). Consequences mapped straight to the invariants: it could not canary-test current changes (Phase 3 lost its signal), and every accumulated break landed in one painful upgrade instead of being absorbed incrementally. It is back in step (**`^0.17.0`**, resolving 0.17.0 — the latest published tag); keeping it there is a standing obligation, not a solved problem.
+- **The cautionary tale.** `ms-outlook-addin` — the reference adopter — sat on **`^0.7.3`** while the SDK reached **`0.17.0`** (~10 minor eras behind). Consequences mapped straight to the invariants: it could not canary-test current changes (Phase 3 lost its signal), and every accumulated break landed in one painful upgrade instead of being absorbed incrementally. It was brought back in step at **`^0.17.0`**; `0.18.0` puts it one era behind again, and that bump is the release's outstanding follow-up. Keeping it current is a standing obligation, not a solved problem.
 - **The rule — SLO E3: no surface more than one minor-era behind.** After a release, open (or nudge) an upgrade PR on each consuming surface so it tracks within one minor of current. One small PR per surface per release era is cheap; a 10-era jump is not.
 - **`file:`-linked consumers** (Chrome add-in, monorepo links): `dist/` is git-ignored and npm does **not** run build for symlinked `file:` deps. After any fresh clone/pull of this SDK, run `npm run build` here **once** before building the linked consumer, or its `import` of `dist/` resolves to nothing (README). Registry installs are unaffected (`prepack`/`prepublishOnly` build `dist/`).
 - **Consumer pin policy** (adapter devs): pin `^0.MINOR.PATCH`, read the migration note, bump the minor deliberately. Full policy in [`../sdk/references/release-and-versioning.md`](../sdk/references/release-and-versioning.md) §4.
@@ -162,5 +162,5 @@ A published version is worthless if surfaces never adopt it. Under `^` ranges a 
 - [ ] **Telemetry gate** satisfied on every surface being promoted (AnalyticsAdapter/equivalent wired, min event set emitting, Sentry + Faro live) — [`../sdk/references/telemetry-release-gate.md`](../sdk/references/telemetry-release-gate.md)
 - [ ] Version bumped on a ticket-scoped branch; PR merged so full CI ran on `main`
 - [ ] Tag `vX.Y.Z` pushed on the merged `main` commit; `publish.yml` succeeded; version resolves as `latest`
-- [ ] **Publish-gap acknowledged** — confirmed the full gate ran on the tagged SHA (publish.yml only ran typecheck+build); SLO E2 fix considered if workflows were touched
+- [ ] `publish.yml`'s own gate green on the tag (it re-runs lint/test/`check:package`/`check:cleanroom` since PDEV-7001 — SLO E2 closed)
 - [ ] Consumer upgrade PRs opened/nudged — no surface > 1 minor-era behind (SLO E3)
