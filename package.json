@@ -41,6 +41,11 @@
       "react-native": "./dist/text/index.js",
       "import": "./dist/text/index.js"
     },
+    "./media": {
+      "types": "./dist/media/index.d.ts",
+      "react-native": "./dist/media/index.js",
+      "import": "./dist/media/index.js"
+    },
     "./adapters": {
       "types": "./dist/adapters/index.d.ts",
       "react-native": "./dist/adapters/index.js",

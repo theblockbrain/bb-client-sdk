@@ -2,9 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { login } from "../auth/login.js";
 import {
   createOfficeIdentityAdapter,
+  isOfficeDialogCancelled,
   type OfficeDialog,
+  OfficeDialogError,
   type OfficeDialogEventArgs,
   type OfficeGlobal,
+  openOfficeDialog,
 } from "./office.js";
 
 vi.mock("../auth/tokens.js", () => ({
@@ -56,7 +59,7 @@ interface FakeOffice {
 }
 
 /** A test double for the slice of Office.js the adapter uses. */
-function fakeOffice(options: { failToOpen?: boolean } = {}): FakeOffice {
+function fakeOffice(options: { failToOpen?: boolean; closeThrows?: boolean } = {}): FakeOffice {
   const handlers = new Map<string, (args: OfficeDialogEventArgs) => void>();
   let opened = "";
   let closes = 0;
@@ -67,6 +70,9 @@ function fakeOffice(options: { failToOpen?: boolean } = {}): FakeOffice {
     },
     close: () => {
       closes += 1;
+      // The host tears the dialog down when the user closes it, so a later
+      // close() throws rather than no-opping.
+      if (options.closeThrows) throw new Error("dialog already closed");
     },
   };
 
@@ -159,7 +165,17 @@ describe("createOfficeIdentityAdapter", () => {
 
     fake.postEvent(12006);
 
-    await expect(pending).rejects.toThrow(/cancelled/i);
+    // Asserted on the DISCRIMINANT, not the message. This test used to match
+    // /cancelled/i, which is the same thing the consuming surfaces were doing
+    // (`ms-outlook-addin` had both `/cancelled/i.test(msg)` and a
+    // `msg === "cancelled"` sentinel) — and every one of them silently stops
+    // working when the message is reworded or translated.
+    await expect(pending).rejects.toMatchObject({
+      name: "OfficeDialogError",
+      reason: "cancelled",
+      code: 12006,
+    });
+    expect(isOfficeDialogCancelled(await pending.catch(e => e))).toBe(true);
   });
 
   it("reports any other dialog error with its code", async () => {
@@ -203,6 +219,147 @@ describe("createOfficeIdentityAdapter", () => {
 
     await expect(pending).resolves.toContain("code=abc");
     expect(fake.closeCount()).toBe(1);
+  });
+});
+
+/**
+ * The courier is tested directly, not only through the OAuth hop: the reason it
+ * was extracted is that `ms-outlook-addin`'s dictation popup had grown the same
+ * mechanics with a *different* payload shape, and PowerPoint/Excel would have
+ * been third and fourth. A JSON envelope has to work as well as a redirect URL.
+ */
+describe("openOfficeDialog", () => {
+  interface Envelope {
+    text: string;
+  }
+
+  const parseEnvelope = (message: string): Envelope => {
+    const parsed: unknown = JSON.parse(message);
+    if (typeof (parsed as Envelope)?.text !== "string") throw new Error("no text in envelope");
+    return parsed as Envelope;
+  };
+
+  function openEnvelopeDialog(fake: FakeOffice): Promise<Envelope> {
+    return openOfficeDialog<Envelope>({
+      office: fake.office,
+      url: "https://addin.example.com/dictate.html",
+      parse: parseEnvelope,
+    });
+  }
+
+  it("resolves with whatever the caller's parse returns", async () => {
+    const fake = fakeOffice();
+    const pending = openEnvelopeDialog(fake);
+
+    fake.postMessage('{"text":"hello"}');
+
+    await expect(pending).resolves.toEqual({ text: "hello" });
+    expect(fake.closeCount()).toBe(1);
+  });
+
+  it("forces displayInIframe false regardless of caller options", async () => {
+    // A popup that needs getUserMedia needs a real window for the browser's
+    // permission prompt, the same way an IdP needs one for X-Frame-Options.
+    const fake = fakeOffice();
+    const spy = vi.spyOn(fake.office.context.ui, "displayDialogAsync");
+
+    const pending = openOfficeDialog<string>({
+      office: fake.office,
+      url: "https://addin.example.com/dictate.html",
+      parse: message => message,
+      dialog: { height: 40, width: 20 },
+    });
+    fake.postMessage("ok");
+    await pending;
+
+    expect(spy.mock.calls[0][1]).toMatchObject({
+      displayInIframe: false,
+      height: 40,
+      width: 20,
+    });
+  });
+
+  it("rejects with reason bad-message when parse throws", async () => {
+    const fake = fakeOffice();
+    const pending = openEnvelopeDialog(fake);
+
+    fake.postMessage("not json at all");
+
+    await expect(pending).rejects.toMatchObject({
+      name: "OfficeDialogError",
+      reason: "bad-message",
+    });
+    expect(fake.closeCount()).toBe(1);
+  });
+
+  it("preserves an OfficeDialogError thrown by parse rather than rewrapping it", async () => {
+    const fake = fakeOffice();
+    const pending = openOfficeDialog<string>({
+      office: fake.office,
+      url: "https://addin.example.com/dictate.html",
+      parse: () => {
+        throw new OfficeDialogError("callback page redeemed the token itself", "bad-message");
+      },
+    });
+
+    fake.postMessage("anything");
+
+    await expect(pending).rejects.toThrow(/redeemed the token itself/);
+  });
+
+  it("distinguishes a user close from a host error", async () => {
+    const cancelled = fakeOffice();
+    const pendingCancelled = openEnvelopeDialog(cancelled);
+    cancelled.postEvent(12006);
+    const cancelError = await pendingCancelled.catch((err: unknown) => err);
+
+    const broken = fakeOffice();
+    const pendingBroken = openEnvelopeDialog(broken);
+    broken.postEvent(12002);
+    const hostError = await pendingBroken.catch((err: unknown) => err);
+
+    expect(isOfficeDialogCancelled(cancelError)).toBe(true);
+    expect(isOfficeDialogCancelled(hostError)).toBe(false);
+    expect(hostError).toMatchObject({ reason: "host-error", code: 12002 });
+  });
+
+  it("rejects with reason open-failed when the host refuses to open it", async () => {
+    const fake = fakeOffice({ failToOpen: true });
+
+    await expect(openEnvelopeDialog(fake)).rejects.toMatchObject({
+      name: "OfficeDialogError",
+      reason: "open-failed",
+    });
+  });
+
+  it("survives instanceof across the error's own prototype chain", () => {
+    // `Object.setPrototypeOf` in the constructor is what keeps this true once a
+    // bundler downlevels the class — the same reason BBApiError does it.
+    const err = new OfficeDialogError("x", "cancelled", { code: 12006 });
+    expect(err).toBeInstanceOf(OfficeDialogError);
+    expect(err).toBeInstanceOf(Error);
+    expect(isOfficeDialogCancelled(err)).toBe(true);
+    expect(isOfficeDialogCancelled(new Error("cancelled"))).toBe(false);
+  });
+
+  it("closes exactly once when a message and a close race", async () => {
+    const fake = fakeOffice();
+    const pending = openEnvelopeDialog(fake);
+
+    fake.postMessage('{"text":"hello"}');
+    fake.postEvent(12006);
+
+    await expect(pending).resolves.toEqual({ text: "hello" });
+    expect(fake.closeCount()).toBe(1);
+  });
+
+  it("still settles when close() throws because the dialog is already gone", async () => {
+    const fake = fakeOffice({ closeThrows: true });
+    const pending = openEnvelopeDialog(fake);
+
+    fake.postMessage('{"text":"hello"}');
+
+    await expect(pending).resolves.toEqual({ text: "hello" });
   });
 });
 

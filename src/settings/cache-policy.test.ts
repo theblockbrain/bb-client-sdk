@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { BBCacheEntry } from "./cache-policy.js";
 import { BB_CACHE_DEFAULT, BB_CACHE_POLICY, cachePolicyFor } from "./cache-policy.js";
 
 /**
@@ -31,7 +32,13 @@ describe("BB_CACHE_POLICY", () => {
 
   it("never retains for less time than it serves stale", () => {
     // Evicting before a value goes stale would make the staleness bound a lie.
-    for (const [resource, entry] of Object.entries(BB_CACHE_POLICY)) {
+    // BB_CACHE_DEFAULT is included: it is what a cache falls back to, so it is the one
+    // entry where breaking the invariant would affect every resource at once.
+    const entries: [string, BBCacheEntry][] = [
+      ...Object.entries(BB_CACHE_POLICY),
+      ["BB_CACHE_DEFAULT", BB_CACHE_DEFAULT],
+    ];
+    for (const [resource, entry] of entries) {
       expect(entry.retainMs, resource).toBeGreaterThanOrEqual(entry.staleMs);
     }
   });

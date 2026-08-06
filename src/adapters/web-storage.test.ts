@@ -21,7 +21,9 @@ function fakeArea(initial: Record<string, string> = {}) {
       map.delete(k);
     }),
   };
-  return { area: area as unknown as Storage, raw: map, spies: area };
+  // No cast: `createWebStorageAdapter` takes the structural `WebStorageArea`, so this
+  // double satisfies it directly and the test stays free of DOM ambient types.
+  return { area, raw: map, spies: area };
 }
 
 describe("createWebStorageAdapter", () => {

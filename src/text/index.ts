@@ -13,3 +13,4 @@
  */
 export { extractCode } from "./code-fence.js";
 export { extractJson, repairUnescapedQuotes } from "./extract-json.js";
+export { PLAIN_TEXT_HTML_TAGS, plainTextToHtml } from "./plain-text-html.js";

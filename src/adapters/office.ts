@@ -54,6 +54,17 @@
 
 import type { IdentityAdapter } from "./identity.js";
 
+// Persistence for an Office add-in ships from this same subpath: a surface that
+// needs the dialog hop needs somewhere to keep the resulting session, and both
+// are Office-only, so neither belongs in the host-agnostic `./adapters` barrel.
+export type {
+  OfficeRuntimeStorageArea,
+  OfficeStorageAdapter,
+  OfficeStorageConfig,
+  RoamingSettingsArea,
+} from "./office-storage.js";
+export { createOfficeStorageAdapter } from "./office-storage.js";
+
 // ─── Structural Office.js surface ─────────────────────────────────────────────
 
 /** `Office.AsyncResult` — only `status`, `value` and `error` are read. */
@@ -164,6 +175,165 @@ const DEFAULT_DIALOG: OfficeDialogOptions = {
   displayInIframe: false,
 };
 
+// ─── Generic dialog courier ───────────────────────────────────────────────────
+
+/**
+ * Why a dialog did not produce a value.
+ *
+ * A discriminant, not prose. Every surface that opens an Office dialog has to
+ * tell "the user closed it" (normal, show nothing) from "it broke" (show an
+ * error), and every one of them was doing it by **matching on message text**:
+ * `ms-outlook-addin` had `/cancelled/i.test(msg)` in `Login.tsx` and a separate
+ * `msg === "cancelled"` sentinel for dictation. Both silently stop working the
+ * moment the message is translated — which is exactly what happens when a
+ * surface wires up L12.
+ */
+export type OfficeDialogFailure =
+  /** `displayDialogAsync` never opened the dialog. */
+  | "open-failed"
+  /** The user closed it (Office code 12006). Normal, not an error. */
+  | "cancelled"
+  /** Office reported some other dialog error; `code` carries it. */
+  | "host-error"
+  /** A message arrived but `parse` rejected it. */
+  | "bad-message";
+
+/** Thrown by {@link openOfficeDialog}. Carries a typed {@link OfficeDialogFailure}. */
+export class OfficeDialogError extends Error {
+  readonly reason: OfficeDialogFailure;
+  /** Office's numeric error code, when the host supplied one. */
+  readonly code?: number;
+
+  constructor(message: string, reason: OfficeDialogFailure, options?: { code?: number }) {
+    super(message);
+    this.name = "OfficeDialogError";
+    this.reason = reason;
+    this.code = options?.code;
+    // Preserve prototype so `instanceof` survives bundler realms — same reason
+    // `BBApiError` does it.
+    Object.setPrototypeOf(this, OfficeDialogError.prototype);
+  }
+}
+
+/** True for an {@link OfficeDialogError} with the given reason. */
+export function isOfficeDialogCancelled(err: unknown): boolean {
+  return err instanceof OfficeDialogError && err.reason === "cancelled";
+}
+
+export interface OpenOfficeDialogConfig<T> {
+  /** The Office namespace — pass the global `Office`. */
+  office: OfficeGlobal;
+  /** Absolute URL to open. */
+  url: string;
+  /**
+   * Turn the `messageParent` payload into the resolved value.
+   *
+   * Throw to reject with `reason: "bad-message"` — validation belongs to the
+   * caller because only it knows what its dialog posts back. The OAuth hop
+   * expects a redirect URL; the dictation popup expects a JSON envelope.
+   */
+  parse: (message: string) => T;
+  /** Dialog sizing. Defaults to 60% × 30%. */
+  dialog?: Omit<OfficeDialogOptions, "displayInIframe">;
+}
+
+/**
+ * Open an Office dialog and resolve with whatever it posts back.
+ *
+ * **The dialog is a courier.** It is a separate browsing context that cannot read
+ * the taskpane's memory, so the only thing crossing the boundary is one string
+ * through `messageParent`. This function owns the mechanics every Office surface
+ * was re-implementing: opening it, the settle-once guard, mapping code 12006 to
+ * a cancellation, and closing it exactly once.
+ *
+ * Extracted from {@link createOfficeIdentityAdapter} (which now calls it) because
+ * `ms-outlook-addin`'s dictation popup had grown the same ~60 lines
+ * independently, and PowerPoint/Excel would have been third and fourth. The OAuth
+ * hop is one *use* of an Office dialog, not the definition of one.
+ *
+ * `displayInIframe` is forced `false`: an IdP sends `X-Frame-Options` and renders
+ * blank, and a popup that needs `getUserMedia` needs a real window for the
+ * browser's permission prompt. No caller has wanted `true`.
+ */
+export function openOfficeDialog<T>(config: OpenOfficeDialogConfig<T>): Promise<T> {
+  const { office, url, parse } = config;
+  const dialogOptions: OfficeDialogOptions = {
+    ...DEFAULT_DIALOG,
+    ...config.dialog,
+    displayInIframe: false,
+  };
+
+  return new Promise<T>((resolve, reject) => {
+    office.context.ui.displayDialogAsync(url, dialogOptions, result => {
+      if (result.status === office.AsyncResultStatus.Failed) {
+        reject(
+          new OfficeDialogError(
+            `Office dialog failed to open: ${result.error?.message ?? "unknown error"}`,
+            "open-failed",
+            { code: result.error?.code },
+          ),
+        );
+        return;
+      }
+
+      const dialog = result.value;
+      // Office delivers the message and the close event through separate handlers
+      // with no mutual exclusion, so a user closing the dialog just after it posts
+      // would settle the promise twice. Promises ignore the second settle, but the
+      // dialog would be closed twice — guard both.
+      let settled = false;
+
+      const finish = (action: () => void): void => {
+        if (settled) return;
+        settled = true;
+        try {
+          dialog.close();
+        } catch {
+          // Already gone (user closed it, host tore it down). Not an error: the
+          // outcome we care about has already been decided.
+        }
+        action();
+      };
+
+      dialog.addEventHandler(office.EventType.DialogMessageReceived, args => {
+        let value: T;
+        try {
+          value = parse(args.message ?? "");
+        } catch (err) {
+          finish(() =>
+            reject(
+              err instanceof OfficeDialogError
+                ? err
+                : new OfficeDialogError(
+                    err instanceof Error ? err.message : "Unusable message from Office dialog.",
+                    "bad-message",
+                  ),
+            ),
+          );
+          return;
+        }
+        finish(() => resolve(value));
+      });
+
+      dialog.addEventHandler(office.EventType.DialogEventReceived, args => {
+        finish(() =>
+          reject(
+            args.error === DIALOG_CLOSED_BY_USER
+              ? new OfficeDialogError("The dialog was closed.", "cancelled", {
+                  code: args.error,
+                })
+              : new OfficeDialogError(
+                  `Office dialog error${args.error === undefined ? "" : ` ${args.error}`}.`,
+                  "host-error",
+                  { code: args.error },
+                ),
+          ),
+        );
+      });
+    });
+  });
+}
+
 /**
  * Build an {@link IdentityAdapter} that performs the OAuth hop in an Office dialog.
  *
@@ -176,91 +346,35 @@ const DEFAULT_DIALOG: OfficeDialogOptions = {
  */
 export function createOfficeIdentityAdapter(config: OfficeIdentityAdapterConfig): IdentityAdapter {
   const { office, redirectUri } = config;
-  // `config.dialog` cannot carry `displayInIframe` (see the field's doc), so the
-  // default's `false` always survives the spread. Ordering it last anyway keeps
-  // that true if the option type is ever widened.
-  const dialogOptions: OfficeDialogOptions = {
-    ...DEFAULT_DIALOG,
-    ...config.dialog,
-    displayInIframe: false,
-  };
 
   return {
     getRedirectUri: () => redirectUri,
 
-    launchOAuthFlow(authorizeUrl: string): Promise<string> {
-      return new Promise<string>((resolve, reject) => {
-        office.context.ui.displayDialogAsync(authorizeUrl, dialogOptions, result => {
-          if (result.status === office.AsyncResultStatus.Failed) {
-            reject(
-              new Error(
-                `Office dialog failed to open: ${result.error?.message ?? "unknown error"}`,
-              ),
+    launchOAuthFlow: (authorizeUrl: string): Promise<string> =>
+      openOfficeDialog<string>({
+        office,
+        url: authorizeUrl,
+        dialog: config.dialog,
+        // The dialog is a courier: it posts back the redirect URL and nothing
+        // else. Validating here means `login()` never has to defend against a
+        // message from some other sender on the same channel.
+        parse: message => {
+          if (!isAbsoluteUrl(message)) {
+            throw new OfficeDialogError(
+              "Office dialog posted a message that is not an absolute redirect URL. " +
+                "The callback page must call " +
+                "`Office.context.ui.messageParent(window.location.href)` and must NOT " +
+                "redeem the token itself — the verifier stays in the taskpane.",
+              "bad-message",
             );
-            return;
           }
 
-          const dialog = result.value;
-          // Office delivers the message and the close event through separate
-          // handlers with no mutual exclusion, so a user closing the dialog just
-          // after it posts would settle the promise twice. Promises ignore the
-          // second settle, but the dialog would be closed twice — guard both.
-          let settled = false;
+          const fragmentProblem = describeFragmentRoutedCallback(message);
+          if (fragmentProblem) throw new OfficeDialogError(fragmentProblem, "bad-message");
 
-          const finish = (action: () => void): void => {
-            if (settled) return;
-            settled = true;
-            try {
-              dialog.close();
-            } catch {
-              // Already gone (user closed it, host tore it down). Not an error:
-              // the outcome we care about has already been decided.
-            }
-            action();
-          };
-
-          dialog.addEventHandler(office.EventType.DialogMessageReceived, args => {
-            const message = args.message ?? "";
-            // The dialog is a courier: it posts back the redirect URL and nothing
-            // else. Validating here means `login()` never has to defend against a
-            // message from some other sender on the same channel.
-            if (!isAbsoluteUrl(message)) {
-              finish(() =>
-                reject(
-                  new Error(
-                    "Office dialog posted a message that is not an absolute redirect URL. " +
-                      "The callback page must call " +
-                      "`Office.context.ui.messageParent(window.location.href)` and must NOT " +
-                      "redeem the token itself — the verifier stays in the taskpane.",
-                  ),
-                ),
-              );
-              return;
-            }
-
-            const fragmentProblem = describeFragmentRoutedCallback(message);
-            if (fragmentProblem) {
-              finish(() => reject(new Error(fragmentProblem)));
-              return;
-            }
-
-            finish(() => resolve(message));
-          });
-
-          dialog.addEventHandler(office.EventType.DialogEventReceived, args => {
-            finish(() =>
-              reject(
-                new Error(
-                  args.error === DIALOG_CLOSED_BY_USER
-                    ? "Sign-in was cancelled — the dialog was closed."
-                    : `Office dialog error${args.error === undefined ? "" : ` ${args.error}`}.`,
-                ),
-              ),
-            );
-          });
-        });
-      });
-    },
+          return message;
+        },
+      }),
   };
 }
 

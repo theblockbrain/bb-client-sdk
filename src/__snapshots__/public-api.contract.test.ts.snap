@@ -69,6 +69,10 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "ListTenantsResponse",
   "LoginOptions",
   "LoginResult",
+  "MarkdownDocument",
+  "MarkdownElement",
+  "MarkdownFragment",
+  "MarkdownNode",
   "MarkdownOptions",
   "MessageItem",
   "MessageKeyListIsComplete",
@@ -78,6 +82,7 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "NoteResult",
   "OAUTH_BACKEND_URL",
   "OAuthTokens",
+  "PLAIN_TEXT_HTML_TAGS",
   "Profile",
   "SendMessageOptions",
   "SendMessageStreamOptions",
@@ -170,6 +175,7 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "isBBApiError",
   "isConnectIntegrationFrame",
   "isRetryableBBError",
+  "isRetryableStatus",
   "isStreamErrorFrame",
   "isTextDeltaFrame",
   "isTokenExpired",
@@ -184,6 +190,7 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "normalizeUrl",
   "parseAgenticStream",
   "parseSseDataLine",
+  "plainTextToHtml",
   "refreshTokens",
   "renderMarkdown",
   "renderMarkdownInto",
@@ -227,6 +234,7 @@ exports[`public API surface > exports of "./adapters" are stable 1`] = `
   "IdentityAdapter",
   "StorageAdapter",
   "SyncStorageAdapter",
+  "WebStorageArea",
   "createHostCapabilityRegistry",
   "createWebCryptoAdapter",
   "createWebStorageAdapter",
@@ -246,11 +254,21 @@ exports[`public API surface > exports of "./adapters/office" are stable 1`] = `
 [
   "OfficeAsyncResult",
   "OfficeDialog",
+  "OfficeDialogError",
   "OfficeDialogEventArgs",
+  "OfficeDialogFailure",
   "OfficeDialogOptions",
   "OfficeGlobal",
   "OfficeIdentityAdapterConfig",
+  "OfficeRuntimeStorageArea",
+  "OfficeStorageAdapter",
+  "OfficeStorageConfig",
+  "OpenOfficeDialogConfig",
+  "RoamingSettingsArea",
   "createOfficeIdentityAdapter",
+  "createOfficeStorageAdapter",
+  "isOfficeDialogCancelled",
+  "openOfficeDialog",
 ]
 `;
 
@@ -436,6 +454,7 @@ exports[`public API surface > exports of "./api" are stable 1`] = `
   "isBBApiError",
   "isConnectIntegrationFrame",
   "isRetryableBBError",
+  "isRetryableStatus",
   "isStreamErrorFrame",
   "isTextDeltaFrame",
   "isToolCallApprovalFrame",
@@ -515,6 +534,17 @@ exports[`public API surface > exports of "./i18n" are stable 1`] = `
   "getFormatter",
   "resetFormatterAdapter",
   "setFormatterAdapter",
+]
+`;
+
+exports[`public API surface > exports of "./media" are stable 1`] = `
+[
+  "SUPPORTED_AUDIO_MIME_TYPES",
+  "audioFilenameFor",
+  "describeMediaCaptureError",
+  "extensionForAudioMimeType",
+  "formatRecordingTime",
+  "pickAudioMimeType",
 ]
 `;
 
@@ -661,14 +691,20 @@ exports[`public API surface > exports of "./telemetry/cookiebot" are stable 1`] 
 
 exports[`public API surface > exports of "./text" are stable 1`] = `
 [
+  "PLAIN_TEXT_HTML_TAGS",
   "extractCode",
   "extractJson",
+  "plainTextToHtml",
   "repairUnescapedQuotes",
 ]
 `;
 
 exports[`public API surface > exports of "./ui" are stable 1`] = `
 [
+  "MarkdownDocument",
+  "MarkdownElement",
+  "MarkdownFragment",
+  "MarkdownNode",
   "MarkdownOptions",
   "Theme",
   "ThemeMode",

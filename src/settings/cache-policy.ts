@@ -11,7 +11,15 @@
  * served from cache", independent of which cache honours it.
  */
 
-/** Resources the SDK caches, addressed by the same names `bbKeys` uses. */
+/**
+ * Resources the SDK caches.
+ *
+ * These are **flat policy names, not `bbKeys` segments** — the two vocabularies differ on
+ * purpose and it is worth not confusing them. `bbKeys` is hierarchical and per-tenant
+ * (`bots.detail(id)`, `tenant.config`, `websearch.providers`); a policy is one decision per
+ * resource, so `botDetail`, `tenantConfig` and `webSearch` are single names with no tenant
+ * in them. A policy keyed by cache key would need one entry per bot id.
+ */
 export type BBCachedResource =
   | "bots"
   | "botDetail"
@@ -65,7 +73,19 @@ export const BB_CACHE_POLICY: Readonly<Record<BBCachedResource, BBCacheEntry>> =
 /** Defaults for a cache with no per-resource entry — the previous global values. */
 export const BB_CACHE_DEFAULT: BBCacheEntry = { staleMs: FIVE_MIN, retainMs: TEN_MIN };
 
-/** The policy for a resource, falling back to {@link BB_CACHE_DEFAULT}. */
+/**
+ * The policy for a resource.
+ *
+ * The fallback is **kept deliberately, not left over**. `BB_CACHE_POLICY` is a total
+ * `Record` over `BBCachedResource`, so a well-typed caller can never reach it — but types
+ * are erased at runtime and this is a public export on `./settings`, so a JavaScript
+ * surface, or a value that arrived as a plain string, can still ask for a resource that
+ * is not in the table. Returning `undefined` there would make callers guard a lookup that
+ * looks infallible.
+ *
+ * Total by the same rule as the flag and formatter ports: a read on a render path answers
+ * with the default rather than failing.
+ */
 export function cachePolicyFor(resource: BBCachedResource): BBCacheEntry {
   return BB_CACHE_POLICY[resource] ?? BB_CACHE_DEFAULT;
 }

@@ -23,9 +23,48 @@ export interface FormatterAdapter {
 
 let registered: FormatterAdapter | null = null;
 
-/** Register the host's formatter. Pass `null` to fall back to the `Intl` default. */
+/**
+ * Register the host's formatter. Pass `null` to fall back to the `Intl` default.
+ *
+ * The adapter is **wrapped, not stored raw**. `FormatterAdapter` documents that its methods
+ * must not throw, but a host cannot be trusted to honour it — a misconfigured locale library
+ * is exactly the case this port exists for — and a formatter must never be the reason a
+ * screen fails to render. Each method falls back to the `Intl` default, which is itself
+ * total. Same rule the flag port applies to a throwing provider.
+ *
+ * Wrapped once here rather than on every read, so `formatDate` and friends stay allocation-free.
+ */
 export function setFormatterAdapter(adapter: FormatterAdapter | null): void {
-  registered = adapter;
+  registered = adapter === null ? null : guarded(adapter);
+}
+
+/** Run `attempt`; on any throw, fall back to the platform default. */
+function attempt<T>(run: () => T, fallback: () => T): T {
+  try {
+    return run();
+  } catch {
+    return fallback();
+  }
+}
+
+function guarded(host: FormatterAdapter): FormatterAdapter {
+  return {
+    date: (value, options) =>
+      attempt(
+        () => host.date(value, options),
+        () => platformDefault.date(value, options),
+      ),
+    number: (value, options) =>
+      attempt(
+        () => host.number(value, options),
+        () => platformDefault.number(value, options),
+      ),
+    relativeTime: value =>
+      attempt(
+        () => host.relativeTime(value),
+        () => platformDefault.relativeTime(value),
+      ),
+  };
 }
 
 /** Test seam: drop any registered adapter. */

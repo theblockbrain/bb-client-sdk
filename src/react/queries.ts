@@ -20,7 +20,7 @@ import {
   type MessageListBody,
 } from "../api/index.js";
 import type { AuthContext } from "../settings/auth-mode.js";
-import { cachePolicyFor } from "../settings/cache-policy.js";
+import { type BBCachedResource, cachePolicyFor } from "../settings/cache-policy.js";
 import { bbKeys } from "./keys.js";
 import { useBBContext } from "./provider.js";
 
@@ -31,11 +31,29 @@ import { useBBContext } from "./provider.js";
  * `getCtx` (not a token) so the freshest token is used at fetch time.
  */
 
+/**
+ * The SDK's cache policy for a resource, in react-query's vocabulary.
+ *
+ * Spread into every options object so the policy is **load-bearing rather than
+ * documentation**. Before this, only `messages` read it, so `BB_CACHE_POLICY`'s
+ * 30-minute `tenantConfig` / `capabilities` entries were dead data — those hooks
+ * inherited the 5-minute client default and kept refetching on the old schedule,
+ * which is the opposite of what the policy and the CHANGELOG claimed (PDEV-7767 review).
+ *
+ * `gcTime` as well as `staleTime`: a `retainMs` nothing reads is the same silent drift
+ * one level down.
+ */
+function cachePolicyOptions(resource: BBCachedResource): { staleTime: number; gcTime: number } {
+  const { staleMs, retainMs } = cachePolicyFor(resource);
+  return { staleTime: staleMs, gcTime: retainMs };
+}
+
 // ── bots ────────────────────────────────────────────────────────────────────────
 export function botsQueryOptions(getCtx: () => AuthContext, orgId: string) {
   return queryOptions({
     queryKey: bbKeys(orgId).bots.list,
     queryFn: () => fetchBotList(getCtx()),
+    ...cachePolicyOptions("bots"),
   });
 }
 export function useBots() {
@@ -48,6 +66,7 @@ export function botDetailQueryOptions(getCtx: () => AuthContext, orgId: string, 
     queryKey: bbKeys(orgId).bots.detail(botId),
     queryFn: () => fetchBotDetail(getCtx(), botId),
     enabled: !!botId,
+    ...cachePolicyOptions("botDetail"),
   });
 }
 export function useBotDetail(botId: string) {
@@ -82,6 +101,7 @@ export function agentsQueryOptions(
     // cached under the tenant being viewed
     queryKey: [...bbKeys(scope).agents.list, ...listingKeySuffix(options)],
     queryFn: () => fetchAgents(getCtx(), targetOrgId, options),
+    ...cachePolicyOptions("agents"),
   });
 }
 export function useAgents(targetOrgId?: string, options?: AdminListingOptions) {
@@ -100,6 +120,7 @@ export function capabilitiesQueryOptions(
   return queryOptions({
     queryKey: [...bbKeys(scope).capabilities.list, ...listingKeySuffix(options)],
     queryFn: () => fetchCapabilities(getCtx(), targetOrgId, options),
+    ...cachePolicyOptions("capabilities"),
   });
 }
 export function useCapabilities(targetOrgId?: string, options?: AdminListingOptions) {
@@ -117,6 +138,7 @@ export function tenantConfigQueryOptions(
   return queryOptions({
     queryKey: bbKeys(scope).tenant.config,
     queryFn: () => getTenantConfig(getCtx(), targetOrgId),
+    ...cachePolicyOptions("tenantConfig"),
   });
 }
 export function useTenantConfig(targetOrgId?: string) {
@@ -134,6 +156,7 @@ export function conversationDetailQueryOptions(
     queryKey: bbKeys(orgId).conversations.detail(convoId),
     queryFn: () => getConversationDetail(getCtx(), convoId),
     enabled: !!convoId,
+    ...cachePolicyOptions("conversationDetail"),
   });
 }
 export function useConversationDetail(convoId: string) {
@@ -161,6 +184,7 @@ export function useWebSearchProviders() {
   return useQuery({
     queryKey: bbKeys(orgId).websearch.providers,
     queryFn: () => getAvailableWebSearchProviders(getAuthContext()),
+    ...cachePolicyOptions("webSearch"),
   });
 }
 export function useConversationWebSearch(convoId: string) {
@@ -169,6 +193,7 @@ export function useConversationWebSearch(convoId: string) {
     queryKey: bbKeys(orgId).conversations.websearch(convoId),
     queryFn: () => getConversationWebSearch(getAuthContext(), convoId),
     enabled: !!convoId,
+    ...cachePolicyOptions("webSearch"),
   });
 }
 
@@ -192,7 +217,7 @@ export function messagesInfiniteOptions(
     },
     enabled: !!convoId,
     // Live: the policy says staleMs 0 — the server is source of truth on open.
-    staleTime: cachePolicyFor("messages").staleMs,
+    ...cachePolicyOptions("messages"),
     placeholderData: keepPreviousData, // smooth keyword-search transitions
   });
 }

@@ -9,6 +9,7 @@ export default defineConfig({
     "src/settings/index.ts",
     "src/utils/index.ts",
     "src/text/index.ts",
+    "src/media/index.ts",
     "src/adapters/index.ts",
     "src/adapters/office.ts",
     "src/config.ts",
