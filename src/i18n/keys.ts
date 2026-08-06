@@ -25,7 +25,14 @@ export type BBMessageKey =
   | "error.notFound"
   | "error.rateLimited"
   | "error.server"
-  | "error.rejected";
+  | "error.rejected"
+  // Device capture — the keys `describeMediaCaptureError` attaches (`./media`).
+  // Here rather than in each add-in's own key space because the condition is the
+  // SDK's to detect: two surfaces had already written the same three-branch
+  // `DOMException.name` ladder, and a third was about to.
+  | "media.permissionDenied"
+  | "media.deviceNotFound"
+  | "media.captureFailed";
 
 /** Every key, for a surface that wants to assert its catalogue is complete. */
 export const BB_MESSAGE_KEYS = [
@@ -40,6 +47,9 @@ export const BB_MESSAGE_KEYS = [
   "error.rateLimited",
   "error.server",
   "error.rejected",
+  "media.permissionDenied",
+  "media.deviceNotFound",
+  "media.captureFailed",
 ] as const satisfies readonly BBMessageKey[];
 
 /** Declared in the union but missing from {@link BB_MESSAGE_KEYS}. Must be `never`. */
