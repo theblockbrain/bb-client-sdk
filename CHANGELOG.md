@@ -150,6 +150,88 @@ entered as a comment in a README example. With no application path emitting it, 
 realistic source is infrastructure mid-rollout — transient, and retryable per RFC
 9110. Removed from the README and the /sdk skill.
 
+### The Office add-in surface logic moves into the SDK
+
+Four pieces that both Office add-ins had written independently, and that Wave 1
+(Outlook) and Wave 2 (Word) would otherwise carry across the migration unchanged.
+Each one is here because a *second* surface had already reproduced it, not in
+anticipation of one that might.
+
+**`openOfficeDialog` — the dialog courier, on `./adapters/office`.** The mechanics
+that `createOfficeIdentityAdapter` owned privately (open, settle exactly once, map
+code 12006 to a cancellation, close exactly once) are now a generic function over a
+caller-supplied `parse`. `ms-outlook-addin`'s dictation popup had grown the same
+~60 lines around a JSON envelope instead of a redirect URL; PowerPoint and Excel
+would have been third and fourth. `createOfficeIdentityAdapter` now calls it, and
+the OAuth-specific validation — absolute URL, no fragment-routed callback — lives in
+its `parse`.
+
+**Cancellation is a discriminant, not a message.** `OfficeDialogError` carries
+`reason: "open-failed" | "cancelled" | "host-error" | "bad-message"` plus Office's
+numeric `code`, with `isOfficeDialogCancelled(err)` for the one branch every surface
+needs. This replaces text-matching: `ms-outlook-addin` had `/cancelled/i.test(msg)`
+in `Login.tsx` and a separate `msg === "cancelled"` sentinel for dictation, and both
+stop working the moment the message is reworded — which is exactly what wiring up
+L12 does.
+
+> ⚠️ **`launchOAuthFlow` rejects differently.** Same signature, same failure
+> conditions, but the error is now an `OfficeDialogError` and the cancellation
+> message is `"The dialog was closed."` — it no longer contains the word
+> "cancelled". A surface matching on the text sees a cancelled sign-in as a hard
+> error. The snapshot cannot catch this: the export name is unchanged.
+>
+> ```diff
+> -if (/cancelled/i.test(err.message)) return;      // silently breaks
+> +if (isOfficeDialogCancelled(err)) return;
+> ```
+
+**`createOfficeStorageAdapter` — the backend priority, with the reason attached.**
+`Office.context.roamingSettings` is not a viable primary store: `saveAsync`
+round-trips to the mailbox server and returns 500 for *sideloaded* add-ins on the
+`outlook.cloud.microsoft` backend. The write reports success, nothing persists, and
+the symptom is a user signing in on every open — with no error near the cause. So
+the order is local Web Storage (source of truth, synchronous), `OfficeRuntime.storage`
+(mirrored to when present), and `roamingSettings` **read once as a migration source
+and never written**. Reads are synchronous (`SyncStorageAdapter`), so `warm(key)`
+must be awaited during boot inside `Office.onReady` — skipping it is not a cache miss
+that self-corrects, because a zustand store hydrating from an empty cache concludes
+the user is logged out and then persists that conclusion.
+
+**New `./media` subpath — the capture half of dictation.** `transcribeAudio` has
+taken a `Blob` since v0.14 and stayed silent about producing one, so three surfaces
+worked it out alone: `ms-outlook-addin` twice (task pane and dictation popup,
+byte-identical) and `ms-word-addin` once inside a 323-line `useAudioRecorder`.
+`pickAudioMimeType`, `extensionForAudioMimeType`, `audioFilenameFor`,
+`formatRecordingTime` and `describeMediaCaptureError` are the decisions all three
+made identically. The recorder **state machine is deliberately not here** — Outlook
+drives a five-state task-pane button, Word drives a volume analyser, they disagree,
+and neither is more right.
+
+No DOM types cross the boundary: `MediaRecorder`, `MediaStream` and `DOMException`
+are `dom`-lib only, so support is passed in as a predicate
+(`MediaRecorder.isTypeSupported.bind(MediaRecorder)` — the bind matters) and errors
+are inspected structurally. `instanceof DOMException` would also be wrong in an
+Office add-in, where `getUserMedia` rejections cross realms.
+
+**`plainTextToHtml` + `PLAIN_TEXT_HTML_TAGS` on `./text`.** Not a markdown renderer
+and not a substitute for one — the opposite contract. The email and document surfaces
+prompt for *no* markdown because Outlook and Word bodies are not markdown targets,
+the model emits `- item` out of habit anyway, and inserting that verbatim ships
+literal `- ` characters in the sent mail. Real `<ul>`/`<ol>`, everything else escaped
+and joined with `<br>`. Shared because `ms-outlook-addin`'s `plainTextToHtml` and
+`ms-word-addin`'s `chatContentToHtml`/`ensureHtmlBlocks` had converged on it.
+`PLAIN_TEXT_HTML_TAGS` is exported so a caller's sanitiser allow-list cannot drift
+from what the function emits — Outlook's DOMPurify config listed the tags by hand,
+and a new one here would have been silently stripped. **Escaping is not sanitising**:
+every text node is escaped, but the caller still hands the result to a host API that
+renders it, so keep the sanitiser.
+
+**Three new `BBMessageKey`s** — `media.permissionDenied`, `media.deviceNotFound`,
+`media.captureFailed`. A surface asserting its catalogue is complete against
+`BB_MESSAGE_KEYS` must add them. They live in the SDK's key space because the
+*condition* is the SDK's to detect: two surfaces had already written the same
+three-branch `DOMException.name` ladder.
+
 ### The gate that would have caught all of this
 
 `npm run check:cleanroom` gained a second phase that installs the tarball with

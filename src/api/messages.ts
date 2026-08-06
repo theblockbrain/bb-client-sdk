@@ -20,9 +20,26 @@ export interface SendMessageOptions {
   /** Enable streaming mode. Default: false. */
   enableStreaming?: boolean;
   /**
-   * Tool-call approval resolver for Agentic turns.
-   * Default: `autoApproveResolver` (auto-approves all tool calls).
-   * Replace to surface approval prompts to users without changing the call signature.
+   * How tool-call approvals and ask-user-questions are answered on an Agentic turn.
+   *
+   * **Omitted, every tool call is DENIED** (and a diagnostic is logged naming the
+   * agent). That is the safe default, not a convenient one: the backend emits
+   * `data-tool-call-approval` and waits, the tool executes server-side against
+   * something live, so answering it is a security decision. Denying is not a
+   * silent no-op — the turn resumes with `{approved: false}` and the agent
+   * usually still answers in prose.
+   *
+   * This option stays optional only because `sendMessage` learns at runtime
+   * whether a conversation routes to Agentic at all; `callAgenticStream` requires
+   * a resolver outright.
+   *
+   * Pass one that prompts a human, or state the choice explicitly with
+   * `denyAllResolver` / `autoApproveResolver`. **`autoApproveResolver` is never a
+   * default** — it approves unattended, which is legitimate only where the agent
+   * cannot mutate anything the caller cares about (read-only embeds, fixtures,
+   * tests). It was the default once; PDEV-7330 removed it as a P0, because the
+   * backend was offering a gate and the client was answering "yes" on the user's
+   * behalf.
    */
   approvalResolver?: ApprovalResolver;
   /**

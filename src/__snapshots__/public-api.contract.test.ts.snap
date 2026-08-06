@@ -82,6 +82,7 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "NoteResult",
   "OAUTH_BACKEND_URL",
   "OAuthTokens",
+  "PLAIN_TEXT_HTML_TAGS",
   "Profile",
   "SendMessageOptions",
   "SendMessageStreamOptions",
@@ -189,6 +190,7 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "normalizeUrl",
   "parseAgenticStream",
   "parseSseDataLine",
+  "plainTextToHtml",
   "refreshTokens",
   "renderMarkdown",
   "renderMarkdownInto",
@@ -252,11 +254,21 @@ exports[`public API surface > exports of "./adapters/office" are stable 1`] = `
 [
   "OfficeAsyncResult",
   "OfficeDialog",
+  "OfficeDialogError",
   "OfficeDialogEventArgs",
+  "OfficeDialogFailure",
   "OfficeDialogOptions",
   "OfficeGlobal",
   "OfficeIdentityAdapterConfig",
+  "OfficeRuntimeStorageArea",
+  "OfficeStorageAdapter",
+  "OfficeStorageConfig",
+  "OpenOfficeDialogConfig",
+  "RoamingSettingsArea",
   "createOfficeIdentityAdapter",
+  "createOfficeStorageAdapter",
+  "isOfficeDialogCancelled",
+  "openOfficeDialog",
 ]
 `;
 
@@ -525,6 +537,17 @@ exports[`public API surface > exports of "./i18n" are stable 1`] = `
 ]
 `;
 
+exports[`public API surface > exports of "./media" are stable 1`] = `
+[
+  "SUPPORTED_AUDIO_MIME_TYPES",
+  "audioFilenameFor",
+  "describeMediaCaptureError",
+  "extensionForAudioMimeType",
+  "formatRecordingTime",
+  "pickAudioMimeType",
+]
+`;
+
 exports[`public API surface > exports of "./react" are stable 1`] = `
 [
   "BBClientProvider",
@@ -668,8 +691,10 @@ exports[`public API surface > exports of "./telemetry/cookiebot" are stable 1`] 
 
 exports[`public API surface > exports of "./text" are stable 1`] = `
 [
+  "PLAIN_TEXT_HTML_TAGS",
   "extractCode",
   "extractJson",
+  "plainTextToHtml",
   "repairUnescapedQuotes",
 ]
 `;
