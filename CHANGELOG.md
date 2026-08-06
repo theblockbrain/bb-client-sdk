@@ -6,7 +6,7 @@ The first release since `v0.17.0` (2026-06-23), and the baseline every adapter
 migration builds on. It carries the whole of **WS2** (one transport for every
 call), the **rename cluster**, a **React-free root barrel**, the host ports
 (crypto, capabilities, flags), the `./i18n` and `./media` layers, the shared
-Office add-in logic, and a set of security fixes.
+Office add-in logic, the client-executed tool relay, and a set of security fixes.
 
 Breaking changes are batched into this single bump on purpose. Every one of them
 is breaking, and three repos install this package — spreading them across several
@@ -416,6 +416,46 @@ renders it, so keep the sanitiser.
 `BB_MESSAGE_KEYS` must add them. They live in the SDK's key space because the
 *condition* is the SDK's to detect: two surfaces had already written the same
 three-branch `DOMException.name` ladder.
+
+### Client-executed tools, relayed through the agentic stream
+
+The half of the agent loop only the host can run. `AgenticCallOptions.externalTools`
+declares tools to the model; when it calls one the run suspends server-side,
+`executeExternalTool` runs it locally, and the SDK resumes the run with the result.
+That is what lets an agent insert at the Word cursor or read the open mail item —
+the model plans, the surface acts, and neither needs the other's runtime.
+
+Dispatch is **by name**, and only when the caller supplied both halves. A relayed
+call and an ask-user-question arrive as the same frame type, distinguishable only by
+the tool name, so answering one with the other's shape would hand the model an empty
+answers map where it expected its tool's output. Declaring tools with no executor
+falls back to the approval resolver rather than calling `undefined` mid-turn.
+
+Two failure modes are handled rather than left to the caller:
+
+- **`externalTools` is re-sent on every resume**, not just the initial request. The
+  server rebuilds the relay tool per request, so dropping it mid-turn strands the
+  suspended run — which is why every request body is built from one `baseBody()`
+  rather than assembled by hand at each resume site.
+- **A throwing tool resumes with `{ error }`** instead of ending the turn. The run
+  is suspended server-side; throwing abandons it and costs the user a whole turn
+  because one tool failed. Telling the model lets it retry another way — the same
+  courtesy the server extends via `tool-output-error` for its own tools.
+
+`maxExternalToolCalls` (default 32) is a **separate** budget from `maxAutoResumes`,
+since a legitimate multi-step edit consumes relay calls at a rate a resume cap was
+never sized for.
+
+New on `./agentic` (and `./api`, which re-exports it): `ExternalToolDef`,
+`ExternalToolExecutor`, `ExternalToolCall`, `AgenticExternalToolResumeData`,
+`JsonValue`, `ToolInputAvailableFrame` and `isToolInputAvailableFrame` — the
+`tool-input-available` frame is what carries the arguments, keyed by `toolCallId`,
+so the executor receives real `input` instead of re-deriving it.
+
+**Server-side allow-list.** Relay is honoured only for agents on the server's list
+(today the WebComponent Agent and the Word Agent). For any other agent the tools are
+shown to the model but its calls are never relayed, so no suspend arrives and the
+turn stalls on the model's side — a server-side fact the SDK cannot detect or fix.
 
 ---
 
