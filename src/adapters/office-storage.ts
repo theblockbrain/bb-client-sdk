@@ -113,9 +113,16 @@ export function createOfficeStorageAdapter(config: OfficeStorageConfig): OfficeS
   return {
     async warm(key: string): Promise<void> {
       // 1. Web Storage — synchronous and authoritative.
+      //
+      // `null` is the only miss. `""` is a stored value: Web Storage and
+      // {@link SyncStorageAdapter} both distinguish it from absence, and
+      // `createWebStorageAdapter` passes it through, so treating it as a miss here
+      // would make two implementations of one port disagree. It would also let a
+      // deliberately-emptied key fall through to the roaming migration below and
+      // be overwritten by whatever the legacy store still holds.
       try {
         const value = local.getItem(key);
-        if (value) {
+        if (value !== null) {
           memory.set(key, value);
           mirror(key, value);
           return;
@@ -128,7 +135,7 @@ export function createOfficeStorageAdapter(config: OfficeStorageConfig): OfficeS
       if (officeRuntime) {
         try {
           const value = await officeRuntime.getItem(key);
-          if (value) {
+          if (value !== null) {
             memory.set(key, value);
             try {
               local.setItem(key, value);
@@ -147,7 +154,10 @@ export function createOfficeStorageAdapter(config: OfficeStorageConfig): OfficeS
       if (roaming) {
         try {
           const value = roaming.get(key);
-          if (typeof value === "string" && value) {
+          // Unlike the two above, this one is `unknown` — roamingSettings stores
+          // structured data natively, so the type guard is load-bearing. `""` still
+          // migrates: it is a legacy value the caller may read meaning into.
+          if (typeof value === "string") {
             report(`Migrating "${key}" from roamingSettings to local storage`);
             memory.set(key, value);
             writeThrough(key, value);

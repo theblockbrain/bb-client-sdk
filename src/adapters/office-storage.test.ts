@@ -90,6 +90,28 @@ describe("createOfficeStorageAdapter — reads", () => {
     await expect(officeRuntime.getItem("session")).resolves.toBe("s1");
   });
 
+  it("serves a stored empty string as a value, not a miss", async () => {
+    // `null` is absence; `""` is a stored value. Web Storage draws that line and
+    // `createWebStorageAdapter` passes it through, so this adapter must agree —
+    // two implementations of one port cannot disagree on what "absent" means.
+    const storage = createOfficeStorageAdapter({ local: fakeLocal({ session: "" }) });
+    await storage.warm("session");
+    expect(storage.get("session")).toBe("");
+  });
+
+  it("promotes an empty string out of OfficeRuntime too", async () => {
+    const local = fakeLocal();
+    const storage = createOfficeStorageAdapter({
+      local,
+      officeRuntime: fakeOfficeRuntime({ session: "" }),
+    });
+
+    await storage.warm("session");
+
+    expect(storage.get("session")).toBe("");
+    expect(local.getItem("session")).toBe("");
+  });
+
   it("promotes an OfficeRuntime value back into local when local is empty", async () => {
     // The real recovery path: local storage was cleared but the add-in's own
     // async store survived.
@@ -137,6 +159,36 @@ describe("createOfficeStorageAdapter — the roamingSettings migration", () => {
     await storage.warm("session");
 
     expect(get).not.toHaveBeenCalled();
+  });
+
+  it("does not resurrect a legacy value over a deliberately-emptied key", async () => {
+    // The reason `""` must not read as a miss. A caller that emptied the key would
+    // otherwise fall through to the migration and get the old value written back
+    // into local storage — a stale token silently restored after being cleared.
+    const local = fakeLocal();
+    const roaming = fakeRoaming({ session: "legacy" });
+    const get = vi.spyOn(roaming, "get");
+    const storage = createOfficeStorageAdapter({ local, roaming });
+
+    storage.set("session", "");
+    await storage.warm("session");
+
+    expect(storage.get("session")).toBe("");
+    expect(local.getItem("session")).toBe("");
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("migrates an empty-string roaming value", async () => {
+    // `""` in the legacy store is a value the caller may read meaning into, so the
+    // guard here is the type check alone — not truthiness.
+    const storage = createOfficeStorageAdapter({
+      local: fakeLocal(),
+      roaming: fakeRoaming({ session: "" }),
+    });
+
+    await storage.warm("session");
+
+    expect(storage.get("session")).toBe("");
   });
 
   it("ignores a non-string roaming value", async () => {
