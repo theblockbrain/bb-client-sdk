@@ -147,7 +147,8 @@
     "prepare": "if [ -e .git ]; then lefthook install; fi",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build",
-    "check:cleanroom": "node scripts/clean-room-check.mjs"
+    "check:cleanroom": "node scripts/clean-room-check.mjs",
+    "release:status": "node scripts/release-status.mjs"
   },
   "engines": {
     "node": ">=24"

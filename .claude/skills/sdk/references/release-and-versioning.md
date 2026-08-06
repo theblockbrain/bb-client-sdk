@@ -55,12 +55,13 @@ not re-exported from an entry `index.ts` are not.
 | Widen/relax an input type, add an optional adapter method | **MINOR** | Additive |
 | Drop a Node version, raise a peer range, change ESM/CJS shape | **MAJOR** | Consumer environment/toolchain contract |
 
-> **Pre-1.0 caveat (we are `0.18.0`).** Under strict semver, `0.x` allows breaking
-> changes in a **minor**. We do **not** rely on that leniency: because consumers
-> pin `^0.x` (which under npm's rules locks the **minor**, e.g. `^0.18.0` →
-> `<0.18.0`), a breaking change **must** land as a **minor** bump (`0.17` → `0.18`)
-> **with a documented migration note**, never as a patch. Treat a `0.x` minor bump
-> as this package's "major". When the package reaches `1.0.0`, breaking → real MAJOR.
+> **Pre-1.0 caveat.** Under strict semver, `0.x` allows breaking changes in a
+> **minor**. We do **not** rely on that leniency: because consumers pin
+> `^0.MINOR.PATCH` (which under npm's rules locks the **minor** — `^0.M.P`
+> resolves `<0.M+1.0`), a breaking change **must** land as a **minor** bump
+> **with a documented migration note**, never as a patch. Treat a `0.x` minor
+> bump as this package's "major". When the package reaches `1.0.0`,
+> breaking → real MAJOR.
 
 ### The tripwire: the public-API contract test
 
@@ -201,7 +202,7 @@ failed publish costs a version number.
 
 | Do | Don't |
 | --- | --- |
-| Pin `^0.MINOR.PATCH` (e.g. `^0.18.0`) so patches flow but a breaking minor does not arrive un-reviewed | Pin `*`, `latest`, or a range that crosses a minor (`>=0.18`) |
+| Pin `^0.MINOR.PATCH` so patches flow but a breaking minor does not arrive un-reviewed | Pin `*`, `latest`, or a range that crosses a minor (`>=0.M`) |
 | Read the migration note and bump the minor deliberately | Let a stale pin drift far behind (see the Outlook lesson) |
 | Use `@canary` / `@0.0.0-canary.<sha>` to trial an unreleased change | Ship a canary build to production |
 
@@ -214,8 +215,8 @@ the token.
 ### The stale-pin lesson (cautionary tale)
 
 `ms-outlook-addin` — the **reference adopter** — sat on **`^0.7.3`** while the SDK
-reached **`0.17.0`**: ~10 minor eras behind. It was brought current in July 2026 and
-still pins **`^0.17.0`**, one era behind as of `0.18.0`; the consequences of the old drift map directly to the
+reached **`0.17.0`**: ~10 minor eras behind. It was brought current in July 2026;
+`npm run release:status` prints where it sits now. The consequences of that drift map directly to the
 invariants and are why SLO E3 below exists:
 
 - A drifted surface cannot canary-test current changes (its code assumes an old

@@ -26,7 +26,7 @@ Legend — **Runtime**: BW = browser webview (Office.js) · SPFx = SharePoint Fr
 
 | Adapter | Runtime | Framework | Module / bundler constraints | Transport | Auth flow | StorageAdapter backend | CSP | On the SDK today? |
 |---|---|---|---|---|---|---|---|---|
-| **ms-outlook-addin** | BW | React | ESM | fetch | PKCE-dlg (`Office…displayDialogAsync`) | `Office.context.roamingSettings` (async, size-limited) | strict | **Yes — `^0.17.0`** (one era behind as of `0.18.0`; it sat on a stale `^0.7.3` until 2026-07). Reference adopter; `api.ts` is a re-export barrel from the SDK. Client ID `373051238587049311` (`src/config.ts`). |
+| **ms-outlook-addin** | BW | React | ESM | fetch | PKCE-dlg (`Office…displayDialogAsync`) | `Office.context.roamingSettings` (async, size-limited) | strict | **Yes** — pin per `npm run release:status` (it sat on a stale `^0.7.3` until 2026-07). Reference adopter; `api.ts` is a re-export barrel from the SDK. Client ID `373051238587049311` (`src/config.ts`). |
 | **ms-word-addin** | BW | React | ESM | fetch | PKCE-dlg | `roamingSettings` (async, size-limited) | strict | No (0%). **Migration target** — hand-rolls ~2,685 LOC of `api/*`, a ~124-line SSE loop, and PKCE. Slice order: types → endpoints → streaming → auth → flags. Office.js doc manipulation stays in the surface. |
 | **ms-powerpoint-addin** | BW | React | ESM | fetch | PKCE-dlg (reuses Outlook dialog auth) | `roamingSettings` (async, size-limited) | strict | No — **greenfield**. Direct-prompting task pane. |
 | **ms-excel-addin** | BW | React | ESM | fetch | PKCE-dlg (reuses Outlook dialog auth) | `roamingSettings` (async, size-limited) | strict | No — **greenfield**. Backend Excel Graph tools already exist. |

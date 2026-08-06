@@ -23,10 +23,13 @@ Follow these phases **exactly, in order**. Do not skip Phase 4.
 
 ## Phase 1 — Pre-release gate (reproduce the full CI locally)
 
-Since PDEV-7001, `publish.yml` re-runs the full gate on the tag, so a bad commit no longer publishes silently (see Phase 5). Reproduce it locally anyway on the exact SHA you intend to release — a failure there costs a minute, a failure on the tag costs a burnt version number. Run the whole gate, in `ci.yml` order, from the repo root on Node 24:
+**Start here — `npm run release:status`.** It prints what `package.json` declares, the newest git tag, what the registry actually serves, and every consumer's pin, then flags the divergences. A tag whose publish failed is invisible to `git` and looks identical to a successful one from the terminal; this is the only cheap way to see it. Do not open the release with a version you read in a document.
+
+Then the gate. Since PDEV-7001, `publish.yml` re-runs it on the tag, so a bad commit no longer publishes silently (see Phase 5). Reproduce it locally anyway on the exact SHA you intend to release — a failure there costs a minute, a failure on the tag costs a burnt version number. Run the whole gate, in `ci.yml` order, from the repo root on Node 24:
 
 ```bash
 nvm use                 # reads .nvmrc (24.18.0)
+npm run release:status  # where is this package, actually?
 npm ci                  # clean install — match CI, not your stale node_modules
 npm run lint:biome      # biome check .
 npm run lint:types      # eslint src (type-aware: ts-eslint + react-hooks + @tanstack/query)
@@ -64,7 +67,7 @@ Did the public-API snapshot change in Phase 1, or did the runtime behavior of a 
 | Add a new export / entry point / optional param / optional returned field; widen an input type; add an optional adapter method | **MINOR** | Purely additive |
 | Bug fix with no surface/behavior change; docs; internal refactor | **PATCH** | Contract unchanged |
 
-> **We are `0.18.0` — treat a `0.x` minor as this package's "major".** Consumers pin `^0.x`, which npm locks to the minor (`^0.18.0` → `<0.19.0`). So a **breaking** change must land as a **minor** bump (`0.18` → `0.19`) **with a documented migration note** — never a patch. Do not rely on `0.x` semver leniency; that is what silently fans out to surfaces.
+> **At `0.x`, a minor IS this package's "major".** Consumers pin `^0.MINOR.PATCH`, which npm locks to the minor (`^0.M.P` resolves `<0.M+1.0`). So a **breaking** change must land as a **minor** bump **with a documented migration note** — never a patch. Do not rely on `0.x` semver leniency; that is what silently fans out to surfaces. (`npm run release:status` prints the current version — this rule does not depend on it.)
 
 If breaking: write the **migration note** now (README/CHANGELOG: what changed, before→after call site, which surfaces in [`../sdk/references/adapters.md`](../sdk/references/adapters.md) must act) and mark the landing commit with the breaking-change `!` (`feat(PDEV-XXXX)!: …`) so the semver decision is auditable. Do not bump `package.json` yet — the bump commit lands in Phase 5, after the canary proves the change in a real consumer.
 
@@ -144,7 +147,7 @@ After the tag: confirm `publish.yml` succeeded and that the version resolves fro
 
 A published version is worthless if surfaces never adopt it. Under `^` ranges a breaking change fans out silently; a **frozen** pin trades that for ever-growing migration debt.
 
-- **The cautionary tale.** `ms-outlook-addin` — the reference adopter — sat on **`^0.7.3`** while the SDK reached **`0.17.0`** (~10 minor eras behind). Consequences mapped straight to the invariants: it could not canary-test current changes (Phase 3 lost its signal), and every accumulated break landed in one painful upgrade instead of being absorbed incrementally. It was brought back in step at **`^0.17.0`**; `0.18.0` puts it one era behind again, and that bump is the release's outstanding follow-up. Keeping it current is a standing obligation, not a solved problem.
+- **The cautionary tale.** `ms-outlook-addin` — the reference adopter — sat on **`^0.7.3`** while the SDK reached **`0.17.0`** (~10 minor eras behind). Consequences mapped straight to the invariants: it could not canary-test current changes (Phase 3 lost its signal), and every accumulated break landed in one painful upgrade instead of being absorbed incrementally. It was brought back in step in July 2026. Keeping it within one era is a standing obligation, not a solved problem — `npm run release:status` flags it when it slips.
 - **The rule — SLO E3: no surface more than one minor-era behind.** After a release, open (or nudge) an upgrade PR on each consuming surface so it tracks within one minor of current. One small PR per surface per release era is cheap; a 10-era jump is not.
 - **`file:`-linked consumers** (Chrome add-in, monorepo links): `dist/` is git-ignored and npm does **not** run build for symlinked `file:` deps. After any fresh clone/pull of this SDK, run `npm run build` here **once** before building the linked consumer, or its `import` of `dist/` resolves to nothing (README). Registry installs are unaffected (`prepack`/`prepublishOnly` build `dist/`).
 - **Consumer pin policy** (adapter devs): pin `^0.MINOR.PATCH`, read the migration note, bump the minor deliberately. Full policy in [`../sdk/references/release-and-versioning.md`](../sdk/references/release-and-versioning.md) §4.
@@ -153,6 +156,7 @@ A published version is worthless if surfaces never adopt it. Under `^` ranges a 
 
 ## Quick checklist (paste into the release PR)
 
+- [ ] `npm run release:status` read — published version, tag and consumer pins are what you think
 - [ ] Node 24 (`nvm use`); `npm ci` clean install
 - [ ] Full local gate green: `lint:biome` + `lint:types` + `typecheck` + `test` + `test:coverage` + `build` + `check:package`
 - [ ] Public-API contract test green (or snapshot updated + reviewed in this PR)

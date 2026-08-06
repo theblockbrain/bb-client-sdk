@@ -54,8 +54,10 @@ Reference docs (under `sdk/references/`):
 > **The seam and the `login()` instrumentation both ship in `0.18.0`.** The
 > `AnalyticsAdapter` seam and the `./analytics` subpath landed via PDEV-6854 (PR #19, consolidated
 > for `main` in PR #22); the `auth_*` instrumentation landed via PDEV-6855 (recovered from a dead
-> branch). They reach consumers with `0.18.0` — a surface still pinned to `^0.17.0` cannot import
-> `./analytics` until it bumps; `file:`-linked or canary consumers can.
+> branch). They reach consumers with `0.18.0` — a surface pinned below that cannot import
+> `./analytics` until it bumps; `file:`-linked or canary consumers can. **Run
+> `npm run release:status` for what is actually published and what each surface pins** — do not
+> trust a version written in prose here or anywhere else in this repo.
 
 The `AnalyticsAdapter` seam is a peer of `StorageAdapter` / `IdentityAdapter`. Each surface
 implements it once and registers it at startup; the SDK emits a typed, PII-free event taxonomy

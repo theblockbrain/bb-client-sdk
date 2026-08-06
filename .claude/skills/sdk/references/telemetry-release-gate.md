@@ -204,7 +204,7 @@ The SDK emits **one** standard event set through the seam so every surface repor
 
 - **bb-slack-integrations** — Node backend, no DOM: **no Faro, no browser RUM**. Server-side Mixpanel + Sentry Node. Respect the 3-second ack — telemetry is fire-and-forget, never on the ack path.
 - **b2b-webcomponents / blocky-chat** — Lit, not React: `./react` and `./ui` are irrelevant; only the framework-agnostic core (incl. this seam) applies. Size-sensitive (~3.5 MB CDN bundle) — the concrete analytics SDK is the surface's cost to bear, not the core's.
-- **ms-outlook-addin** — the reference adopter and **canary target**; first in line to wire the seam (PDEV-7010). It pins `^0.17.0`, which predates the seam, so it needs a canary or `file:` link until it bumps to `^0.18.0` — see Invariant C.
+- **ms-outlook-addin** — the reference adopter and **canary target**; first in line to wire the seam (PDEV-7010). Until its pin reaches `0.18.0` it needs a canary or `file:` link — `npm run release:status` prints where it is. See Invariant C.
 
 ---
 

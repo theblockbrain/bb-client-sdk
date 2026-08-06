@@ -299,9 +299,9 @@ refuses a duplicate version — so push a new commit or re-run via `workflow_dis
 
 **3. Cut a real release — the end state, and the highest blast radius.** A `vX.Y.Z` tag on `main`
 publishes to the `latest` dist-tag, where every consumer's `^` range can pick it up. New entry
-points are **additive → MINOR**, and at `0.x` a minor is this package's major (`^0.18.0` locks to
-`<0.19.0`), so new subpaths ship as `0.19.0` — never as a patch, which would silently upgrade
-every `^0.18.x` consumer with no opt-in. Do this only after a canary or link has been validated in
+points are **additive → MINOR**, and at `0.x` a minor is this package's major (`^0.M.P` locks to
+`<0.M+1.0`), so new subpaths ship as a **minor** — never as a patch, which would silently upgrade
+every consumer on that range with no opt-in. Do this only after a canary or link has been validated in
 a real consumer: `publish.yml` re-runs the full gate on the tag (PDEV-7001), but a gate proves the
 package builds — only a consumer proves the change works.
 
