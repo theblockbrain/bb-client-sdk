@@ -9,6 +9,13 @@
  * to the same endpoint with `runId` + `resumeData` until the stream terminates
  * without a suspend/approval event.
  *
+ * A suspend has two meanings and they share one frame type. If its `toolName` is one
+ * the caller declared in `externalTools`, the model is asking the *client* to run that
+ * tool — the add-in editing the open Word document, the embed reading the page — and
+ * the loop resumes with its return value (PDEV-6627/PDEV-7919). Otherwise it is an
+ * ask-user-question and goes to the resolver. Dispatching on the name is what keeps
+ * the two apart; the server does not distinguish them for us.
+ *
  * Any end that is not a completed answer throws `AgenticStreamError` — the
  * server's fail-fast signal, a structured server error, or an exhausted resume
  * budget. Ending quietly would make a truncated turn indistinguishable from a
@@ -26,18 +33,22 @@ import { AgenticStreamError } from "./errors.js";
 import { agenticHeaders } from "./headers.js";
 import { parseAgenticStream } from "./sse.js";
 import {
+  type AgenticApprovalResumeData,
+  type AgenticAskUserQuestionResumeData,
+  type AgenticExternalToolResumeData,
   type AgenticRequestBody,
-  type AgenticResumeData,
   type AgenticSseFrame,
   type AgenticStreamErrorData,
   type AgenticUIMessage,
   type ConnectIntegrationData,
+  type ExternalToolDef,
   isConnectIntegrationFrame,
   isStreamErrorFrame,
   isTextDeltaFrame,
   isToolCallApprovalFrame,
   isToolCallSuspendedFrame,
   isToolCallTooLargeFrame,
+  isToolInputAvailableFrame,
   isToolOutputErrorFrame,
 } from "./types.js";
 
@@ -61,6 +72,14 @@ export interface ApprovalContext {
 export interface SuspendContext {
   runId?: string;
   toolCallId?: string;
+  /**
+   * Which tool suspended, when the server reports it.
+   *
+   * Typed explicitly because the external-tool relay dispatches on it: a suspend
+   * whose `toolName` matches a submitted {@link ExternalToolDef} is a request to run
+   * that tool locally, not an ask-user-question.
+   */
+  toolName?: string;
   [key: string]: unknown;
 }
 
@@ -72,6 +91,44 @@ export interface SuspendResult {
   answers?: Record<string, string>;
   cancelled?: boolean;
 }
+
+// ─── External (client-executed) tools ─────────────────────────────────────────
+
+/**
+ * A model request to run one of the caller's own tools.
+ *
+ * Handed to {@link AgenticCallOptions.executeExternalTool}; the value it returns
+ * becomes that tool's output for the model.
+ */
+export interface ExternalToolCall {
+  /** Matches the `name` of one of the submitted {@link ExternalToolDef}s. */
+  toolName: string;
+  toolCallId?: string;
+  runId?: string;
+  /**
+   * Arguments the model passed, captured from the `tool-input-available` frame for
+   * this `toolCallId`.
+   *
+   * `undefined` when the server suspended without having emitted that frame — treat
+   * it as "no arguments observed" rather than "no arguments passed", and prefer
+   * failing the tool over guessing.
+   */
+  input: unknown;
+  /** The raw `data-tool-call-suspended` payload, for fields this type does not model. */
+  raw: Record<string, unknown>;
+}
+
+/**
+ * Runs one client-executed tool and returns its result.
+ *
+ * Throwing is meaningful: the SDK converts a throw into a resume carrying an error
+ * payload, so the model is told the tool failed and can react, rather than the turn
+ * dying. Returning is equally meaningful — whatever comes back is handed to the model
+ * verbatim as the tool's output.
+ */
+export type ExternalToolExecutor = (
+  call: ExternalToolCall,
+) => Promise<AgenticExternalToolResumeData>;
 
 // ─── Observable non-terminal events ───────────────────────────────────────────
 
@@ -192,6 +249,43 @@ export interface AgenticCallOptions {
    */
   maxAutoResumes?: number;
   /**
+   * Tools the caller executes itself (PDEV-6627). Presented to the model as native
+   * tools; when it calls one the run suspends and
+   * {@link AgenticCallOptions.executeExternalTool} runs it locally, then the SDK
+   * resumes the run with its result.
+   *
+   * Sent on the initial request and re-sent on every resume — the server rebuilds
+   * the relay tool per request, so dropping it mid-turn strands the suspended run.
+   *
+   * Only honoured for agents on the server's relay list (currently the WebComponent
+   * Agent and the Word Agent). For any other agent the tools are shown to the model
+   * but its calls are never relayed, so a suspend never arrives and the turn stalls
+   * on the model's side.
+   */
+  externalTools?: ExternalToolDef[];
+  /**
+   * Runs a tool named in {@link AgenticCallOptions.externalTools}. Required to make
+   * that array useful — without it a relayed call is answered as an
+   * ask-user-question, which is not what the model asked for.
+   */
+  executeExternalTool?: ExternalToolExecutor;
+  /**
+   * Cap on client-executed tool calls per turn. Default: 32.
+   *
+   * Deliberately separate from {@link AgenticCallOptions.maxAutoResumes}, and much
+   * larger. That budget bounds *unattended decisions* — each approval or answer the
+   * SDK makes on a human's behalf — so keeping it small is the point. A relayed tool
+   * call is not a decision: the model asked for data or an edit and the client
+   * computed it, which is ordinary agent work. A document edit is a read-then-propose
+   * loop that costs several calls, so charging them to a 3-resume budget would end
+   * routine turns half-finished.
+   *
+   * Still bounded, because a model that loops on its own tool would otherwise spin
+   * forever. Exhaustion throws {@link AgenticStreamError} with
+   * `reason: "resume-budget-exhausted"`.
+   */
+  maxExternalToolCalls?: number;
+  /**
    * Called when a tool call fails (`tool-output-error`). Non-terminal — the
    * stream continues. Optional; the SDK ignores tool failures without it.
    */
@@ -218,6 +312,13 @@ export interface AgenticCallOptions {
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_MAX_AUTO_RESUMES = 3;
+
+/**
+ * See {@link AgenticCallOptions.maxExternalToolCalls} for why this is far larger than
+ * the resume budget: these are tool executions the model asked for, not decisions the
+ * SDK made unattended.
+ */
+const DEFAULT_MAX_EXTERNAL_TOOL_CALLS = 32;
 
 /**
  * Invoke a caller-supplied observer without letting it end the turn.
@@ -343,9 +444,22 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
     transport,
     approvalResolver,
     maxAutoResumes = DEFAULT_MAX_AUTO_RESUMES,
+    externalTools,
+    executeExternalTool,
+    maxExternalToolCalls = DEFAULT_MAX_EXTERNAL_TOOL_CALLS,
     onToolError,
     onConnectIntegration,
   } = options;
+
+  // Relay dispatch is by name: a suspend whose toolName is in here is the model
+  // asking the client to run that tool, not an ask-user-question. Empty unless the
+  // caller supplied both the definitions and something to execute them — one without
+  // the other cannot complete a relay, and half-handling it would answer the model's
+  // tool call with an empty answers map.
+  const relayToolNames =
+    externalTools && executeExternalTool
+      ? new Set(externalTools.map(tool => tool.name))
+      : new Set<string>();
 
   // The agentic protocol has no AuthContext of its own — it is called with a
   // token and an org. Assemble the minimum the transport needs, pointing the
@@ -378,15 +492,23 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
   const userMessage = makeUserMessage(content);
   const requestId = getCryptoAdapter().randomUUID();
 
-  // Initial request body — only the new user message (server holds history via threadId)
-  let body: AgenticRequestBody = {
+  // Every request in the turn carries the same identity and the same relay tools.
+  // Building resume bodies from this rather than by hand is what stops a resume from
+  // silently dropping `externalTools` — the failure that strands a suspended run,
+  // because the server rebuilds the relay tool per request.
+  const baseBody = (): AgenticRequestBody => ({
     id: requestId,
     messages: [userMessage],
     threadId: convoId,
     resourceId: userId,
-  };
+    ...(externalTools && externalTools.length > 0 ? { externalTools } : {}),
+  });
+
+  // Initial request body — only the new user message (server holds history via threadId)
+  let body: AgenticRequestBody = baseBody();
 
   let resumeCount = 0;
+  let externalToolCallCount = 0;
   // Tracks whether any text reached the caller, across every resume cycle — a
   // terminal failure after partial output is a different user experience from
   // one that produced nothing, and the surface decides what to do about it.
@@ -396,9 +518,14 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
     const frames = await postAgenticStream(ctx, path, headers, body, signal);
 
     let approvalData: { runId?: string; toolCallId?: string; toolName?: string } | null = null;
-    let suspendData: { runId?: string; toolCallId?: string } | null = null;
+    let suspendData: SuspendContext | null = null;
     let tooLargeToolName: string | null = null;
     let serverError: AgenticStreamErrorData | null = null;
+    // Arguments seen this stream, keyed by toolCallId. The suspend frame names the
+    // tool but is not guaranteed to repeat its arguments, so they are taken from the
+    // `tool-input-available` frame that precedes it. Scoped per stream: a resume
+    // re-emits the frames for the call it is resuming.
+    const toolInputs = new Map<string, unknown>();
 
     for await (const frame of frames) {
       if (isTextDeltaFrame(frame)) {
@@ -412,6 +539,11 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
 
       if (isToolCallApprovalFrame(frame)) {
         approvalData = frame.data;
+        continue;
+      }
+
+      if (isToolInputAvailableFrame(frame)) {
+        toolInputs.set(frame.toolCallId, frame.input);
         continue;
       }
 
@@ -485,21 +617,58 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
       resumeCount++;
 
       const result = await approvalResolver.resolveApproval(approvalData);
-      const resumeData: AgenticResumeData = { approved: result.approved };
+      const resumeData: AgenticApprovalResumeData = { approved: result.approved };
 
-      // Resume body: stable message + id, plus runId + resumeData
-      body = {
-        id: requestId,
-        messages: [userMessage],
-        threadId: convoId,
-        resourceId: userId,
-        runId: approvalData.runId,
-        resumeData,
-      };
+      // Resume body: stable message + id + relay tools, plus runId + resumeData
+      body = { ...baseBody(), runId: approvalData.runId, resumeData };
       continue;
     }
 
     if (suspendData !== null) {
+      const toolName = typeof suspendData.toolName === "string" ? suspendData.toolName : undefined;
+
+      // ── Client-executed tool (PDEV-6627 relay) ─────────────────────────────
+      // Checked before the ask-user-question path: both arrive as the same frame
+      // type, and only the tool name distinguishes "run this for me" from "ask the
+      // user this". Answering a relayed call with an answers map would hand the
+      // model an empty object where it expected its tool's output.
+      if (toolName !== undefined && relayToolNames.has(toolName) && executeExternalTool) {
+        if (externalToolCallCount >= maxExternalToolCalls) {
+          throw new AgenticStreamError(
+            `Agentic turn stopped: the ${maxExternalToolCalls}-call budget for client-executed ` +
+              `tools was exhausted while running "${toolName}". The answer so far is incomplete.`,
+            "resume-budget-exhausted",
+            { partial: sawText },
+          );
+        }
+        externalToolCallCount++;
+
+        const toolCallId =
+          typeof suspendData.toolCallId === "string" ? suspendData.toolCallId : undefined;
+        let resumeData: AgenticExternalToolResumeData;
+        try {
+          resumeData = await executeExternalTool({
+            toolName,
+            toolCallId,
+            runId: typeof suspendData.runId === "string" ? suspendData.runId : undefined,
+            input: toolCallId !== undefined ? toolInputs.get(toolCallId) : undefined,
+            raw: suspendData,
+          });
+        } catch (error) {
+          // Resume with the failure rather than letting it escape. The run is
+          // suspended server-side: throwing here abandons it, and the user loses a
+          // turn because one tool failed. Telling the model instead lets it retry a
+          // different way or explain what went wrong — the same courtesy the server
+          // extends via `tool-output-error` for its own tools.
+          resumeData = {
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+
+        body = { ...baseBody(), runId: suspendData.runId, resumeData };
+        continue;
+      }
+
       if (resumeCount >= maxAutoResumes) {
         throw new AgenticStreamError(
           `Agentic turn stopped: the ${maxAutoResumes}-resume budget was exhausted while the ` +
@@ -512,19 +681,12 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
       resumeCount++;
 
       const result = await approvalResolver.resolveSuspend(suspendData);
-      const resumeData: AgenticResumeData = result.cancelled
+      const resumeData: AgenticAskUserQuestionResumeData = result.cancelled
         ? { __cancelled: true as const }
         : { answers: result.answers ?? {} };
 
-      // Resume body: stable message + id, plus runId + resumeData
-      body = {
-        id: requestId,
-        messages: [userMessage],
-        threadId: convoId,
-        resourceId: userId,
-        runId: suspendData.runId,
-        resumeData,
-      };
+      // Resume body: stable message + id + relay tools, plus runId + resumeData
+      body = { ...baseBody(), runId: suspendData.runId, resumeData };
       continue;
     }
 

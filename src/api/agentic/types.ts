@@ -38,6 +38,34 @@ export interface AgenticRequestBody {
   runId?: string;
   /** Present on resume turns only. */
   resumeData?: AgenticResumeData;
+  /**
+   * Tools the client executes itself (PDEV-6627). Presented to the model as native
+   * tools; when it calls one the run suspends (`data-tool-call-suspended`), the client
+   * runs the tool locally and resumes with the result as `resumeData`.
+   *
+   * **Must be re-sent on every resume turn, not just the first.** The server rebuilds
+   * the relay tool per request, so a resume that omits this array loses the tool the
+   * run is suspended on.
+   *
+   * Honoured only for agents on the server's relay list. For any other agent the tools
+   * are still shown to the model but its calls are never executed or relayed.
+   */
+  externalTools?: ExternalToolDef[];
+}
+
+/**
+ * A tool the client executes, as declared to the server.
+ *
+ * Mirrors `externalToolSchema` in botticelli
+ * (`packages/mastra-operators/src/mastra/api/util/external-toolset.ts`) — the server
+ * validates against that and rejects the request with 400 on a mismatch.
+ */
+export interface ExternalToolDef {
+  /** Tool name the model calls, and the key the suspend frame reports as `toolName`. */
+  name: string;
+  description: string;
+  /** JSON Schema for the arguments; becomes the tool's `inputSchema` server-side. */
+  parameters: Record<string, unknown>;
 }
 
 /** Resume payload for tool-call approval. */
@@ -51,7 +79,33 @@ export interface AgenticAskUserQuestionResumeData {
   __cancelled?: true;
 }
 
-export type AgenticResumeData = AgenticApprovalResumeData | AgenticAskUserQuestionResumeData;
+/**
+ * Any JSON-encodable value — what actually crosses the wire in `resumeData`.
+ *
+ * Named rather than inlined as `unknown` so the resume-payload union below keeps
+ * documenting its three cases instead of collapsing to "anything".
+ */
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+/**
+ * Resume payload for a client-executed external tool: the tool's return value, which
+ * the server hands to the model as that tool's output verbatim.
+ *
+ * Unlike the two fixed shapes above this is deliberately open — a Word tool may return
+ * an object, a plain string, or a list, and the SDK does not reshape it.
+ */
+export type AgenticExternalToolResumeData = JsonValue;
+
+export type AgenticResumeData =
+  | AgenticApprovalResumeData
+  | AgenticAskUserQuestionResumeData
+  | AgenticExternalToolResumeData;
 
 // ─── SSE Frame unions ──────────────────────────────────────────────────────────
 
@@ -292,6 +346,20 @@ export function isToolCallApprovalFrame(frame: AgenticSseFrame): frame is ToolCa
 
 export function isToolCallSuspendedFrame(frame: AgenticSseFrame): frame is ToolCallSuspendedFrame {
   return frame.type === "data-tool-call-suspended";
+}
+
+/**
+ * The frame that carries a tool call's arguments.
+ *
+ * Load-bearing for the external-tool relay: the `data-tool-call-suspended` frame
+ * identifies *which* tool suspended (`toolName`, `toolCallId`, `runId`) but is not
+ * guaranteed to repeat the arguments, so the client pairs it with the
+ * `tool-input-available` frame that preceded it on the same `toolCallId`.
+ */
+export function isToolInputAvailableFrame(
+  frame: AgenticSseFrame,
+): frame is ToolInputAvailableFrame {
+  return frame.type === "tool-input-available";
 }
 
 export function isToolOutputErrorFrame(frame: AgenticSseFrame): frame is ToolOutputErrorFrame {

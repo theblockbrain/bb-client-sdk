@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMessageStream } from "../stream-result.js";
+import type { ExternalToolExecutor } from "./client.js";
 import { autoApproveResolver, callAgenticStream, denyAllResolver } from "./client.js";
 import type { AgenticStreamError } from "./errors.js";
 import { isAgenticStreamError } from "./errors.js";
@@ -417,5 +418,184 @@ describe("callAgenticStream — fail-fast frames (PDEV-7333)", () => {
 
       await expect(drain(callAgenticStream(DENY))).resolves.toBe("still fine");
     });
+  });
+});
+
+/**
+ * PDEV-7920 — the client-executed tool relay.
+ *
+ * A `data-tool-call-suspended` frame means one of two different things, and the
+ * frame type alone does not say which: "run this tool for me" when the tool is one
+ * the caller declared in `externalTools`, or "ask the user this" otherwise. These
+ * tests pin the dispatch and the resume body, because the resume body is what
+ * decides whether the suspended run can continue at all.
+ */
+describe("callAgenticStream — external tool relay (PDEV-7920)", () => {
+  const WORD_TOOL = {
+    name: "propose_edits",
+    description: "Propose tracked changes for the open document",
+    parameters: { type: "object", properties: { edits: { type: "array" } } },
+  };
+
+  /** Frames for one relayed call: the args, then the suspend naming the tool. */
+  const relayTurn = (input: unknown, toolCallId = "call-w1", runId = "run-w1") => [
+    { type: "tool-input-available", toolCallId, toolName: WORD_TOOL.name, input },
+    { type: "data-tool-call-suspended", data: { runId, toolCallId, toolName: WORD_TOOL.name } },
+  ];
+
+  const relayOptions = (executeExternalTool: ExternalToolExecutor) => ({
+    ...OPTIONS,
+    approvalResolver: denyAllResolver,
+    externalTools: [WORD_TOOL],
+    executeExternalTool,
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("runs the named tool and resumes with its result", async () => {
+    const bodies = stubTurns(relayTurn({ edits: [{ original: "a", modified: "b" }] }));
+    const execute = vi.fn().mockResolvedValue({ applied: 1 });
+
+    const text = await drain(callAgenticStream(relayOptions(execute)));
+
+    expect(text).toBe("done");
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls[0]?.[0]).toMatchObject({
+      toolName: "propose_edits",
+      toolCallId: "call-w1",
+      runId: "run-w1",
+      input: { edits: [{ original: "a", modified: "b" }] },
+    });
+    expect(bodies[1]).toMatchObject({ runId: "run-w1", resumeData: { applied: 1 } });
+  });
+
+  // The server rebuilds the relay tool per request, so a resume that drops
+  // externalTools strands the run it is trying to resume.
+  it("re-sends externalTools on the resume, not just the initial request", async () => {
+    const bodies = stubTurns(relayTurn({}));
+
+    await drain(callAgenticStream(relayOptions(() => Promise.resolve({ ok: true }))));
+
+    expect(bodies[0]?.externalTools).toEqual([WORD_TOOL]);
+    expect(bodies[1]?.externalTools).toEqual([WORD_TOOL]);
+  });
+
+  it("re-sends externalTools on an approval resume too", async () => {
+    const bodies = stubTurns([APPROVAL_FRAME]);
+
+    await drain(callAgenticStream(relayOptions(() => Promise.resolve({}))));
+
+    expect(bodies[1]).toMatchObject({ runId: "run-1", resumeData: { approved: false } });
+    expect(bodies[1]?.externalTools).toEqual([WORD_TOOL]);
+  });
+
+  // A suspend for a tool the caller never declared is an ask-user-question. Routing
+  // it to the executor would run an arbitrary server-named tool locally.
+  it("routes an unrecognised toolName to the approval resolver, not the executor", async () => {
+    const bodies = stubTurns([
+      { type: "data-tool-call-suspended", data: { runId: "run-q", toolName: "askUserQuestion" } },
+    ]);
+    const execute = vi.fn();
+
+    await drain(callAgenticStream(relayOptions(execute)));
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(bodies[1]).toMatchObject({ resumeData: { __cancelled: true } });
+  });
+
+  it("routes a suspend with no toolName to the approval resolver", async () => {
+    const bodies = stubTurns([SUSPEND_FRAME]);
+    const execute = vi.fn();
+
+    await drain(callAgenticStream(relayOptions(execute)));
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(bodies[1]).toMatchObject({ resumeData: { __cancelled: true } });
+  });
+
+  // Declaring tools without supplying an executor cannot complete a relay. Treating
+  // it as an ask-user-question is the honest fallback — the alternative is calling
+  // undefined mid-turn.
+  it("falls back to the resolver when externalTools are declared with no executor", async () => {
+    const bodies = stubTurns(relayTurn({}));
+
+    await drain(
+      callAgenticStream({
+        ...OPTIONS,
+        approvalResolver: denyAllResolver,
+        externalTools: [WORD_TOOL],
+      }),
+    );
+
+    expect(bodies[1]).toMatchObject({ resumeData: { __cancelled: true } });
+  });
+
+  // The run is suspended server-side. Throwing here abandons it and costs the user a
+  // whole turn because one tool failed; telling the model lets it recover.
+  it("resumes with an error payload when the tool throws, instead of killing the turn", async () => {
+    const bodies = stubTurns(relayTurn({}));
+    const execute = vi.fn().mockRejectedValue(new Error("Word.run failed: document locked"));
+
+    const text = await drain(callAgenticStream(relayOptions(execute)));
+
+    expect(text).toBe("done");
+    expect(bodies[1]?.resumeData).toEqual({ error: "Word.run failed: document locked" });
+  });
+
+  it("passes input: undefined when no tool-input-available frame preceded the suspend", async () => {
+    stubTurns([
+      {
+        type: "data-tool-call-suspended",
+        data: { runId: "r", toolCallId: "c", toolName: WORD_TOOL.name },
+      },
+    ]);
+    const execute = vi.fn().mockResolvedValue({});
+
+    await drain(callAgenticStream(relayOptions(execute)));
+
+    expect(execute.mock.calls[0]?.[0]).toMatchObject({ input: undefined });
+  });
+
+  // The whole point of the separate budget: a document edit is a read-then-propose
+  // loop, and charging each step to the 3-resume unattended-decision budget would
+  // end routine turns half-finished.
+  it("does not spend the maxAutoResumes budget on relayed tool calls", async () => {
+    const turns: object[][] = [];
+    for (let i = 0; i < 6; i++) turns.push(relayTurn({}, `call-${i}`, `run-${i}`));
+    turns.push([{ type: "text-delta", textDelta: "finished" }]);
+    stubSequence(...turns);
+    const execute = vi.fn().mockResolvedValue({ ok: true });
+
+    // maxAutoResumes is at its default of 3; six relayed calls must still complete.
+    const text = await drain(callAgenticStream(relayOptions(execute)));
+
+    expect(text).toBe("finished");
+    expect(execute).toHaveBeenCalledTimes(6);
+  });
+
+  it("still bounds relayed calls, so a self-looping model cannot spin forever", async () => {
+    const turns: object[][] = [];
+    for (let i = 0; i < 5; i++) turns.push(relayTurn({}, `call-${i}`, `run-${i}`));
+    stubSequence(...turns);
+    const execute = vi.fn().mockResolvedValue({ ok: true });
+
+    const err = await thrownBy(
+      callAgenticStream({ ...relayOptions(execute), maxExternalToolCalls: 2 }),
+    );
+
+    expect(isAgenticStreamError(err)).toBe(true);
+    expect((err as AgenticStreamError).reason).toBe("resume-budget-exhausted");
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it("omits externalTools entirely when the caller supplies none", async () => {
+    const bodies = stubTurns([APPROVAL_FRAME]);
+
+    await drain(callAgenticStream(DENY));
+
+    expect(bodies[0]).not.toHaveProperty("externalTools");
+    expect(bodies[1]).not.toHaveProperty("externalTools");
   });
 });
