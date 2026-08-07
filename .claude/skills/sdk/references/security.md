@@ -161,7 +161,7 @@ Never `dangerouslySetInnerHTML` / `.innerHTML =` on model output.
 | **Mixpanel** | per-surface | Product analytics — **identity = Zitadel `sub`, org as group, NO PII** (no email/name in events) |
 | **CodeQL / SAST** | optional | Deeper static analysis — enable per repo risk |
 
-**Telemetry seam is on `main` (WS9 — PDEV-6854 seam + PDEV-6855 `auth_*` instrumentation), not yet published.** The `AnalyticsAdapter` (peer of
+**Telemetry seam ships in `0.18.0` (WS9 — PDEV-6854 seam + PDEV-6855 `auth_*` instrumentation).** The `AnalyticsAdapter` (peer of
 `StorageAdapter`/`IdentityAdapter`) is exported as types from `./adapters`, with the runtime sink at
 `./analytics` (`setAnalyticsAdapter`, `trackEvent`, `trackApiError`, `identifyUser`/`setAnalyticsGroup`, …) and an opt-in Mixpanel
 implementation at `./analytics/mixpanel` (`createMixpanelAdapter` — PII denylist + consent gate). Its taxonomy is the typed
@@ -185,10 +185,10 @@ cross-tenant attribution leakage. Such an adapter must implement only `track`/`c
 rely on the per-event `identity` argument; both sink helpers then no-op.
 
 **CI reality check:** `ci.yml` (lint:biome → lint:types → typecheck → test → build → check:package)
-is the real merge gate. `publish.yml` runs **only typecheck + build** on a `vX.Y.Z` tag — it does
-**NOT** re-run test / lint / check:package (KNOWN GAP; target SLO E2 = "CI + publish both gated on
-tests"). A release therefore does not re-verify the security tests; `ci.yml` on `main` is the only
-safety net. Factor this in when cutting a release from a security-sensitive change.
+is the real merge gate, and since PDEV-7001 `publish.yml` re-runs that same suite on a `vX.Y.Z`
+tag (SLO E2 closed), so a release *does* re-verify the security tests. What it cannot verify is a
+**consumer** — a security fix in the auth or transport seam still needs the Phase 3 canary before
+it reaches `latest`.
 
 ---
 

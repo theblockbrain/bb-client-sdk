@@ -19,7 +19,7 @@ description: Use when adding, wiring, or reviewing telemetry for any BlockBrain 
 We have shipped Apps surfaces **blind** — no funnel, no crash-free number, no error-rate baseline — so we could not tell activation from churn, or a bad release from a quiet one. Objective **O2** ("ship measurable, healthy surfaces") makes instrumentation a precondition of release rather than a follow-up. Concretely:
 
 - Mixpanel is being adopted **org-wide as core product**; Apps adopts the **same** foundation and identity model so Apps data joins the org's, rather than forking a second analytics universe.
-- The SLO catalog's **"Part B" telemetry SLOs were *unmeasurable*** while the SDK exposed no telemetry seam; that seam is **now on `main` (WS9 — PDEV-6854/6855, PR #22)**, though not yet in a published release. This doc specifies that seam **and** makes wiring it a checklist item, so Part B becomes measurable as soon as a surface adopts it. Targets (crash-free %, error-rate %, activation) live in [`./slo-catalog.md`](./slo-catalog.md) — reference it, don't restate the numbers here.
+- The SLO catalog's **"Part B" telemetry SLOs were *unmeasurable*** while the SDK exposed no telemetry seam; that seam **ships in `0.18.0` (WS9 — PDEV-6854/6855, PR #22)**. This doc specifies that seam **and** makes wiring it a checklist item, so Part B becomes measurable as soon as a surface adopts it. Targets (crash-free %, error-rate %, activation) live in [`./slo-catalog.md`](./slo-catalog.md) — reference it, don't restate the numbers here.
 
 **Dual audience.** The gate **binds every adapter (consumer) developer** — you cannot promote without it. The **SDK's** job is to make compliance cheap: provide the `AnalyticsAdapter` **seam** + a **standard event taxonomy** so a surface wires telemetry once and gets the whole event set for free. If a surface has to hand-roll event names, the SDK has failed its half.
 
@@ -27,7 +27,7 @@ We have shipped Apps surfaces **blind** — no funnel, no crash-free number, no 
 
 ## 1. The `AnalyticsAdapter` seam (SDK side)
 
-**Status: on `main` (WS9 — PDEV-6854 seam + PDEV-6855 `auth_*` instrumentation), not yet published — the last tag `v0.17.0` predates it.** The seam lives in `src/adapters/analytics.ts` (the types) and `src/analytics/index.ts` (the runtime sink); register an adapter at surface startup with `setAnalyticsAdapter` from `@theblockbrain/bb-client-sdk/analytics`. A surface either supplies its own concrete implementation forwarding to Mixpanel/Sentry/Faro, or takes the ready-made `createMixpanelAdapter` from `@theblockbrain/bb-client-sdk/analytics/mixpanel` (§1a). Either way that is the one injected seam, and wiring it stays a release-gate obligation (see the [Definition of Done](#4-the-release-gate--definition-of-done)).
+**Status: ships in `0.18.0` (WS9 — PDEV-6854 seam + PDEV-6855 `auth_*` instrumentation); `v0.17.0` predates it.** The seam lives in `src/adapters/analytics.ts` (the types) and `src/analytics/index.ts` (the runtime sink); register an adapter at surface startup with `setAnalyticsAdapter` from `@theblockbrain/bb-client-sdk/analytics`. A surface either supplies its own concrete implementation forwarding to Mixpanel/Sentry/Faro, or takes the ready-made `createMixpanelAdapter` from `@theblockbrain/bb-client-sdk/analytics/mixpanel` (§1a). Either way that is the one injected seam, and wiring it stays a release-gate obligation (see the [Definition of Done](#4-the-release-gate--definition-of-done)).
 
 `AnalyticsAdapter` is a **peer of `StorageAdapter` and `IdentityAdapter`** (both verified in `src/adapters/`, exported as **types only** from `src/adapters/index.ts` and re-exported via `./adapters` + the root barrel `src/index.ts`). It follows the same injection pattern: **a pure interface, zero runtime, zero React, zero DOM** — the SDK calls it; the surface supplies the concrete implementation.
 
@@ -204,7 +204,7 @@ The SDK emits **one** standard event set through the seam so every surface repor
 
 - **bb-slack-integrations** — Node backend, no DOM: **no Faro, no browser RUM**. Server-side Mixpanel + Sentry Node. Respect the 3-second ack — telemetry is fire-and-forget, never on the ack path.
 - **b2b-webcomponents / blocky-chat** — Lit, not React: `./react` and `./ui` are irrelevant; only the framework-agnostic core (incl. this seam) applies. Size-sensitive (~3.5 MB CDN bundle) — the concrete analytics SDK is the surface's cost to bear, not the core's.
-- **ms-outlook-addin** — the reference adopter and **canary target**; first in line to wire the seam (PDEV-7010). It pins `^0.17.0`, which predates the seam, so it needs a canary or `file:` link until the next release — see Invariant C.
+- **ms-outlook-addin** — the reference adopter and **canary target**; first in line to wire the seam (PDEV-7010). Until its pin reaches `0.18.0` it needs a canary or `file:` link — `npm run release:status` prints where it is. See Invariant C.
 
 ---
 
@@ -224,7 +224,7 @@ Every surface ticks **every** box before promotion to production. This is the ch
 
 ### CI / release enforcement
 
-Merge is gated by **`ci.yml`** on `main` (lint:biome → lint:types → typecheck → test → build → check:package) — but **not enforced**: branch protection on `main` is currently off (`gh api repos/theblockbrain/bb-client-sdk/branches/main/protection` → 404), so CI is advisory. **Known gap (SLO E2):** **`publish.yml`** runs **only typecheck + build** on a `vX.Y.Z` tag — it does **not** re-run test / lint / `check:package`, and it does **not** verify telemetry. Until E2 closes ("CI + publish both gated on tests"), the telemetry DoD is a **per-surface promotion gate**, not something the SDK's publish pipeline can prove for you. Do not treat "the SDK published" as "the surface is instrumented" — they are separate gates.
+Merge is gated by **`ci.yml`** on `main` (lint:biome → lint:types → typecheck → test → build → check:package) — but **not enforced**: branch protection on `main` is currently off (`gh api repos/theblockbrain/bb-client-sdk/branches/main/protection` → 404), so CI is advisory. **SLO E2 is closed:** since PDEV-7001 **`publish.yml`** re-runs the full suite on a `vX.Y.Z` tag. It still does **not** verify telemetry, and it cannot — the telemetry DoD is a **per-surface promotion gate**, not something the SDK's publish pipeline can prove for you. Do not treat "the SDK published" as "the surface is instrumented" — they are separate gates.
 
 ---
 

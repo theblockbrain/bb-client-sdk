@@ -11,7 +11,7 @@ description: Use when about to merge, publish, or review ANY change to @theblock
 >
 > **Dual audience.** SDK maintainers run this before merging to `main`/cutting a tag. Adapter (consumer) developers run the **Phase 5 quick pass** + **Phase 4 canary install** before bumping their SDK range.
 
-This SDK is `@theblockbrain/bb-client-sdk` v0.17.0 — **ESM-only**, published private to GitHub Packages, consumed by **every** BlockBrain Apps surface ("thin surface, thick SDK"). A change that breaks any one adopter is a defect. Semver + range-pinning means a breaking change **fans out silently** — the Outlook add-in sitting at `^0.7.3` while the SDK reached 0.17.0 is the cautionary tale (it pins `^0.17.0` today). Run these phases **in order**; each phase's answer routes to required checks.
+This SDK is `@theblockbrain/bb-client-sdk` (`npm run release:status` for the current version) — **ESM-only**, published private to GitHub Packages, consumed by **every** BlockBrain Apps surface ("thin surface, thick SDK"). A change that breaks any one adopter is a defect. Semver + range-pinning means a breaking change **fans out silently** — the Outlook add-in sitting at `^0.7.3` while the SDK reached 0.17.0 is the cautionary tale (`npm run release:status` prints what it pins today). Run these phases **in order**; each phase's answer routes to required checks.
 
 ---
 
@@ -131,7 +131,7 @@ Any change that reaches Phase 1 rows 1 or 4 (public export or streaming/transpor
 
 > ⚠ **Cross-repo dispatch is DORMANT.** `canary.yml`'s `notify-consumers` job only runs when `vars.CONSUMER_DISPATCH_ENABLED == 'true'` (needs an org GitHub App; default `GITHUB_TOKEN` can't trigger another repo's workflow — PDEV-6806). Until then, **install the canary in the consumer by hand.**
 
-> ⚠ **Publish gate gap (SLO E2).** `publish.yml` (tag `vX.Y.Z` on `main`) runs **only `typecheck` + `build`** — **not** test / lint / `check:package`. Cutting a release does **not** re-run the full gate; `ci.yml` on `main` is the safety net. So: land the change on `main` green (Phase 0 in CI) **before** tagging, and never fast-follow a tag onto an unverified commit. Flag this on any release PR until the gate is fixed.
+> ✅ **Publish gate (SLO E2 — closed).** `publish.yml` (tag `vX.Y.Z` on `main`) re-runs the full gate since PDEV-7001: version guard → lint → typecheck → test → build → `check:package` → `check:cleanroom`. Land the change on `main` green **before** tagging anyway — CI fails in ninety seconds, a failed publish costs a version number. What the gate still cannot see is a **consumer**: that is what the canary is for.
 
 > **`file:` link gotcha.** `dist/` is git-ignored and npm does **not** build symlinked `file:` deps. After a fresh clone/pull of this SDK, run `npm run build` **once** before building any linked consumer, or it will resolve stale/missing `dist/`.
 
@@ -143,7 +143,7 @@ Walk the matrix. Full details in [`./adapters.md`](./adapters.md) — this is th
 
 | Adopter | Runtime / framework | Trigger — re-verify if the change touches… |
 |---|---|---|
-| **ms-outlook-addin** | React, Office.js webview | **anything public** — reference adopter + re-export barrel. Pins `^0.17.0` (current — keep it that way; it is the canary). Storage = Office `roamingSettings` (async, size-limited). |
+| **ms-outlook-addin** | React, Office.js webview | **anything public** — reference adopter + re-export barrel. Keep its pin within one minor era; it is the canary. Storage = Office `roamingSettings` (async, size-limited). |
 | **ms-word-addin** | React, Office.js webview | api types/endpoints, SSE loop, PKCE — active migration target. |
 | **ms-powerpoint-addin** / **ms-excel-addin** | React, Office.js (greenfield) | PKCE-dialog auth (reuses Outlook), api endpoints. |
 | **sharepoint-extension** | SPFx (React) | **CSP** (no new inline/eval/remote), ESM interop (toolchain-pinned TS/bundler), auth (bespoke proxy → planned Entra/SP SSO→Zitadel). |

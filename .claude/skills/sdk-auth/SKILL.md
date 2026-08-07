@@ -109,7 +109,7 @@ npm run check:package      # publint + attw (esm-only) — proves ./auth & ./set
 
   It got there the hard way: it previously lived at `test/auth/pkce-state-separation.test.ts` on `bun:test`, outside vitest's `src/**` include, so it **never executed** — while `references/security.md` cited it as coverage for the CWE-200 defect. Meanwhile `ms-outlook-addin` built its login on the very helpers it was meant to guard against. **Never add a test outside `src/`**; it will not run, and it will read as coverage to the next person.
 
-**Public-export change** (added/renamed/removed anything in `src/auth/index.ts` or `src/settings/index.ts`): the contract test `src/public-api.contract.test.ts` (snapshot `src/__snapshots__/public-api.contract.test.ts.snap`) will fail. Only update it deliberately — `vitest -u` in the same PR — and treat it as an intentional breaking change: bump semver accordingly and **canary-test in a consumer (Outlook) before `latest`** (Outlook's `^0.7.3` era, ten minors behind, is the cautionary tale; it pins `^0.17.0` today). See `../sdk/references/adapters.md`.
+**Public-export change** (added/renamed/removed anything in `src/auth/index.ts` or `src/settings/index.ts`): the contract test `src/public-api.contract.test.ts` (snapshot `src/__snapshots__/public-api.contract.test.ts.snap`) will fail. Only update it deliberately — `vitest -u` in the same PR — and treat it as an intentional breaking change: bump semver accordingly and **canary-test in a consumer (Outlook) before `latest`** (Outlook's `^0.7.3` era, ten minors behind, is the cautionary tale; `npm run release:status` prints its pin today). See `../sdk/references/adapters.md`.
 
 **Cross-adapter pass** — before merge, confirm the change against each affected runtime in the matrix:
 

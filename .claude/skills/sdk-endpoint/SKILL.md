@@ -52,7 +52,7 @@ The non-2xx block is boilerplate you copy verbatim (bots.ts lines 55–66); on t
 - Re-export new public symbols from `src/api/index.ts` (values and `export type` separately, alphabetized — match the existing file).
 - **Any added/renamed/removed public export changes the public-API snapshot.** `src/public-api.contract.test.ts` snapshots the exported names (values AND types) of all entry points (14 today); an undeclared change fails CI.
   - Additive export → snapshot grows → intentional **minor**.
-  - Rename/removal → this is a **breaking** fan-out change. Semver + consumer range-pinning means it breaks surfaces silently (the Outlook add-in once sat on `^0.7.3` for ten minor eras — the cautionary tale; it is current at `^0.17.0` now). Requires an intentional bump and a canary pass in a real consumer before `latest` (see `../sdk/references/cross-adapter-safety.md`).
+  - Rename/removal → this is a **breaking** fan-out change. Semver + consumer range-pinning means it breaks surfaces silently (the Outlook add-in once sat on `^0.7.3` for ten minor eras — the cautionary tale; `npm run release:status` prints its pin today). Requires an intentional bump and a canary pass in a real consumer before `latest` (see `../sdk/references/cross-adapter-safety.md`).
   - To land an intentional change: update the snapshot with `vitest -u` **in the same PR** and call it out in the description.
 
 ---
@@ -124,4 +124,4 @@ Then, specifically for this change:
   - `ReadableStream`/SSE streaming is **unreliable in RN** (the transport-seam blocker, WS2/WS7). A streamed endpoint must degrade or route through the seam, not assume `res.body`.
   - `FormData`/`Blob` semantics differ across RN/Node — verify multipart if you added it.
 
-Do **not** cut/tag a release from this change assuming the release re-runs the gate: `publish.yml` runs **only** typecheck + build (KNOWN GAP — see `/sdk`). `ci.yml` on `main` is the safety net, so the change must be green there before release. A public-surface change additionally needs a canary in a real consumer (Outlook) **before** it reaches the `latest` tag.
+`publish.yml` re-runs the full gate on the tag (PDEV-7001), but land the change green on `main` first — CI fails in ninety seconds and a failed publish costs a version number. A public-surface change additionally needs a canary in a real consumer (Outlook) **before** it reaches the `latest` tag.
