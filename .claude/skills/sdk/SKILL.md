@@ -9,7 +9,7 @@ This is the entry point for **any** work in `@theblockbrain/bb-client-sdk` (repo
 
 **Dual audience.** Written for BOTH SDK maintainers and adapter (consumer) developers. Where guidance differs, it says so.
 
-Package: `@theblockbrain/bb-client-sdk` (`npm run release:status` for version + consumer pins) · `"type": "module"` (**ESM-only**) · published to **GitHub Packages** (private, `https://npm.pkg.github.com`, `access: restricted`). Runtime dep: `marked` only. Optional peers (React consumers only): `react ^19`, `@tanstack/react-query ^5`.
+Package: `@theblockbrain/bb-client-sdk` (`npm run release:status` for version + consumer pins) · `"type": "module"` (**ESM-only**) · published to **GitHub Packages** (private, `https://npm.pkg.github.com`, `access: restricted`). Runtime dep: `marked` only. Optional peers (React consumers only): `react >=18 <20`, `@tanstack/react-query ^5`.
 
 ---
 

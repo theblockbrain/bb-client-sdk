@@ -270,11 +270,12 @@ share the same origin:
 
 ## Testing an unreleased change in a consumer
 
-Entry points routinely live on `main` before they are published, and a consumer pinning `^0.18.0`
-resolves to the newest published tag and **cannot import them**. (`./agentic`, `./analytics`,
-`./analytics/mixpanel`, `./i18n`, `./media` and `./telemetry` all postdated `v0.17.0` and ship in
-`0.18.0`.) Testing an unreleased change needs one of the three routes below. Pick by blast radius:
-local link → canary → release.
+Entry points routinely live on `main` before they are published, and a consumer **cannot import
+them** however it is pinned: a `^` range resolves against what the registry serves, not against
+what `main` has. (`./agentic`, `./analytics`, `./analytics/mixpanel`, `./i18n`, `./media` and
+`./telemetry` all spent time in exactly that state before `0.18.0` carried them.) Testing an
+unreleased change needs one of the three routes below. Pick by blast radius: local link → canary
+→ release.
 
 **1. `file:` link — no publish, fastest, includes uncommitted work.** npm points the consumer's
 `node_modules` entry at your local SDK checkout, so the surface builds against the exact `dist/`

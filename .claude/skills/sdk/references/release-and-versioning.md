@@ -149,14 +149,14 @@ a PR. Do not skip for contract-affecting changes.
   minor; fix → patch).
 - If it is breaking, add a **migration note** (README/CHANGELOG entry: what
   changed, the before→after call site, which surfaces must act).
-- Commit on a ticket-scoped branch (§5): `chore(PDEV-XXXX): release v0.18.0`.
+- Commit on a ticket-scoped branch (§5): `chore(PDEV-XXXX): release vX.Y.Z`.
   (The `pre-push` hook already tolerates `release*` / `release-please` branch
   names for future automated tooling; none is wired today — releases are cut
   manually.)
 
 **Phase 3 — Tag & publish.**
 - Tag `vX.Y.Z` on the release commit and push the tag:
-  `git tag v0.19.0 && git push origin v0.19.0`.
+  `git tag vX.Y.Z && git push origin vX.Y.Z`.
 - Pushing a `v*` tag triggers `.github/workflows/publish.yml`:
   `npm ci` → tag ↔ `package.json` version guard → `npm run lint` →
   `npm run typecheck` → `npm test` → `npm run build` → `npm run check:package`
