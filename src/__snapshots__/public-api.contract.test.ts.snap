@@ -130,6 +130,7 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "cachePolicyFor",
   "callAgenticStream",
   "captureError",
+  "closeUnbalancedJson",
   "collectTextFromStream",
   "completeBrowserLogin",
   "computeExpiration",
@@ -270,6 +271,7 @@ exports[`public API surface > exports of "./adapters/office" are stable 1`] = `
   "OfficeRuntimeStorageArea",
   "OfficeStorageAdapter",
   "OfficeStorageConfig",
+  "OfficeToken",
   "OpenOfficeDialogConfig",
   "RoamingSettingsArea",
   "createOfficeIdentityAdapter",
@@ -713,6 +715,7 @@ exports[`public API surface > exports of "./telemetry/cookiebot" are stable 1`] 
 exports[`public API surface > exports of "./text" are stable 1`] = `
 [
   "PLAIN_TEXT_HTML_TAGS",
+  "closeUnbalancedJson",
   "extractCode",
   "extractJson",
   "plainTextToHtml",
@@ -741,6 +744,7 @@ exports[`public API surface > exports of "./ui/react" are stable 1`] = `
 [
   "Theme",
   "ThemeMode",
+  "UseThemeOptions",
   "useTheme",
 ]
 `;

@@ -24,9 +24,14 @@
  *
  * Zero new SDK dependency: {@link OfficeGlobal} is a STRUCTURAL type over the
  * handful of Office.js members used, so the SDK never imports `@types/office-js`
- * and the core stays runtime-agnostic (invariants A + B). A real `Office`
- * namespace satisfies it; so does the test double in `office.test.ts`. Non-Office
- * consumers (Slack, Lit, React Native) never pull this subpath in.
+ * and the core stays runtime-agnostic (invariants A + B). The real `Office`
+ * namespace satisfies it directly, as does the test double in `office.test.ts`.
+ * Non-Office consumers (Slack, Lit, React Native) never pull this subpath in.
+ *
+ * "Directly" is load-bearing, and it was not true at first: the token positions
+ * were typed `string`, which no real `Office` can satisfy under
+ * `@types/office-js`. See {@link OfficeToken} for what that cost the first
+ * adopter and why the fix is a union rather than a cast.
  *
  * @example Taskpane
  * ```ts
@@ -67,17 +72,53 @@ export { createOfficeStorageAdapter } from "./office-storage.js";
 
 // ─── Structural Office.js surface ─────────────────────────────────────────────
 
+/**
+ * An Office.js enum-member token: an `AsyncResult.status`, an `EventType` member,
+ * an `AsyncResultStatus` member.
+ *
+ * **Why a union, and not sloppiness.** The declaration and the runtime disagree
+ * about what these are, and the SDK has to accept whichever the host actually
+ * hands over. `@types/office-js` declares both enums with no initialisers, which
+ * makes every member an *implicit numeric* enum member:
+ *
+ * ```ts
+ * enum AsyncResultStatus { Succeeded, Failed }   // => 0, 1
+ * enum EventType { ActiveViewChanged, ... }
+ * ```
+ *
+ * The values the Office runtime actually puts in them are strings (`"failed"`,
+ * `"dialogMessageReceived"`). This file used to type these positions `string`, on
+ * the strength of having read a live `Office` object, with a comment asserting it
+ * was verified. The runtime observation was right and the conclusion was wrong:
+ * `typeof Office` still does not satisfy {@link OfficeGlobal} under those
+ * typings, because the callback parameter is contravariant and the mismatch
+ * surfaces as `Type 'Office.AsyncResultStatus' is not assignable to type
+ * 'string'` on `displayDialogAsync`.
+ *
+ * The first adopter (`ms-word-addin`) paid for that with a ~50-line bridge whose
+ * only job was re-presenting the real namespace under this type. All four token
+ * positions were individually load-bearing: narrowing any single one back to
+ * `string` reproduces the failure, so all four use this alias.
+ *
+ * **Never coerce a token.** Every value of this type is either compared against
+ * another token from the same host or handed straight back to Office
+ * (`addEventHandler`). `String(token)` would look tidier and would silently break
+ * `addEventHandler` the day a host really does use the numeric representation.
+ * Passing the value through untouched is correct under both.
+ */
+export type OfficeToken = string | number;
+
 /** `Office.AsyncResult` — only `status`, `value` and `error` are read. */
 export interface OfficeAsyncResult<T> {
   /**
-   * Compared against {@link OfficeGlobal.AsyncResultStatus}.
+   * Compared against {@link OfficeGlobal.AsyncResultStatus}, never inspected.
    *
-   * A **string** enum in Office.js (`"succeeded"` / `"failed"`), not numeric —
-   * verified against a real `Office` object, having first assumed otherwise.
-   * Typing it `number` made the whole namespace fail to satisfy `OfficeGlobal`,
-   * which is the kind of thing only compiling against the real thing catches.
+   * An {@link OfficeToken} rather than `string`: the runtime supplies
+   * `"succeeded"` / `"failed"`, `@types/office-js` declares
+   * `AsyncResultStatus.Succeeded` / `.Failed` as `0` / `1`. Note that a numeric
+   * `Succeeded` is `0`, so a truthiness test on this field is always a bug.
    */
-  status: string;
+  status: OfficeToken;
   value: T;
   error?: { code?: number; message?: string };
 }
@@ -97,7 +138,8 @@ export interface OfficeDialogEventArgs {
 
 /** `Office.Dialog` — only the two members used. */
 export interface OfficeDialog {
-  addEventHandler(eventType: string, handler: (args: OfficeDialogEventArgs) => void): void;
+  /** `eventType` is whatever came off {@link OfficeGlobal.EventType}, unchanged. */
+  addEventHandler(eventType: OfficeToken, handler: (args: OfficeDialogEventArgs) => void): void;
   close(): void;
 }
 
@@ -117,7 +159,12 @@ export interface OfficeDialogOptions {
 
 /**
  * The slice of the `Office` namespace this adapter touches, typed structurally
- * so the SDK takes no dependency on Office.js. Pass the real global `Office`.
+ * so the SDK takes no dependency on Office.js.
+ *
+ * **Pass the real global `Office`.** That works as written, and no bridge is
+ * needed: every enum-member position is an {@link OfficeToken}, which a numeric
+ * enum member and a plain string both satisfy. A hand-written double keeps
+ * working too, since widening a type only ever accepts more.
  */
 export interface OfficeGlobal {
   context: {
@@ -130,11 +177,11 @@ export interface OfficeGlobal {
     };
   };
   EventType: {
-    DialogMessageReceived: string;
-    DialogEventReceived: string;
+    DialogMessageReceived: OfficeToken;
+    DialogEventReceived: OfficeToken;
   };
   AsyncResultStatus: {
-    Failed: string;
+    Failed: OfficeToken;
   };
 }
 
@@ -163,6 +210,13 @@ export interface OfficeIdentityAdapterConfig {
    * compile error instead of a blank dialog to debug.
    */
   dialog?: Omit<OfficeDialogOptions, "displayInIframe">;
+  /**
+   * Fires once the sign-in dialog is on screen, before `login()` resolves.
+   *
+   * Forwarded to {@link OpenOfficeDialogConfig.onOpened}, which explains why a
+   * sign-in screen needs this moment and cannot use the settled promise for it.
+   */
+  onOpened?: () => void;
 }
 
 /** Office's code for "the user closed the dialog", worth its own message. */
@@ -235,6 +289,28 @@ export interface OpenOfficeDialogConfig<T> {
   parse: (message: string) => T;
   /** Dialog sizing. Defaults to 60% × 30%. */
   dialog?: Omit<OfficeDialogOptions, "displayInIframe">;
+  /**
+   * Fires once, when the dialog is actually on screen, before this promise
+   * settles. Not called at all if the dialog fails to open.
+   *
+   * Ported from `ms-word-addin`, which had to reach inside its own Office bridge
+   * to get at this moment (PDEV-3804), because the promise was the only thing the
+   * SDK exposed. Between the click and `displayDialogAsync` calling back,
+   * Microsoft 365 puts up its own "this add-in wants to display a new window"
+   * prompt. A surface that raises a full-pane "Signing you in..." overlay on
+   * click therefore covers the very button the user still has to press, so the
+   * overlay has to wait for this signal rather than for the click.
+   *
+   * The settled promise cannot serve instead: it resolves when the dialog is
+   * finished, which is far too late to hide a progress indicator that was in the
+   * way the whole time.
+   *
+   * A throw from this handler is swallowed. It runs on Office's stack inside the
+   * `displayDialogAsync` callback, outside the promise executor, so an escaping
+   * error would take down the flow and leave the promise pending forever. Losing
+   * a sign-in to a broken progress indicator is not a trade worth making.
+   */
+  onOpened?: () => void;
 }
 
 /**
@@ -256,7 +332,7 @@ export interface OpenOfficeDialogConfig<T> {
  * browser's permission prompt. No caller has wanted `true`.
  */
 export function openOfficeDialog<T>(config: OpenOfficeDialogConfig<T>): Promise<T> {
-  const { office, url, parse } = config;
+  const { office, url, parse, onOpened } = config;
   const dialogOptions: OfficeDialogOptions = {
     ...DEFAULT_DIALOG,
     ...config.dialog,
@@ -330,6 +406,20 @@ export function openOfficeDialog<T>(config: OpenOfficeDialogConfig<T>): Promise<
           ),
         );
       });
+
+      // Announced last, once both handlers are wired. The caller is told the
+      // dialog is on screen only when this side can actually receive from it, so
+      // a slow or throwing handler cannot delay or reorder Office's delivery.
+      // Still strictly before the promise settles: settling needs one of the
+      // handlers above, which cannot run until this callback returns.
+      try {
+        onOpened?.();
+      } catch {
+        // See OpenOfficeDialogConfig.onOpened: this runs on Office's stack,
+        // outside the promise executor, so an escaping error would strand the
+        // promise pending forever. A caller's progress indicator does not get to
+        // break sign-in.
+      }
     });
   });
 }
@@ -355,6 +445,7 @@ export function createOfficeIdentityAdapter(config: OfficeIdentityAdapterConfig)
         office,
         url: authorizeUrl,
         dialog: config.dialog,
+        onOpened: config.onOpened,
         // The dialog is a courier: it posts back the redirect URL and nothing
         // else. Validating here means `login()` never has to defend against a
         // message from some other sender on the same channel.

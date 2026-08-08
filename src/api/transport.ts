@@ -1,17 +1,23 @@
 /**
  * The WS2 transport seam (PDEV-7336) — the shape decided in PDEV-7335.
  *
- * Every `./api` function calls the global `fetch` directly today (28 sites), which
- * bakes a browser / Node-20+ assumption into the core and is the reason
- * `blocky-mobile` and `b2b-webcomponents` cannot use the SDK's request path at all.
- * This module is the injection point that removes that assumption.
+ * `./api` used to call the global `fetch` directly at 28 sites, which baked a
+ * browser / Node-20+ assumption into the core and was the reason `blocky-mobile`
+ * and `b2b-webcomponents` could not use the SDK's request path at all. This
+ * module is the injection point that removed that assumption.
  *
- * ⚠️ NOT WIRED YET, ON PURPOSE. Nothing in `./api` routes through this and it is
- * deliberately absent from `src/api/index.ts`, so it is internal to `src/` and not
- * part of the published surface. PDEV-7337 migrates the read-only endpoints and
- * PDEV-7338 the writes plus the Agentic client. Landing the seam on its own keeps
- * the risky part reviewable in isolation, with zero behaviour change to any
- * existing API function.
+ * **Public and wired.** PDEV-7337 migrated the read-only endpoints and PDEV-7338
+ * the writes plus the Agentic client, and `src/api/index.ts` exports
+ * `createFetchTransport` along with every type here.
+ *
+ * This paragraph used to read "⚠️ NOT WIRED YET, ON PURPOSE ... deliberately
+ * absent from `src/api/index.ts`", left over from when the seam landed on its own
+ * ahead of the migrations. It stayed wrong through two releases and directly
+ * contradicted the export comment sixty lines into `index.ts`. It is called out
+ * rather than quietly deleted because a stale warning is worse than none: an
+ * adopter reading this header reasonably concludes the transport is off limits
+ * and rebuilds timeouts, retries and 401 replay by hand, which is exactly what
+ * happened in `ms-word-addin`.
  *
  * ─── The three decisions that shaped this (full record: PDEV-7331, 2026-07-29) ───
  *

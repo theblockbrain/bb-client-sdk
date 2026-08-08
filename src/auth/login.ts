@@ -3,6 +3,10 @@ import { identifyUser, setAnalyticsGroup, trackEvent } from "../analytics/index.
 import { AUTH_SCOPES, AUTHORIZE_ENDPOINT, TOKEN_ENDPOINT } from "../config.js";
 import type { Profile } from "./jwt-claims.js";
 import { extractProfile } from "./jwt-claims.js";
+// Shared with `beginBrowserLogin`. Two copies of a tenant-routing rule is a
+// cross-tenant isolation bug waiting for the next divergent edit, so both PKCE
+// entry points append the org scope through this one function.
+import { withOrgScope } from "./org-scope.js";
 import { generateChallenge, generateStateNonce, generateVerifier } from "./pkce.js";
 import type { TokenResult } from "./tokens.js";
 import { computeExpiration, exchangeCode } from "./tokens.js";
@@ -50,23 +54,6 @@ export interface LoginOptions {
   orgId?: string;
   authorizeEndpoint?: string;
   tokenEndpoint?: string;
-}
-
-/** Zitadel's organization scope prefix — see {@link LoginOptions.orgId}. */
-const ORG_SCOPE_PREFIX = "urn:zitadel:iam:org:id:";
-
-/**
- * Append the Zitadel org scope, if an org was requested.
- *
- * Additive and idempotent: a caller that already put the scope in `scopes` does
- * not get it twice, and an absent or blank `orgId` leaves the list untouched
- * rather than emitting a malformed `urn:zitadel:iam:org:id:` with no value.
- */
-function withOrgScope(scopes: readonly string[], orgId: string | undefined): readonly string[] {
-  const trimmed = orgId?.trim();
-  if (!trimmed) return scopes;
-  const orgScope = `${ORG_SCOPE_PREFIX}${trimmed}`;
-  return scopes.includes(orgScope) ? scopes : [...scopes, orgScope];
 }
 
 /**

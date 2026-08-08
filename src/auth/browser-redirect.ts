@@ -3,6 +3,7 @@ import { createWebStorageAdapter } from "../adapters/web-storage.js";
 import { AUTH_SCOPES, AUTHORIZE_ENDPOINT, TOKEN_ENDPOINT } from "../config.js";
 import { extractProfile } from "./jwt-claims.js";
 import type { LoginResult } from "./login.js";
+import { withOrgScope } from "./org-scope.js";
 import { generateChallenge, generateStateNonce, generateVerifier } from "./pkce.js";
 import { computeExpiration, exchangeCode } from "./tokens.js";
 
@@ -18,8 +19,45 @@ const VERIFIER_KEY_PREFIX = "bb_pkce_verifier:";
 export interface BrowserRedirectOptions {
   /** OAuth client_id — must be provided by the caller; no SDK-level default. */
   clientId: string;
-  /** Default: AUTH_SCOPES from config */
+  /**
+   * **REPLACES** {@link AUTH_SCOPES} entirely, it does not extend it. Same
+   * contract as `LoginOptions.scopes`, and the same trap: pass a partial list and
+   * you silently drop the rest, so without `offline_access` there is no refresh
+   * token and the session dies at the first expiry. To add a scope, spread the
+   * default (`scopes: [...AUTH_SCOPES, "my:scope"]`). To pin the login to an
+   * organization use {@link BrowserRedirectOptions.orgId}, never a hand-built URN.
+   *
+   * Default: {@link AUTH_SCOPES} from config.
+   */
   scopes?: readonly string[];
+  /**
+   * Pin the login to a specific Zitadel organization.
+   *
+   * Appended as `urn:zitadel:iam:org:id:<orgId>` **on top of** whatever `scopes`
+   * are in effect, so it cannot accidentally displace `offline_access`. Same
+   * option, same helper, and same semantics as `LoginOptions.orgId`, because a
+   * surface that offers the dialog flow with a browser fallback must not have to
+   * express the tenant differently on each path.
+   *
+   * Two models exist across our surfaces and both are legitimate:
+   *
+   * - **Org as output (omit this).** The user signs in, Zitadel resolves their
+   *   home org, and `extractProfile` reads it from the token claims. This is what
+   *   `ms-outlook-addin` does: it never asks which tenant you are.
+   * - **Org as input (set this).** The tenant is known up front, from a URL
+   *   parameter, a deep link, or a form, and the login is pinned to it. This is
+   *   what `ms-word-addin` does with its `?orgId=` parameter.
+   *
+   * Pinning changes which org the user is authenticated *into*, so it is a
+   * tenant-routing decision: pass the tenant the user chose, never a value
+   * inferred from someone else's context.
+   *
+   * **Read by {@link beginBrowserLogin} only.** The org is decided at the
+   * authorize step, so `completeBrowserLogin` ignores this field: see the note on
+   * that function. Passing it there and not here reads as if the login were
+   * pinned when it is not, which is the PDEV-7369 defect in a different shape.
+   */
+  orgId?: string;
   /** Default: AUTHORIZE_ENDPOINT from config */
   authorizeEndpoint?: string;
   /** Default: TOKEN_ENDPOINT from config */
@@ -57,6 +95,10 @@ export interface BrowserLoginResult extends LoginResult {
  *
  * Stores PKCE state in sessionStorage and navigates window.location to the
  * Zitadel authorize URL. Never returns — the page is unloaded.
+ *
+ * This is where the organization is decided, via
+ * {@link BrowserRedirectOptions.orgId}. Omit it and Zitadel resolves the user's
+ * home org (org as output). Set it and the login is pinned (org as input).
  */
 export async function beginBrowserLogin(opts: BrowserRedirectOptions): Promise<never> {
   const clientId = opts.clientId;
@@ -75,7 +117,9 @@ export async function beginBrowserLogin(opts: BrowserRedirectOptions): Promise<n
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", opts.redirectUri);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", [...scopes].join(" "));
+  // Through the SAME helper `login()` uses, not a local re-implementation. The two
+  // paths are one tenant-routing rule with two entry points (PDEV-7369).
+  url.searchParams.set("scope", withOrgScope(scopes, opts.orgId).join(" "));
   url.searchParams.set("code_challenge", challenge);
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("state", state);
@@ -97,6 +141,22 @@ export async function beginBrowserLogin(opts: BrowserRedirectOptions): Promise<n
  * - Valid code + state → exchanges code, cleans URL, returns { isCallback: true, ... }
  *
  * The caller is responsible for persisting the returned tokens.
+ *
+ * **Deliberately ignores {@link BrowserRedirectOptions.orgId}.** It shares the
+ * options interface with {@link beginBrowserLogin}, so the field is accepted here,
+ * but there is nowhere for it to go and no effect it could have:
+ *
+ * - The authorization-code token request carries no `scope` (RFC 6749 §4.1.3). The
+ *   granted scope was fixed at the authorize step and the issued token inherits
+ *   it, which is why `exchangeCode` has no scope parameter and why `refreshTokens`
+ *   omits scope too (Zitadel rejects custom scopes on a token request).
+ * - The code itself is already bound to the org context Zitadel resolved during
+ *   the authorize hop, so re-stating the org at exchange time could not move it.
+ *
+ * Consequence worth knowing, because the two calls usually live in different
+ * files (begin behind a sign-in button, complete in app bootstrap): passing
+ * `orgId` **only** here pins nothing at all and logs the user into their default
+ * organization, with no error anywhere. Pass it to `beginBrowserLogin`.
  */
 export async function completeBrowserLogin(
   opts: BrowserRedirectOptions,

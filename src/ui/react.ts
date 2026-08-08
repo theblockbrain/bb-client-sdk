@@ -2,4 +2,9 @@
 // here because it is the only one that imports React; the vocabulary it operates
 // on stays on `./ui` via `theme-mode.ts`.
 export type { Theme, ThemeMode } from "./theme-mode.js";
+// `UseThemeOptions` is exported so a surface that wraps the hook can name the
+// input type. It stays off `./ui` (and so off the root barrel): the interface is
+// declared in a module that imports React, and `./ui` must remain importable from
+// bare Node.
+export type { UseThemeOptions } from "./useTheme.js";
 export { useTheme } from "./useTheme.js";

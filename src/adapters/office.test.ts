@@ -7,6 +7,7 @@ import {
   OfficeDialogError,
   type OfficeDialogEventArgs,
   type OfficeGlobal,
+  type OfficeToken,
   openOfficeDialog,
 } from "./office.js";
 
@@ -43,9 +44,51 @@ vi.mock("../auth/jwt-claims.js", async importOriginal => ({
  * only the taskpane's token exchange ever sees it.
  */
 
-const MESSAGE_RECEIVED = "dialogMessageReceived";
-const EVENT_RECEIVED = "dialogEventReceived";
-const FAILED = "failed"; // string enum in Office.js, verified against the real namespace
+/** The four enum-member tokens a host has to supply, in one representation. */
+interface TokenSet {
+  messageReceived: OfficeToken;
+  eventReceived: OfficeToken;
+  succeeded: OfficeToken;
+  failed: OfficeToken;
+}
+
+/** What the Office RUNTIME actually puts in those enums. */
+const STRING_TOKENS = {
+  messageReceived: "dialogMessageReceived",
+  eventReceived: "dialogEventReceived",
+  succeeded: "succeeded",
+  failed: "failed",
+} as const;
+
+/**
+ * What `@types/office-js` DECLARES, reproduced faithfully rather than imported.
+ *
+ * Both enums are declared with no initialisers, so every member is an implicit
+ * numeric one. The leading `EventType` members are kept so the dialog tokens land
+ * on realistic indices (3 and 4) instead of colliding with the status values.
+ *
+ * The SDK must not import Office.js (invariant A), so this is how the declared
+ * shape gets into a test at all.
+ */
+enum DeclaredAsyncResultStatus {
+  Succeeded,
+  Failed,
+}
+enum DeclaredEventType {
+  ActiveViewChanged,
+  AppointmentTimeChanged,
+  AttachmentsChanged,
+  DialogEventReceived,
+  DialogMessageReceived,
+}
+
+const NUMERIC_TOKENS = {
+  messageReceived: DeclaredEventType.DialogMessageReceived,
+  eventReceived: DeclaredEventType.DialogEventReceived,
+  // 0. Falsy, which is the whole reason a truthiness test on `status` is a bug.
+  succeeded: DeclaredAsyncResultStatus.Succeeded,
+  failed: DeclaredAsyncResultStatus.Failed,
+} as const;
 
 interface FakeOffice {
   office: OfficeGlobal;
@@ -56,16 +99,25 @@ interface FakeOffice {
   /** Simulate a dialog-level event (e.g. the user closing it). */
   postEvent: (error: number) => void;
   closeCount: () => number;
+  /** Every `eventType` the adapter handed to `addEventHandler`, in order. */
+  eventTypesSeen: () => OfficeToken[];
 }
 
 /** A test double for the slice of Office.js the adapter uses. */
-function fakeOffice(options: { failToOpen?: boolean; closeThrows?: boolean } = {}): FakeOffice {
-  const handlers = new Map<string, (args: OfficeDialogEventArgs) => void>();
+function fakeOffice(
+  options: { failToOpen?: boolean; closeThrows?: boolean; tokens?: TokenSet } = {},
+): FakeOffice {
+  // String by default: that is what a live host supplies, so the rest of the file
+  // keeps exercising the representation real add-ins see.
+  const tokens = options.tokens ?? STRING_TOKENS;
+  const handlers = new Map<OfficeToken, (args: OfficeDialogEventArgs) => void>();
+  const eventTypes: OfficeToken[] = [];
   let opened = "";
   let closes = 0;
 
   const dialog: OfficeDialog = {
     addEventHandler: (eventType, handler) => {
+      eventTypes.push(eventType);
       handlers.set(eventType, handler);
     },
     close: () => {
@@ -82,34 +134,35 @@ function fakeOffice(options: { failToOpen?: boolean; closeThrows?: boolean } = {
         displayDialogAsync: (startAddress, _opts, callback) => {
           opened = startAddress;
           if (options.failToOpen) {
-            callback({ status: FAILED, value: dialog, error: { message: "blocked" } });
+            callback({ status: tokens.failed, value: dialog, error: { message: "blocked" } });
             return;
           }
-          callback({ status: "succeeded", value: dialog });
+          callback({ status: tokens.succeeded, value: dialog });
         },
       },
     },
     EventType: {
-      DialogMessageReceived: MESSAGE_RECEIVED,
-      DialogEventReceived: EVENT_RECEIVED,
+      DialogMessageReceived: tokens.messageReceived,
+      DialogEventReceived: tokens.eventReceived,
     },
-    AsyncResultStatus: { Failed: FAILED },
+    AsyncResultStatus: { Failed: tokens.failed },
   };
 
   return {
     office,
     openedWith: () => opened,
-    postMessage: message => handlers.get(MESSAGE_RECEIVED)?.({ message }),
-    postEvent: error => handlers.get(EVENT_RECEIVED)?.({ error }),
+    postMessage: message => handlers.get(tokens.messageReceived)?.({ message }),
+    postEvent: error => handlers.get(tokens.eventReceived)?.({ error }),
     closeCount: () => closes,
+    eventTypesSeen: () => eventTypes,
   };
 }
 
 // Outlook's real shape: fragment-free, as RFC 6749 §3.1.2 requires.
 const REDIRECT_URI = "https://addin.example.com/taskpane.html";
 
-function adapterFor(fake: FakeOffice) {
-  return createOfficeIdentityAdapter({ office: fake.office, redirectUri: REDIRECT_URI });
+function adapterFor(fake: FakeOffice, onOpened?: () => void) {
+  return createOfficeIdentityAdapter({ office: fake.office, redirectUri: REDIRECT_URI, onOpened });
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -219,6 +272,113 @@ describe("createOfficeIdentityAdapter", () => {
 
     await expect(pending).resolves.toContain("code=abc");
     expect(fake.closeCount()).toBe(1);
+  });
+});
+
+/**
+ * PDEV-7369. `OfficeGlobal` typed its four enum-member positions `string`, which
+ * no real `Office` namespace can satisfy: `@types/office-js` declares `EventType`
+ * and `AsyncResultStatus` with no initialisers, so their members are numeric, and
+ * because the `displayDialogAsync` callback parameter is contravariant the mismatch
+ * lands as `Type 'Office.AsyncResultStatus' is not assignable to type 'string'`.
+ * The first adopter (`ms-word-addin`) paid for that with a ~50-line bridge whose
+ * only job was re-presenting the real namespace under this type.
+ *
+ * `OfficeToken` is `string | number` so the namespace goes straight in. This block
+ * pins both halves of that: the compile-time assignment, and the behaviour that
+ * makes the union safe rather than merely permissive.
+ */
+describe("OfficeGlobal token representations", () => {
+  const cases: Array<[string, TokenSet]> = [
+    ["string tokens, as the Office runtime supplies them", STRING_TOKENS],
+    ["numeric enum members, as @types/office-js declares them", NUMERIC_TOKENS],
+  ];
+
+  it("takes a whole namespace by assignment, with no bridge", () => {
+    // The real assertion here is that this file TYPECHECKS. `declaredOffice`
+    // reproduces the @types/office-js shape: numeric enum objects, and a callback
+    // parameter typed with them, which is where the contravariance bites. Narrow
+    // any one token position back to `string` and this annotation stops compiling,
+    // so `tsc --noEmit` is where the regression surfaces, not vitest.
+    //
+    // All four positions were checked individually against the real typings: each
+    // one alone reproduces the failure, which is why all four use OfficeToken.
+    // Members copied from @types/office-js rather than approximated, so the only
+    // friction left to test is the token types. `Office.AsyncResult` really does
+    // declare `error` as required, and `Office.Dialog.addEventHandler` really does
+    // take that two-member union rather than a single args type.
+    interface DeclaredAsyncResult<T> {
+      status: DeclaredAsyncResultStatus;
+      value: T;
+      error: { code: number; message: string; name: string };
+    }
+    interface DeclaredDialog {
+      addEventHandler(
+        eventType: DeclaredEventType,
+        handler: (
+          args: { message: string; origin: string | undefined } | { error: number },
+        ) => void,
+      ): void;
+      close(): void;
+    }
+    interface DeclaredOfficeNamespace {
+      context: {
+        ui: {
+          displayDialogAsync(
+            startAddress: string,
+            options?: { height?: number; width?: number; displayInIframe?: boolean },
+            callback?: (result: DeclaredAsyncResult<DeclaredDialog>) => void,
+          ): void;
+        };
+      };
+      EventType: typeof DeclaredEventType;
+      AsyncResultStatus: typeof DeclaredAsyncResultStatus;
+    }
+
+    const declaredOffice: DeclaredOfficeNamespace = {
+      context: { ui: { displayDialogAsync: () => {} } },
+      EventType: DeclaredEventType,
+      AsyncResultStatus: DeclaredAsyncResultStatus,
+    };
+
+    const asOfficeGlobal: OfficeGlobal = declaredOffice;
+
+    expect(asOfficeGlobal).toBe(declaredOffice);
+  });
+
+  it.each(cases)("completes the dialog round trip with %s", async (_label, tokens) => {
+    const fake = fakeOffice({ tokens });
+    const pending = adapterFor(fake).launchOAuthFlow("https://idp.example.com/authorize");
+
+    fake.postMessage(`${REDIRECT_URI}?code=abc&state=n1`);
+
+    await expect(pending).resolves.toContain("code=abc");
+    expect(fake.closeCount()).toBe(1);
+  });
+
+  it.each(cases)("detects a refused open with %s", async (_label, tokens) => {
+    // The numeric case is the sharp one: Succeeded is 0 and Failed is 1, so a
+    // truthiness test on `status` would invert the outcome rather than fail
+    // loudly. Only an === against the host's own Failed token is safe.
+    const fake = fakeOffice({ tokens, failToOpen: true });
+
+    await expect(
+      adapterFor(fake).launchOAuthFlow("https://idp.example.com/authorize"),
+    ).rejects.toMatchObject({ reason: "open-failed" });
+  });
+
+  it.each(cases)("hands %s back to addEventHandler untransformed", async (_label, tokens) => {
+    // The property the word-addin bridge went out of its way to preserve. A token
+    // is only ever compared against another token from the same host or handed
+    // straight back to Office, so `String(token)` would look tidier and would
+    // silently break registration on a numeric host. toStrictEqual on the raw
+    // values catches a coercion that a loose compare would let through.
+    const fake = fakeOffice({ tokens });
+    const pending = adapterFor(fake).launchOAuthFlow("https://idp.example.com/authorize");
+    fake.postMessage(`${REDIRECT_URI}?code=abc&state=n1`);
+    await pending;
+
+    expect(fake.eventTypesSeen()).toStrictEqual([tokens.messageReceived, tokens.eventReceived]);
   });
 });
 
@@ -360,6 +520,100 @@ describe("openOfficeDialog", () => {
     fake.postMessage('{"text":"hello"}');
 
     await expect(pending).resolves.toEqual({ text: "hello" });
+  });
+});
+
+/**
+ * PDEV-3804, ported from `ms-word-addin`. Between the click and the dialog
+ * appearing, Microsoft 365 shows its own "this add-in wants to display a new
+ * window" prompt. A surface that raises a full-pane "Signing you in..." overlay on
+ * click covers the very button the user has to press, so the overlay needs the
+ * moment the dialog is really on screen. `openOfficeDialog` exposed only the
+ * settled promise, which resolves when the dialog is FINISHED, so the add-in had
+ * to reach inside its own Office bridge to get at this.
+ */
+describe("onOpened", () => {
+  const openWith = (fake: FakeOffice, onOpened?: () => void): Promise<string> =>
+    openOfficeDialog<string>({
+      office: fake.office,
+      url: "https://addin.example.com/dictate.html",
+      parse: message => message,
+      onOpened,
+    });
+
+  it("fires once, before the promise settles", async () => {
+    const fake = fakeOffice();
+    const order: string[] = [];
+
+    const pending = openWith(fake, () => order.push("opened"));
+
+    // Already fired, synchronously inside the displayDialogAsync callback and
+    // before any message could arrive. That ordering is the entire point: an
+    // overlay hidden only on settle was in the way for the whole sign-in.
+    expect(order).toEqual(["opened"]);
+
+    fake.postMessage("ok");
+    await pending;
+    order.push("settled");
+
+    expect(order).toEqual(["opened", "settled"]);
+  });
+
+  it("does not fire when the dialog fails to open", async () => {
+    // Nothing is on screen, so a surface that hid its own button on this signal
+    // would strand the user looking at a blank pane.
+    const fake = fakeOffice({ failToOpen: true });
+    const onOpened = vi.fn();
+
+    await expect(openWith(fake, onOpened)).rejects.toMatchObject({ reason: "open-failed" });
+
+    expect(onOpened).not.toHaveBeenCalled();
+  });
+
+  it("survives a handler that throws, without breaking sign-in", async () => {
+    // It runs on Office's stack inside the displayDialogAsync callback, OUTSIDE
+    // the promise executor, so an escaping error would strand the promise pending
+    // forever. A caller's broken progress indicator does not get to cost a login.
+    const fake = fakeOffice();
+
+    const pending = openWith(fake, () => {
+      throw new Error("setState on an unmounted overlay");
+    });
+    fake.postMessage("ok");
+
+    await expect(pending).resolves.toBe("ok");
+    expect(fake.closeCount()).toBe(1);
+  });
+
+  it("is optional, so existing callers are unaffected", async () => {
+    // Additive by construction: the key is absent, not undefined. Five live
+    // consumers call these two functions without it.
+    const fake = fakeOffice();
+    const identity = createOfficeIdentityAdapter({
+      office: fake.office,
+      redirectUri: REDIRECT_URI,
+    });
+
+    const pending = identity.launchOAuthFlow("https://idp.example.com/authorize");
+    fake.postMessage(`${REDIRECT_URI}?code=abc&state=n1`);
+
+    await expect(pending).resolves.toContain("code=abc");
+  });
+
+  it("is forwarded by createOfficeIdentityAdapter to the underlying dialog", async () => {
+    // The gap the add-in actually hit: it needed this on the OAuth hop, and the
+    // hop is built by the factory, so a signal only on openOfficeDialog would not
+    // have reached it.
+    const fake = fakeOffice();
+    const onOpened = vi.fn();
+
+    const pending = adapterFor(fake, onOpened).launchOAuthFlow("https://idp.example.com/authorize");
+    expect(onOpened).toHaveBeenCalledTimes(1);
+
+    fake.postMessage(`${REDIRECT_URI}?code=abc&state=n1`);
+    await pending;
+
+    expect(onOpened).toHaveBeenCalledTimes(1);
   });
 });
 
