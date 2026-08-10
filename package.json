@@ -101,7 +101,14 @@
       "react-native": "./dist/telemetry/cookiebot.js",
       "import": "./dist/telemetry/cookiebot.js"
     },
+    "./dev/sdk-link": {
+      "types": "./dist/dev/sdk-link.d.ts",
+      "import": "./dist/dev/sdk-link.js"
+    },
     "./ui/theme-base.css": "./dist/ui/theme-base.css"
+  },
+  "bin": {
+    "bb-sdk-link": "./dist/dev/sdk-link-bin.js"
   },
   "sideEffects": [
     "**/*.css"
@@ -142,7 +149,7 @@
     "lint:types": "eslint src",
     "lint:fix": "biome check --write .",
     "check:package": "publint && attw --pack . --profile esm-only --exclude-entrypoints ui/theme-base.css",
-    "dev": "tsup --watch",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput & tsup --watch",
     "clean": "rm -rf dist",
     "prepare": "if [ -e .git ]; then lefthook install; fi",
     "prepack": "npm run build",

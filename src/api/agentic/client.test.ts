@@ -454,6 +454,42 @@ describe("callAgenticStream — external tool relay (PDEV-7920)", () => {
     vi.unstubAllGlobals();
   });
 
+  it("stops between steps when the caller aborts while a tool is running", async () => {
+    // The signal reaches each POST, so an abort DURING a request was already
+    // observed. Between steps it was not: a turn cancelled while a relayed tool
+    // ran let that tool finish and then issued a fresh resume POST carrying its
+    // result. Relayed tools run on the client and can take seconds, so the window
+    // is wide, and from the surface's side a cancelled turn kept talking to the
+    // server.
+    const controller = new AbortController();
+    const bodies = stubTurns(relayTurn({ edits: [] }));
+    const execute = vi.fn().mockImplementation(async () => {
+      controller.abort();
+      return { applied: 0 };
+    });
+
+    await expect(
+      drain(callAgenticStream({ ...relayOptions(execute), signal: controller.signal })),
+    ).rejects.toMatchObject({ kind: "aborted" });
+
+    // The tool ran (it was already in flight), but no resume was sent after it.
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(bodies).toHaveLength(1);
+  });
+
+  it("does not abort a turn whose signal never fired", async () => {
+    const controller = new AbortController();
+    const bodies = stubTurns(relayTurn({ edits: [] }));
+    const execute = vi.fn().mockResolvedValue({ applied: 1 });
+
+    const text = await drain(
+      callAgenticStream({ ...relayOptions(execute), signal: controller.signal }),
+    );
+
+    expect(text).toBe("done");
+    expect(bodies).toHaveLength(2);
+  });
+
   it("runs the named tool and resumes with its result", async () => {
     const bodies = stubTurns(relayTurn({ edits: [{ original: "a", modified: "b" }] }));
     const execute = vi.fn().mockResolvedValue({ applied: 1 });
@@ -544,7 +580,78 @@ describe("callAgenticStream — external tool relay (PDEV-7920)", () => {
     expect(bodies[1]?.resumeData).toEqual({ error: "Word.run failed: document locked" });
   });
 
-  it("passes input: undefined when no tool-input-available frame preceded the suspend", async () => {
+  // Nothing on either side of the wire orders `tool-input-available` before the
+  // suspend, and the arguments are on the suspend too: the server's relay tool calls
+  // `suspend(args)` (botticelli external-toolset.ts) and Mastra surfaces that as
+  // `suspendPayload`. Reading only the frame map made the whole relay depend on an
+  // ordering nobody guarantees, and its failure was silent and total: every
+  // argument-taking tool ran with `undefined`, so the model was told its tool failed
+  // and narrated prose instead of editing the document.
+  it("falls back to suspendPayload when no tool-input-available frame arrived", async () => {
+    stubTurns([
+      {
+        type: "data-tool-call-suspended",
+        data: {
+          runId: "r",
+          toolCallId: "c",
+          toolName: WORD_TOOL.name,
+          suspendPayload: { edits: [{ original: "a", modified: "b" }] },
+        },
+      },
+    ]);
+    const execute = vi.fn().mockResolvedValue({});
+
+    await drain(callAgenticStream(relayOptions(execute)));
+
+    expect(execute.mock.calls[0]?.[0]).toMatchObject({
+      input: { edits: [{ original: "a", modified: "b" }] },
+    });
+  });
+
+  // The fallback must not depend on the id it is keyed by: a suspend that names no
+  // toolCallId skips the map lookup entirely and still has to reach the payload.
+  it("falls back to suspendPayload even when the suspend carries no toolCallId", async () => {
+    stubTurns([
+      {
+        type: "data-tool-call-suspended",
+        data: { runId: "r", toolName: WORD_TOOL.name, suspendPayload: { edits: ["only-payload"] } },
+      },
+    ]);
+    const execute = vi.fn().mockResolvedValue({});
+
+    await drain(callAgenticStream(relayOptions(execute)));
+
+    expect(execute.mock.calls[0]?.[0]).toMatchObject({ input: { edits: ["only-payload"] } });
+  });
+
+  // The frame stays the more specific source: it is keyed by this exact tool call,
+  // so the fallback is additive and cannot change what a working relay already sees.
+  it("prefers the tool-input-available value when both sources are present", async () => {
+    stubTurns([
+      {
+        type: "tool-input-available",
+        toolCallId: "c",
+        toolName: WORD_TOOL.name,
+        input: { edits: ["from-frame"] },
+      },
+      {
+        type: "data-tool-call-suspended",
+        data: {
+          runId: "r",
+          toolCallId: "c",
+          toolName: WORD_TOOL.name,
+          suspendPayload: { edits: ["from-payload"] },
+        },
+      },
+    ]);
+    const execute = vi.fn().mockResolvedValue({});
+
+    await drain(callAgenticStream(relayOptions(execute)));
+
+    expect(execute.mock.calls[0]?.[0]).toMatchObject({ input: { edits: ["from-frame"] } });
+  });
+
+  it("passes input: undefined when neither source carried arguments", async () => {
     stubTurns([
       {
         type: "data-tool-call-suspended",
@@ -555,6 +662,8 @@ describe("callAgenticStream — external tool relay (PDEV-7920)", () => {
 
     await drain(callAgenticStream(relayOptions(execute)));
 
+    // "No arguments observed", not "no arguments passed" — the executor decides what
+    // to do about it, and failing beats guessing.
     expect(execute.mock.calls[0]?.[0]).toMatchObject({ input: undefined });
   });
 
@@ -597,5 +706,113 @@ describe("callAgenticStream — external tool relay (PDEV-7920)", () => {
 
     expect(bodies[0]).not.toHaveProperty("externalTools");
     expect(bodies[1]).not.toHaveProperty("externalTools");
+  });
+});
+
+describe("callAgenticStream — finish metadata (citations)", () => {
+  const CITATION = {
+    citation_id: "cit-1",
+    citation_index: 1,
+    title: "WC 2010",
+    source_type: "kb" as const,
+    doc_id: "doc-9",
+    chunk_id: "chunk-3",
+  };
+
+  /** One turn: some text, then the terminal finish part. */
+  function stubOneTurn(frames: object[]) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(sseResponse(frames))),
+    );
+  }
+
+  // The whole point: without this a caller gets an answer full of `[1]` markers
+  // and nothing to resolve them against.
+  it("reports the citations the answer referenced", async () => {
+    const onMetadata = vi.fn();
+    stubOneTurn([
+      { type: "text-delta", textDelta: "Spain won. Ref: [1]" },
+      { type: "finish", messageMetadata: { citations: [CITATION] } },
+    ]);
+
+    const text = await drain(
+      callAgenticStream({ ...OPTIONS, approvalResolver: denyAllResolver, onMetadata }),
+    );
+
+    expect(text).toBe("Spain won. Ref: [1]");
+    expect(onMetadata).toHaveBeenCalledTimes(1);
+    expect(onMetadata.mock.calls[0]?.[0]).toEqual({ citations: [CITATION] });
+  });
+
+  it("passes usage and uncited retrieval hits through untouched", async () => {
+    const onMetadata = vi.fn();
+    stubOneTurn([
+      { type: "text-delta", textDelta: "hi" },
+      {
+        type: "finish",
+        messageMetadata: {
+          citations: [CITATION],
+          searchedDocuments: [{ doc_id: "doc-2" }],
+          usage: { inputTokens: 10, outputTokens: 4 },
+        },
+      },
+    ]);
+
+    await drain(callAgenticStream({ ...OPTIONS, approvalResolver: denyAllResolver, onMetadata }));
+
+    expect(onMetadata.mock.calls[0]?.[0]).toMatchObject({
+      searchedDocuments: [{ doc_id: "doc-2" }],
+      usage: { inputTokens: 10, outputTokens: 4 },
+    });
+  });
+
+  // The server omits the key entirely when there is nothing to report. Firing
+  // with an empty object would have callers clear state they had legitimately
+  // filled in on an earlier turn.
+  it("stays silent when the finish part carries no metadata", async () => {
+    const onMetadata = vi.fn();
+    stubOneTurn([{ type: "text-delta", textDelta: "hi" }, { type: "finish" }]);
+
+    await drain(callAgenticStream({ ...OPTIONS, approvalResolver: denyAllResolver, onMetadata }));
+
+    expect(onMetadata).not.toHaveBeenCalled();
+  });
+
+  it("is optional — a caller that does not want metadata is unaffected", async () => {
+    stubOneTurn([
+      { type: "text-delta", textDelta: "hi" },
+      { type: "finish", messageMetadata: { citations: [CITATION] } },
+    ]);
+
+    await expect(
+      drain(callAgenticStream({ ...OPTIONS, approvalResolver: denyAllResolver })),
+    ).resolves.toBe("hi");
+  });
+
+  // A relayed turn makes several POSTs and only the last carries a finish part,
+  // so the callback must not fire once per request.
+  it("fires once per turn, not once per resume request", async () => {
+    const onMetadata = vi.fn();
+    const bodies = stubTurns([
+      {
+        type: "data-tool-call-suspended",
+        data: { runId: "run-w1", toolCallId: "call-w1", toolName: "propose_edits" },
+      },
+    ]);
+
+    await drain(
+      callAgenticStream({
+        ...OPTIONS,
+        approvalResolver: denyAllResolver,
+        onMetadata,
+        externalTools: [{ name: "propose_edits", description: "d", parameters: {} }],
+        executeExternalTool: () => Promise.resolve({ ok: true }),
+      }),
+    );
+
+    // Two POSTs, and the resume answers with plain text and no finish metadata.
+    expect(bodies).toHaveLength(2);
+    expect(onMetadata).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,13 @@
 /**
- * Office dialog {@link IdentityAdapter} — the PKCE browser hop for Office add-ins,
- * shipped as an opt-in leaf (`@theblockbrain/bb-client-sdk/adapters/office`).
+ * Everything Office-specific the SDK knows, shipped as one opt-in leaf
+ * (`@theblockbrain/bb-client-sdk/adapters/office`): the PKCE browser hop, the
+ * generic dialog courier behind it, persistence, and the host theme.
+ *
+ * They live together because they share one constraint, not one feature: each is
+ * useless off an Office host and each is expressed *structurally*, so the SDK
+ * takes no dependency on `@types/office-js` and non-Office consumers (Slack, Lit,
+ * React Native) never pull any of it in. The dialog hop is the founding member
+ * and the rest of this header is its story.
  *
  * Why this exists (PDEV-7684). An Office add-in cannot do a full-page redirect,
  * so it opens the IdP in `Office.context.ui.displayDialogAsync` — a **separate
@@ -57,6 +64,7 @@
  * ```
  */
 
+import type { Theme } from "../ui/theme-mode.js";
 import type { IdentityAdapter } from "./identity.js";
 
 // Persistence for an Office add-in ships from this same subpath: a surface that
@@ -175,6 +183,14 @@ export interface OfficeGlobal {
         callback: (result: OfficeAsyncResult<OfficeDialog>) => void,
       ): void;
     };
+    /**
+     * The host's own appearance. Optional because it genuinely is: see
+     * {@link OfficeThemeColors}.
+     *
+     * Declared here so one `OfficeGlobal` can be handed to both the identity
+     * adapter and {@link readOfficeHostTheme} without being re-typed.
+     */
+    officeTheme?: OfficeThemeColors;
   };
   EventType: {
     DialogMessageReceived: OfficeToken;
@@ -513,4 +529,173 @@ function describeFragmentRoutedCallback(redirectUrl: string): string | null {
     "§3.1.2 forbids. Register a fragment-free redirect URI in Zitadel — route " +
     "to the callback view after the taskpane loads instead."
   );
+}
+
+// ─── Host theme ───────────────────────────────────────────────────────────────
+
+/**
+ * The slice of `Office.context.officeTheme` this module reads.
+ *
+ * **Both fields are optional, and `@types/office-js` declares both as required.**
+ * That is not sloppiness, it is the same declaration-versus-runtime gap
+ * {@link OfficeToken} documents, and it is the whole reason
+ * {@link readOfficeHostTheme} has two paths:
+ *
+ * - `isDarkTheme` is typed `boolean`, and the typings themselves say it "isn't
+ *   supported in Outlook". In Outlook it is `undefined` at runtime while the
+ *   compiler insists it is a boolean.
+ * - `officeTheme` itself is typed non-optional, but in Outlook it only exists
+ *   from Mailbox requirement set 1.14, and it is absent in the dialog window.
+ *
+ * So a surface cannot trust either field's declared type, and two Office add-ins
+ * independently reached opposite conclusions about which one to read: Word took
+ * the flag, Outlook computed luminance from the colours and asserted in a comment
+ * that "Office reports colours, not a light/dark flag". Both were right about
+ * their own host and wrong as a general rule.
+ */
+export interface OfficeThemeColors {
+  /**
+   * `true` when the host is on a dark theme. Word, Excel and PowerPoint report
+   * this. **Outlook does not** — it is `undefined` there.
+   */
+  isDarkTheme?: boolean;
+  /**
+   * Body background as a hex triplet, e.g. `"#FFA500"`. Reported by every host
+   * that reports a theme at all, and the only signal Outlook gives.
+   */
+  bodyBackgroundColor?: string;
+}
+
+/**
+ * Any object shaped like the `Office` namespace as far as the theme is
+ * concerned. {@link OfficeGlobal} satisfies it, and so does the real `Office`.
+ */
+export interface OfficeThemeHost {
+  context: { officeTheme?: OfficeThemeColors };
+}
+
+/**
+ * Perceived brightness of a `#rrggbb` colour, 0 (black) to 1 (white).
+ *
+ * ITU-R BT.601 coefficients rather than a plain average, because green
+ * contributes far more perceived brightness than blue and averaging
+ * misclassifies saturated backgrounds.
+ *
+ * Anything that is not a six-digit hex triplet returns `null` and is treated as
+ * "no opinion" by the caller. Guessing at some other notation would be inventing
+ * a host contract that has never been observed.
+ */
+function luminance(hex: string): number | null {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!match) return null;
+  const value = Number.parseInt(match[1], 16);
+  const r = (value >> 16) & 0xff;
+  const g = (value >> 8) & 0xff;
+  const b = value & 0xff;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+/** Below this, the background is dark. Midpoint, and it has never needed tuning. */
+const DARK_BACKGROUND_BELOW = 0.5;
+
+/**
+ * The Office host's own theme, or `null` when it will not say.
+ *
+ * **One function, two mechanisms, because the hosts genuinely differ.** The flag
+ * is tried first and the luminance of `bodyBackgroundColor` is the fallback:
+ *
+ * | Host | What answers |
+ * |---|---|
+ * | Word, Excel, PowerPoint | `isDarkTheme` |
+ * | Outlook (Mailbox 1.14+) | `bodyBackgroundColor` luminance |
+ * | Outlook (older), any dialog window | neither — `null` |
+ *
+ * Order matters: where the flag exists it is the host's own answer, and
+ * luminance is an inference from one colour. Where the flag is missing the
+ * inference is all there is. Neither add-in could have skipped the other's path
+ * without breaking on the other's host.
+ *
+ * **`null` is a real answer, not a failure.** It means "no opinion", and the
+ * caller must leave `data-host-theme` off the root rather than defaulting to
+ * light — that absence is what hands resolution back to
+ * `@media (prefers-color-scheme: dark)`. See `useTheme`'s `hostTheme` option,
+ * which takes this value directly and does exactly that.
+ *
+ * **Detection is adapter-side by design.** The SDK never touches the `Office`
+ * identifier itself (it takes no dependency on `@types/office-js`), so a surface
+ * passes the namespace in. Outside Office the identifier is not merely undefined
+ * but undeclared, and `Office?.context` still throws on it, so the caller's guard
+ * is `typeof Office === "undefined" ? null : Office` and this function accepts
+ * the nullish result rather than making every call site branch twice.
+ */
+export function readOfficeHostTheme(host: OfficeThemeHost | null | undefined): Theme | null {
+  try {
+    const theme = host?.context?.officeTheme;
+    if (!theme) return null;
+
+    if (typeof theme.isDarkTheme === "boolean") return theme.isDarkTheme ? "dark" : "light";
+
+    const background = theme.bodyBackgroundColor;
+    if (!background) return null;
+    const value = luminance(background);
+    if (value === null) return null;
+    return value < DARK_BACKGROUND_BELOW ? "dark" : "light";
+  } catch {
+    // Office is present but not initialised yet. Deliberately silent: this runs
+    // on a poll, so a log line here would repeat forever for a non-condition.
+    return null;
+  }
+}
+
+/**
+ * How often {@link watchOfficeHostTheme} asks. Slow enough to be free, fast
+ * enough that flipping the host theme feels immediate.
+ */
+export const OFFICE_HOST_THEME_POLL_MS = 2000;
+
+export interface WatchOfficeHostThemeConfig {
+  /** The Office namespace, or `null` outside Office. */
+  host: OfficeThemeHost | null | undefined;
+  /** Fires on the first known theme and on every change after it. */
+  onChange: (theme: Theme) => void;
+  /** Poll period. Defaults to {@link OFFICE_HOST_THEME_POLL_MS}. */
+  intervalMs?: number;
+}
+
+/**
+ * Follow the host theme for as long as the surface is open. Returns the stop
+ * function.
+ *
+ * **Why a poll and not an event.** Office raises `OfficeThemeChanged` only under
+ * Outlook's Mailbox 1.14, through `mailbox.addHandlerAsync` — and Word, Excel and
+ * PowerPoint have no `Office.context.mailbox` at all, so there is nothing to
+ * subscribe to there. Polling is the only mechanism that works on every host,
+ * which is why it belongs here rather than in one add-in: Word wrote this loop,
+ * and Outlook, which applied the theme once inside `Office.onReady`, silently
+ * ignored the user changing it afterwards.
+ *
+ * `onChange` fires only on a real change. The read is cheap but the consumer's
+ * reaction is not: writing an attribute invalidates style for the whole subtree
+ * even when the value is unchanged, and a poll that never stops would do that
+ * forever.
+ *
+ * A read that comes back `null` is skipped rather than reported. Office answers
+ * only after `Office.onReady`, and a momentary "no opinion" must not wipe out a
+ * theme already known — the surface would flash back to the OS theme and then
+ * correct itself.
+ */
+export function watchOfficeHostTheme(config: WatchOfficeHostThemeConfig): () => void {
+  const { host, onChange } = config;
+  let current: Theme | null = null;
+
+  const sync = (): void => {
+    const next = readOfficeHostTheme(host);
+    if (next === null || next === current) return;
+    current = next;
+    onChange(next);
+  };
+
+  sync();
+  const timer = setInterval(sync, config.intervalMs ?? OFFICE_HOST_THEME_POLL_MS);
+  return () => clearInterval(timer);
 }

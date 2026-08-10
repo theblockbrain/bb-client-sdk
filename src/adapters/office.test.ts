@@ -1,14 +1,19 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { login } from "../auth/login.js";
 import {
   createOfficeIdentityAdapter,
   isOfficeDialogCancelled,
+  OFFICE_HOST_THEME_POLL_MS,
   type OfficeDialog,
   OfficeDialogError,
   type OfficeDialogEventArgs,
   type OfficeGlobal,
+  type OfficeThemeColors,
+  type OfficeThemeHost,
   type OfficeToken,
   openOfficeDialog,
+  readOfficeHostTheme,
+  watchOfficeHostTheme,
 } from "./office.js";
 
 vi.mock("../auth/tokens.js", () => ({
@@ -658,5 +663,229 @@ describe("login() through the Office adapter — the verifier never leaves the t
     expect(verifierUsed).toHaveLength(43);
     expect(fake.openedWith()).not.toContain(verifierUsed);
     expect(state).not.toContain(verifierUsed);
+  });
+});
+
+/**
+ * What `@types/office-js` DECLARES for `Office.context.officeTheme`, reproduced
+ * faithfully rather than imported (invariant A).
+ *
+ * Every member is required there, `isDarkTheme` included — even though the same
+ * typings say in prose that Outlook does not support it. `themeId` stands in for
+ * the members this SDK does not read: its exact type is irrelevant, it is here to
+ * prove that a namespace carrying MORE than {@link OfficeThemeColors} is still
+ * accepted.
+ *
+ * The assignment in the test below is the assertion. If `OfficeThemeHost` ever
+ * narrows in a way the real namespace cannot satisfy, this stops compiling —
+ * which is exactly how `OfficeToken` was found to be necessary.
+ */
+interface DeclaredOfficeTheme {
+  bodyBackgroundColor: string;
+  bodyForegroundColor: string;
+  controlBackgroundColor: string;
+  controlForegroundColor: string;
+  isDarkTheme: boolean;
+  themeId: number;
+}
+
+describe("readOfficeHostTheme", () => {
+  const withTheme = (officeTheme: OfficeThemeColors | undefined): OfficeThemeHost => ({
+    context: { officeTheme },
+  });
+
+  it("accepts a namespace typed the way @types/office-js declares it", () => {
+    const declared: { context: { officeTheme: DeclaredOfficeTheme } } = {
+      context: {
+        officeTheme: {
+          bodyBackgroundColor: "#1F1F1F",
+          bodyForegroundColor: "#FFFFFF",
+          controlBackgroundColor: "#1F1F1F",
+          controlForegroundColor: "#FFFFFF",
+          isDarkTheme: true,
+          themeId: 0,
+        },
+      },
+    };
+
+    expect(readOfficeHostTheme(declared)).toBe("dark");
+  });
+
+  // Word, Excel and PowerPoint. The host's own answer, so it wins outright.
+  it("takes the flag when the host reports one", () => {
+    expect(readOfficeHostTheme(withTheme({ isDarkTheme: true }))).toBe("dark");
+    expect(readOfficeHostTheme(withTheme({ isDarkTheme: false }))).toBe("light");
+  });
+
+  // Outlook. `isDarkTheme` is absent there despite `@types/office-js` declaring
+  // it required, so the colour is the only signal.
+  it("falls back to background luminance when there is no flag", () => {
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "#1F1F1F" }))).toBe("dark");
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "#FFFFFF" }))).toBe("light");
+  });
+
+  // The two paths can disagree, and a host that reports both is telling us the
+  // flag. Pinned because "try the flag first" is otherwise unfalsifiable: with a
+  // light background and a dark flag, only the flag gives "dark".
+  it("prefers the flag over the colour when both are present", () => {
+    expect(
+      readOfficeHostTheme(withTheme({ isDarkTheme: true, bodyBackgroundColor: "#FFFFFF" })),
+    ).toBe("dark");
+  });
+
+  // Weighted, not averaged: a saturated green is bright to the eye and its mean
+  // channel value is not. `(0+255+0)/3 = 85` reads as dark; BT.601 gives 0.587.
+  it("weights the channels rather than averaging them", () => {
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "#00FF00" }))).toBe("light");
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "#0000FF" }))).toBe("dark");
+  });
+
+  it("accepts a triplet with or without the leading hash, and either case", () => {
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "ffffff" }))).toBe("light");
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: " #1f1f1f " }))).toBe("dark");
+  });
+
+  // Every one of these is "no opinion", and the caller must leave
+  // `data-host-theme` off rather than defaulting to light — that absence is what
+  // re-arms `@media (prefers-color-scheme: dark)`.
+  it("says nothing rather than guessing when the host will not answer", () => {
+    expect(readOfficeHostTheme(null)).toBeNull();
+    expect(readOfficeHostTheme(undefined)).toBeNull();
+    // Outlook before Mailbox 1.14, and any dialog window.
+    expect(readOfficeHostTheme(withTheme(undefined))).toBeNull();
+    // Reported, but with nothing in it.
+    expect(readOfficeHostTheme(withTheme({}))).toBeNull();
+    // Not a six-digit triplet: a colour keyword, a short form, an rgb() string.
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "white" }))).toBeNull();
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "#fff" }))).toBeNull();
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "" }))).toBeNull();
+  });
+
+  // Office is present but not initialised: reading through the namespace throws
+  // rather than returning undefined. On a poll this would fire every tick.
+  it("survives a host that throws on the read", () => {
+    const hostile = {
+      get context(): { officeTheme?: OfficeThemeColors } {
+        throw new Error("Office is not ready");
+      },
+    };
+    expect(readOfficeHostTheme(hostile)).toBeNull();
+  });
+});
+
+describe("watchOfficeHostTheme", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** A host whose reported theme can be changed between ticks. */
+  function mutableHost(): {
+    host: OfficeThemeHost;
+    set: (theme: OfficeThemeColors | undefined) => void;
+  } {
+    let officeTheme: OfficeThemeColors | undefined;
+    return {
+      host: {
+        get context(): { officeTheme?: OfficeThemeColors } {
+          return { officeTheme };
+        },
+      },
+      set: next => {
+        officeTheme = next;
+      },
+    };
+  }
+
+  it("reports the theme immediately, without waiting for the first tick", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    set({ isDarkTheme: true });
+
+    const stop = watchOfficeHostTheme({ host, onChange });
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("dark");
+    stop();
+  });
+
+  it("reports a change the host makes while the surface is open", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    set({ isDarkTheme: false });
+    const stop = watchOfficeHostTheme({ host, onChange });
+
+    set({ isDarkTheme: true });
+    vi.advanceTimersByTime(OFFICE_HOST_THEME_POLL_MS);
+
+    expect(onChange).toHaveBeenLastCalledWith("dark");
+    expect(onChange).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
+  // The poll never stops, and the consumer's reaction is an attribute write that
+  // invalidates style for the whole subtree. Re-reporting an unchanged value
+  // would do that forever.
+  it("stays silent while nothing changes", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    set({ isDarkTheme: true });
+    const stop = watchOfficeHostTheme({ host, onChange });
+
+    vi.advanceTimersByTime(OFFICE_HOST_THEME_POLL_MS * 5);
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  // Office answers only after `Office.onReady`. A momentary "no opinion" must not
+  // wipe a theme already known, or the pane flashes back to the OS theme.
+  it("does not report a host that stops answering", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    set({ isDarkTheme: true });
+    const stop = watchOfficeHostTheme({ host, onChange });
+
+    set(undefined);
+    vi.advanceTimersByTime(OFFICE_HOST_THEME_POLL_MS * 3);
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("dark");
+    stop();
+  });
+
+  // Starting before `Office.onReady` is the normal case, not an edge one.
+  it("picks the theme up once a host that was silent starts answering", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    const stop = watchOfficeHostTheme({ host, onChange });
+    expect(onChange).not.toHaveBeenCalled();
+
+    set({ bodyBackgroundColor: "#1F1F1F" });
+    vi.advanceTimersByTime(OFFICE_HOST_THEME_POLL_MS);
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("dark");
+    stop();
+  });
+
+  it("stops polling when stopped", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    set({ isDarkTheme: false });
+
+    const stop = watchOfficeHostTheme({ host, onChange });
+    stop();
+    set({ isDarkTheme: true });
+    vi.advanceTimersByTime(OFFICE_HOST_THEME_POLL_MS * 3);
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("light");
+  });
+
+  it("honours a caller's own interval", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    const stop = watchOfficeHostTheme({ host, onChange, intervalMs: 50 });
+
+    set({ isDarkTheme: true });
+    vi.advanceTimersByTime(50);
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("dark");
+    stop();
   });
 });

@@ -358,7 +358,11 @@ async function attempt(
     }
   }
 
-  // Backoff was cut short by an abort.
+  // Backoff was cut short by an abort. The cause is kept for the log — either the
+  // failure that triggered the retry, or a placeholder when the earlier attempts
+  // only returned retriable statuses — but it is NOT what decides the kind:
+  // `toTransportError` reads `plan.signal.aborted`, because neither of those two
+  // causes is named `AbortError` and both used to be filed as network failures.
   throw toTransportError(lastError ?? new Error("aborted"), req, plan);
 }
 
@@ -529,7 +533,17 @@ function toTransportError(cause: unknown, req: TransportRequest, plan: AbortPlan
     });
   }
 
-  if (isAbortError(cause)) {
+  // An aborted plan counts as much as an `AbortError` cause, because a caller's
+  // cancellation does not always arrive as one. `attempt`'s tail throw is reached
+  // ONLY by breaking out of the backoff on `plan.signal.aborted`, and what it
+  // carries is either a synthetic `Error("aborted")` or the previous attempt's
+  // network failure — neither is named `AbortError`. Both used to land as
+  // `kind: "network"`, so a consumer's cancellation guard missed them and its
+  // error banner said "No connection" for a request the user had cancelled;
+  // `ms-word-addin`, whose search-as-you-type hooks abort on every keystroke, hit
+  // it as soon as it enabled retry. Checked after `plan.timedOut()` on purpose:
+  // the deadline aborts this same signal, and a timeout is not a cancellation.
+  if (isAbortError(cause) || plan.signal?.aborted === true) {
     return new BBApiError(`Request to ${endpoint} was aborted`, 0, {
       kind: "aborted",
       endpoint,

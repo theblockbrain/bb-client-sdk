@@ -83,6 +83,35 @@ describe("decodeJwtPayload — never throws", () => {
   });
 });
 
+describe("decodeJwtPayload — the payload must be a JSON object", () => {
+  /** A JWT whose payload segment is `json` verbatim, object or not. */
+  const withRawPayload = (json: string): string => {
+    const b64url = (text: string) => Buffer.from(text, "utf8").toString("base64url");
+    return `${b64url('{"alg":"none"}')}.${b64url(json)}.sig`;
+  };
+
+  // RFC 7519 §7.2 requires the payload to be a JSON object; it does not make it
+  // one. The declared return type says `Record<string, unknown> | null`, but
+  // `JSON.parse` will happily produce a number, a string, an array or a boolean,
+  // and every one of those used to be returned under that type. A consumer's
+  // `if (!payload) throw` then catches only `null` — which is how `ms-word-addin`
+  // could commit an authenticated session whose profile was the string "hacked",
+  // with no `sub` and no error anywhere.
+  it.each([
+    ["a number", "123"],
+    ["a string", '"hacked"'],
+    ["an array", "[1,2]"],
+    ["a boolean", "true"],
+    ["JSON null", "null"],
+  ])("returns null for a payload that decodes to %s", (_label, json) => {
+    expect(decodeJwtPayload(withRawPayload(json))).toBeNull();
+  });
+
+  it("still returns the claims for a genuine object payload", () => {
+    expect(decodeJwtPayload(withRawPayload('{"sub":"user-1"}'))).toEqual({ sub: "user-1" });
+  });
+});
+
 describe("subFromAccessToken", () => {
   it("reads the sub claim", () => {
     expect(subFromAccessToken(makeJwt({ sub: "user-sub-123" }))).toBe("user-sub-123");

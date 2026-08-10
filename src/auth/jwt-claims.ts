@@ -38,8 +38,16 @@ export interface Profile {
 
 /**
  * Decode a JWT payload segment. Returns `null` on anything unexpected — a
- * non-JWT (an `sk-` API key, an opaque reference token), malformed base64, or
- * invalid JSON. It must never throw: callers pass user-supplied tokens.
+ * non-JWT (an `sk-` API key, an opaque reference token), malformed base64,
+ * invalid JSON, or JSON that is not an object. It must never throw: callers pass
+ * user-supplied tokens.
+ *
+ * The object check earns its line. RFC 7519 §7.2 *requires* a JSON object, but
+ * `JSON.parse` does not enforce it, so `123`, `"hacked"`, `[1,2]` and `true` all
+ * used to come back typed `Record<string, unknown>` — a lie the compiler cannot
+ * catch and every caller inherits. `ms-word-addin` guards its sign-in with
+ * `if (!payload) throw`, which stops `null` and nothing else, so such a token
+ * committed an authenticated session with no `sub` on it and no error raised.
  */
 export function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split(".");
@@ -58,7 +66,11 @@ export function decodeJwtPayload(token: string): Record<string, unknown> | null 
     // atob returns a binary string, one char per byte. Reading it directly would
     // corrupt every multi-byte UTF-8 sequence, so decode the bytes properly.
     const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
-    return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+    const claims: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    // `typeof null === "object"`, and an array is an object too — both are
+    // rejected here rather than left for each caller to remember.
+    if (claims === null || typeof claims !== "object" || Array.isArray(claims)) return null;
+    return claims as Record<string, unknown>;
   } catch {
     return null;
   }

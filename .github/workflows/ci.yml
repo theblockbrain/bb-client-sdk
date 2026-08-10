@@ -39,11 +39,15 @@ jobs:
           npm run typecheck
           npm ci
 
-      - name: Test
-        run: npm test
-
+      # Before the tests, not after: `sdk-link.leaf.test.ts` asserts against the
+      # BUILT dist/, which is the artifact a consumer resolves and the only place
+      # a bundler's specifier rewrite is visible. With the old order that gate had
+      # nothing to read.
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm test
 
       - name: Package contract (publint + attw)
         run: npm run check:package

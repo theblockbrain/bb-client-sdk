@@ -131,6 +131,64 @@ export interface MessageStopFrame {
   [key: string]: unknown;
 }
 
+/**
+ * One source the answer cited.
+ *
+ * Mirrors what `agent-stream-v2.ts` puts on the finish part's
+ * `messageMetadata.citations`, which is the same payload the web app reads as
+ * `message.metadata.citations`. Only `citation_id` and `citation_index` are
+ * treated as guaranteed: the KB-only fields are absent on web citations, the
+ * v2-knowledge-service fields are absent on v1 ones, and older persisted
+ * messages predate several of them.
+ */
+export interface AgenticCitation {
+  citation_id: string;
+  /** 1-based, and the number the answer's own `[n]` markers refer to. */
+  citation_index: number;
+  url?: string;
+  title?: string;
+  content?: string;
+  name?: string;
+  /** `"kb"` renders as a bracketed marker, `"web"` as a circle. Defaults to web. */
+  source_type?: "web" | "kb";
+  search_type?: string;
+  doc_id?: string;
+  chunk_id?: string;
+  kb_id?: string;
+  mime_type?: string;
+  page_num?: number;
+  score?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * Everything the server attaches to the terminal finish part.
+ *
+ * `citations` is filtered server-side to the ones the answer actually
+ * references (PDEV-6625), so its order lines up with the `[n]` markers in the
+ * text. `searchedDocuments` carries the retrieval hits that were NOT cited
+ * (PDEV-6515), which is why the two are separate keys rather than one list.
+ */
+export interface AgenticStreamMetadata {
+  citations?: AgenticCitation[];
+  searchedDocuments?: unknown[];
+  usage?: { inputTokens?: number; outputTokens?: number };
+  [key: string]: unknown;
+}
+
+/**
+ * The terminal part of an AI SDK UI message stream.
+ *
+ * Until now this fell through to {@link UnknownFrame} and was dropped, which is
+ * why a client got the answer text and none of its sources: the citations ride
+ * here and nowhere else.
+ */
+export interface FinishFrame {
+  type: "finish";
+  messageMetadata?: AgenticStreamMetadata;
+  [key: string]: unknown;
+}
+
 /** Tool execution frames (pass-through — not consumed by sendMessage core). */
 export interface ToolInputStartFrame {
   type: "tool-input-start";
@@ -320,6 +378,7 @@ export type AgenticSseFrame =
   | TextDeltaFrame
   | MessageStartFrame
   | MessageStopFrame
+  | FinishFrame
   | ToolInputStartFrame
   | ToolInputAvailableFrame
   | ToolOutputAvailableFrame
@@ -338,6 +397,16 @@ export type AgenticSseFrame =
 
 export function isTextDeltaFrame(frame: AgenticSseFrame): frame is TextDeltaFrame {
   return frame.type === "text-delta";
+}
+
+/**
+ * The terminal finish part, which is where citations and usage ride.
+ *
+ * Load-bearing for anything that needs the answer's SOURCES rather than just
+ * its text: no other frame carries them.
+ */
+export function isFinishFrame(frame: AgenticSseFrame): frame is FinishFrame {
+  return frame.type === "finish";
 }
 
 export function isToolCallApprovalFrame(frame: AgenticSseFrame): frame is ToolCallApprovalFrame {
