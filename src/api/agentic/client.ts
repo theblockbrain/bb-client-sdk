@@ -39,10 +39,12 @@ import {
   type AgenticRequestBody,
   type AgenticSseFrame,
   type AgenticStreamErrorData,
+  type AgenticStreamMetadata,
   type AgenticUIMessage,
   type ConnectIntegrationData,
   type ExternalToolDef,
   isConnectIntegrationFrame,
+  isFinishFrame,
   isStreamErrorFrame,
   isTextDeltaFrame,
   isToolCallApprovalFrame,
@@ -80,6 +82,23 @@ export interface SuspendContext {
    * that tool locally, not an ask-user-question.
    */
   toolName?: string;
+  /**
+   * Whatever the server passed into Mastra's `suspend()`.
+   *
+   * For a relayed external tool this **is the model's arguments object**: botticelli's
+   * relay tool calls `await surface.suspend?.(args)`
+   * (`packages/mastra-operators/src/mastra/api/util/external-toolset.ts`), and Mastra's
+   * chunk-to-UI-part mapper copies that first argument onto the frame verbatim as
+   * `suspendPayload` (`@mastra/ai-sdk`, `tool-call-suspended` case). Note the sibling
+   * `data-tool-call-approval` frame carries its arguments under `args` instead, so this
+   * name is specific to the suspend.
+   *
+   * Typed here rather than left to the index signature below because the relay reads it
+   * as its argument fallback, and an untyped read is one refactor away from being a
+   * silent `undefined`. For an ask-user-question suspend it is the question payload
+   * instead, so the type stays `unknown`.
+   */
+  suspendPayload?: unknown;
   [key: string]: unknown;
 }
 
@@ -106,12 +125,18 @@ export interface ExternalToolCall {
   toolCallId?: string;
   runId?: string;
   /**
-   * Arguments the model passed, captured from the `tool-input-available` frame for
-   * this `toolCallId`.
+   * Arguments the model passed, read from the `tool-input-available` frame for this
+   * `toolCallId` when one arrived, and otherwise from the suspend's own
+   * {@link SuspendContext.suspendPayload}.
    *
-   * `undefined` when the server suspended without having emitted that frame — treat
-   * it as "no arguments observed" rather than "no arguments passed", and prefer
-   * failing the tool over guessing.
+   * Two sources because nothing in the protocol orders those two frames. Reading only
+   * the frame map meant that whenever the suspend arrived first, every argument-taking
+   * tool ran with `undefined` — and silently, because the executor then fails, the model
+   * is told its tool failed, and it narrates prose instead of editing the document.
+   *
+   * `undefined` only when neither source carried anything. Treat that as "no arguments
+   * observed" rather than "no arguments passed", and prefer failing the tool over
+   * guessing.
    */
   input: unknown;
   /** The raw `data-tool-call-suspended` payload, for fields this type does not model. */
@@ -297,6 +322,21 @@ export interface AgenticCallOptions {
    */
   onConnectIntegration?: (event: ConnectIntegrationData) => void;
   /**
+   * Called with the terminal finish part's metadata: the sources the answer
+   * cited, the retrieval hits it did not, and token usage.
+   *
+   * A callback rather than a change to what this function yields, because the
+   * yield type is the SDK's most-depended-on contract and metadata is not text.
+   * Without it a caller receives an answer containing `[1]`, `[2]` markers and
+   * has nothing to resolve them against, which is exactly why those markers are
+   * inert in the Word add-in today while the web app renders them as links.
+   *
+   * Fires at most once per TURN, not per request: a relayed turn makes several
+   * POSTs and only the last carries a finish part with metadata. May not fire at
+   * all, since the server omits the key entirely when there is nothing to say.
+   */
+  onMetadata?: (metadata: AgenticStreamMetadata) => void;
+  /**
    * Cancels the turn (PDEV-7339). An agentic run has no deadline — it can
    * legitimately last minutes — so this is the only way to end one early.
    */
@@ -449,6 +489,7 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
     maxExternalToolCalls = DEFAULT_MAX_EXTERNAL_TOOL_CALLS,
     onToolError,
     onConnectIntegration,
+    onMetadata,
   } = options;
 
   // Relay dispatch is by name: a suspend whose toolName is in here is the model
@@ -515,16 +556,38 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
   let sawText = false;
 
   while (true) {
+    // Honour cancellation BETWEEN steps, not only inside a request.
+    //
+    // `signal` reaches each POST, so an abort during the network call is already
+    // observed. It was observed nowhere else: a turn cancelled while a
+    // client-executed tool was running would let that tool finish, then issue a
+    // fresh resume POST carrying its result, and only die when THAT request saw
+    // the signal. From the surface's point of view a cancelled turn kept working
+    // and kept talking to the server, which is exactly what a user pressing stop
+    // is asking it not to do. Relayed tools make the window wide, because they
+    // run on the client and can take seconds.
+    //
+    // `BBApiError` with `kind: "aborted"`, the same shape the transport produces
+    // for an abort during a request (`transport.ts`), so a caller needs one
+    // predicate rather than two.
+    if (signal?.aborted) {
+      throw new BBApiError("Agentic turn was aborted", 0, {
+        kind: "aborted",
+        endpoint: path,
+      });
+    }
+
     const frames = await postAgenticStream(ctx, path, headers, body, signal);
 
     let approvalData: { runId?: string; toolCallId?: string; toolName?: string } | null = null;
     let suspendData: SuspendContext | null = null;
     let tooLargeToolName: string | null = null;
     let serverError: AgenticStreamErrorData | null = null;
-    // Arguments seen this stream, keyed by toolCallId. The suspend frame names the
-    // tool but is not guaranteed to repeat its arguments, so they are taken from the
-    // `tool-input-available` frame that precedes it. Scoped per stream: a resume
-    // re-emits the frames for the call it is resuming.
+    // Arguments seen this stream, keyed by toolCallId. Preferred over the suspend's
+    // own `suspendPayload` because it is the more specific source: it is the tool call
+    // the server actually parsed, named by its own id. It is not the only source
+    // though, and must not be treated as one — see the fallback in the relay branch.
+    // Scoped per stream: a resume re-emits the frames for the call it is resuming.
     const toolInputs = new Map<string, unknown>();
 
     for await (const frame of frames) {
@@ -534,6 +597,15 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
           sawText = true;
           yield delta;
         }
+        continue;
+      }
+
+      if (isFinishFrame(frame)) {
+        // The only frame carrying the answer's sources. Guarded because the
+        // server omits `messageMetadata` entirely when there is nothing to
+        // report, and an empty notification would have callers clearing state
+        // they had legitimately populated on an earlier turn.
+        if (frame.messageMetadata) notifyObserver(onMetadata, frame.messageMetadata);
         continue;
       }
 
@@ -645,13 +717,25 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
 
         const toolCallId =
           typeof suspendData.toolCallId === "string" ? suspendData.toolCallId : undefined;
+
+        // Two sources for the arguments, in order of specificity. The
+        // `tool-input-available` frame wins when it carried a value: it is keyed by
+        // this exact tool call. But nothing on either side of the wire guarantees it
+        // precedes the suspend, and reading only it was a silent total failure when
+        // the order flipped — every argument-taking tool ran with `undefined`, the
+        // executor rejected, and the model narrated prose instead of editing.
+        // The server hands the same arguments to `suspend()` (botticelli
+        // `external-toolset.ts`), so they also arrive on the suspend itself.
+        const observedInput = toolCallId !== undefined ? toolInputs.get(toolCallId) : undefined;
+        const input = observedInput !== undefined ? observedInput : suspendData.suspendPayload;
+
         let resumeData: AgenticExternalToolResumeData;
         try {
           resumeData = await executeExternalTool({
             toolName,
             toolCallId,
             runId: typeof suspendData.runId === "string" ? suspendData.runId : undefined,
-            input: toolCallId !== undefined ? toolInputs.get(toolCallId) : undefined,
+            input,
             raw: suspendData,
           });
         } catch (error) {

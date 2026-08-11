@@ -1,13 +1,19 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { login } from "../auth/login.js";
 import {
   createOfficeIdentityAdapter,
   isOfficeDialogCancelled,
+  OFFICE_HOST_THEME_POLL_MS,
   type OfficeDialog,
   OfficeDialogError,
   type OfficeDialogEventArgs,
   type OfficeGlobal,
+  type OfficeThemeColors,
+  type OfficeThemeHost,
+  type OfficeToken,
   openOfficeDialog,
+  readOfficeHostTheme,
+  watchOfficeHostTheme,
 } from "./office.js";
 
 vi.mock("../auth/tokens.js", () => ({
@@ -43,9 +49,51 @@ vi.mock("../auth/jwt-claims.js", async importOriginal => ({
  * only the taskpane's token exchange ever sees it.
  */
 
-const MESSAGE_RECEIVED = "dialogMessageReceived";
-const EVENT_RECEIVED = "dialogEventReceived";
-const FAILED = "failed"; // string enum in Office.js, verified against the real namespace
+/** The four enum-member tokens a host has to supply, in one representation. */
+interface TokenSet {
+  messageReceived: OfficeToken;
+  eventReceived: OfficeToken;
+  succeeded: OfficeToken;
+  failed: OfficeToken;
+}
+
+/** What the Office RUNTIME actually puts in those enums. */
+const STRING_TOKENS = {
+  messageReceived: "dialogMessageReceived",
+  eventReceived: "dialogEventReceived",
+  succeeded: "succeeded",
+  failed: "failed",
+} as const;
+
+/**
+ * What `@types/office-js` DECLARES, reproduced faithfully rather than imported.
+ *
+ * Both enums are declared with no initialisers, so every member is an implicit
+ * numeric one. The leading `EventType` members are kept so the dialog tokens land
+ * on realistic indices (3 and 4) instead of colliding with the status values.
+ *
+ * The SDK must not import Office.js (invariant A), so this is how the declared
+ * shape gets into a test at all.
+ */
+enum DeclaredAsyncResultStatus {
+  Succeeded,
+  Failed,
+}
+enum DeclaredEventType {
+  ActiveViewChanged,
+  AppointmentTimeChanged,
+  AttachmentsChanged,
+  DialogEventReceived,
+  DialogMessageReceived,
+}
+
+const NUMERIC_TOKENS = {
+  messageReceived: DeclaredEventType.DialogMessageReceived,
+  eventReceived: DeclaredEventType.DialogEventReceived,
+  // 0. Falsy, which is the whole reason a truthiness test on `status` is a bug.
+  succeeded: DeclaredAsyncResultStatus.Succeeded,
+  failed: DeclaredAsyncResultStatus.Failed,
+} as const;
 
 interface FakeOffice {
   office: OfficeGlobal;
@@ -56,16 +104,25 @@ interface FakeOffice {
   /** Simulate a dialog-level event (e.g. the user closing it). */
   postEvent: (error: number) => void;
   closeCount: () => number;
+  /** Every `eventType` the adapter handed to `addEventHandler`, in order. */
+  eventTypesSeen: () => OfficeToken[];
 }
 
 /** A test double for the slice of Office.js the adapter uses. */
-function fakeOffice(options: { failToOpen?: boolean; closeThrows?: boolean } = {}): FakeOffice {
-  const handlers = new Map<string, (args: OfficeDialogEventArgs) => void>();
+function fakeOffice(
+  options: { failToOpen?: boolean; closeThrows?: boolean; tokens?: TokenSet } = {},
+): FakeOffice {
+  // String by default: that is what a live host supplies, so the rest of the file
+  // keeps exercising the representation real add-ins see.
+  const tokens = options.tokens ?? STRING_TOKENS;
+  const handlers = new Map<OfficeToken, (args: OfficeDialogEventArgs) => void>();
+  const eventTypes: OfficeToken[] = [];
   let opened = "";
   let closes = 0;
 
   const dialog: OfficeDialog = {
     addEventHandler: (eventType, handler) => {
+      eventTypes.push(eventType);
       handlers.set(eventType, handler);
     },
     close: () => {
@@ -82,34 +139,35 @@ function fakeOffice(options: { failToOpen?: boolean; closeThrows?: boolean } = {
         displayDialogAsync: (startAddress, _opts, callback) => {
           opened = startAddress;
           if (options.failToOpen) {
-            callback({ status: FAILED, value: dialog, error: { message: "blocked" } });
+            callback({ status: tokens.failed, value: dialog, error: { message: "blocked" } });
             return;
           }
-          callback({ status: "succeeded", value: dialog });
+          callback({ status: tokens.succeeded, value: dialog });
         },
       },
     },
     EventType: {
-      DialogMessageReceived: MESSAGE_RECEIVED,
-      DialogEventReceived: EVENT_RECEIVED,
+      DialogMessageReceived: tokens.messageReceived,
+      DialogEventReceived: tokens.eventReceived,
     },
-    AsyncResultStatus: { Failed: FAILED },
+    AsyncResultStatus: { Failed: tokens.failed },
   };
 
   return {
     office,
     openedWith: () => opened,
-    postMessage: message => handlers.get(MESSAGE_RECEIVED)?.({ message }),
-    postEvent: error => handlers.get(EVENT_RECEIVED)?.({ error }),
+    postMessage: message => handlers.get(tokens.messageReceived)?.({ message }),
+    postEvent: error => handlers.get(tokens.eventReceived)?.({ error }),
     closeCount: () => closes,
+    eventTypesSeen: () => eventTypes,
   };
 }
 
 // Outlook's real shape: fragment-free, as RFC 6749 §3.1.2 requires.
 const REDIRECT_URI = "https://addin.example.com/taskpane.html";
 
-function adapterFor(fake: FakeOffice) {
-  return createOfficeIdentityAdapter({ office: fake.office, redirectUri: REDIRECT_URI });
+function adapterFor(fake: FakeOffice, onOpened?: () => void) {
+  return createOfficeIdentityAdapter({ office: fake.office, redirectUri: REDIRECT_URI, onOpened });
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -219,6 +277,113 @@ describe("createOfficeIdentityAdapter", () => {
 
     await expect(pending).resolves.toContain("code=abc");
     expect(fake.closeCount()).toBe(1);
+  });
+});
+
+/**
+ * PDEV-7369. `OfficeGlobal` typed its four enum-member positions `string`, which
+ * no real `Office` namespace can satisfy: `@types/office-js` declares `EventType`
+ * and `AsyncResultStatus` with no initialisers, so their members are numeric, and
+ * because the `displayDialogAsync` callback parameter is contravariant the mismatch
+ * lands as `Type 'Office.AsyncResultStatus' is not assignable to type 'string'`.
+ * The first adopter (`ms-word-addin`) paid for that with a ~50-line bridge whose
+ * only job was re-presenting the real namespace under this type.
+ *
+ * `OfficeToken` is `string | number` so the namespace goes straight in. This block
+ * pins both halves of that: the compile-time assignment, and the behaviour that
+ * makes the union safe rather than merely permissive.
+ */
+describe("OfficeGlobal token representations", () => {
+  const cases: Array<[string, TokenSet]> = [
+    ["string tokens, as the Office runtime supplies them", STRING_TOKENS],
+    ["numeric enum members, as @types/office-js declares them", NUMERIC_TOKENS],
+  ];
+
+  it("takes a whole namespace by assignment, with no bridge", () => {
+    // The real assertion here is that this file TYPECHECKS. `declaredOffice`
+    // reproduces the @types/office-js shape: numeric enum objects, and a callback
+    // parameter typed with them, which is where the contravariance bites. Narrow
+    // any one token position back to `string` and this annotation stops compiling,
+    // so `tsc --noEmit` is where the regression surfaces, not vitest.
+    //
+    // All four positions were checked individually against the real typings: each
+    // one alone reproduces the failure, which is why all four use OfficeToken.
+    // Members copied from @types/office-js rather than approximated, so the only
+    // friction left to test is the token types. `Office.AsyncResult` really does
+    // declare `error` as required, and `Office.Dialog.addEventHandler` really does
+    // take that two-member union rather than a single args type.
+    interface DeclaredAsyncResult<T> {
+      status: DeclaredAsyncResultStatus;
+      value: T;
+      error: { code: number; message: string; name: string };
+    }
+    interface DeclaredDialog {
+      addEventHandler(
+        eventType: DeclaredEventType,
+        handler: (
+          args: { message: string; origin: string | undefined } | { error: number },
+        ) => void,
+      ): void;
+      close(): void;
+    }
+    interface DeclaredOfficeNamespace {
+      context: {
+        ui: {
+          displayDialogAsync(
+            startAddress: string,
+            options?: { height?: number; width?: number; displayInIframe?: boolean },
+            callback?: (result: DeclaredAsyncResult<DeclaredDialog>) => void,
+          ): void;
+        };
+      };
+      EventType: typeof DeclaredEventType;
+      AsyncResultStatus: typeof DeclaredAsyncResultStatus;
+    }
+
+    const declaredOffice: DeclaredOfficeNamespace = {
+      context: { ui: { displayDialogAsync: () => {} } },
+      EventType: DeclaredEventType,
+      AsyncResultStatus: DeclaredAsyncResultStatus,
+    };
+
+    const asOfficeGlobal: OfficeGlobal = declaredOffice;
+
+    expect(asOfficeGlobal).toBe(declaredOffice);
+  });
+
+  it.each(cases)("completes the dialog round trip with %s", async (_label, tokens) => {
+    const fake = fakeOffice({ tokens });
+    const pending = adapterFor(fake).launchOAuthFlow("https://idp.example.com/authorize");
+
+    fake.postMessage(`${REDIRECT_URI}?code=abc&state=n1`);
+
+    await expect(pending).resolves.toContain("code=abc");
+    expect(fake.closeCount()).toBe(1);
+  });
+
+  it.each(cases)("detects a refused open with %s", async (_label, tokens) => {
+    // The numeric case is the sharp one: Succeeded is 0 and Failed is 1, so a
+    // truthiness test on `status` would invert the outcome rather than fail
+    // loudly. Only an === against the host's own Failed token is safe.
+    const fake = fakeOffice({ tokens, failToOpen: true });
+
+    await expect(
+      adapterFor(fake).launchOAuthFlow("https://idp.example.com/authorize"),
+    ).rejects.toMatchObject({ reason: "open-failed" });
+  });
+
+  it.each(cases)("hands %s back to addEventHandler untransformed", async (_label, tokens) => {
+    // The property the word-addin bridge went out of its way to preserve. A token
+    // is only ever compared against another token from the same host or handed
+    // straight back to Office, so `String(token)` would look tidier and would
+    // silently break registration on a numeric host. toStrictEqual on the raw
+    // values catches a coercion that a loose compare would let through.
+    const fake = fakeOffice({ tokens });
+    const pending = adapterFor(fake).launchOAuthFlow("https://idp.example.com/authorize");
+    fake.postMessage(`${REDIRECT_URI}?code=abc&state=n1`);
+    await pending;
+
+    expect(fake.eventTypesSeen()).toStrictEqual([tokens.messageReceived, tokens.eventReceived]);
   });
 });
 
@@ -363,6 +528,100 @@ describe("openOfficeDialog", () => {
   });
 });
 
+/**
+ * PDEV-3804, ported from `ms-word-addin`. Between the click and the dialog
+ * appearing, Microsoft 365 shows its own "this add-in wants to display a new
+ * window" prompt. A surface that raises a full-pane "Signing you in..." overlay on
+ * click covers the very button the user has to press, so the overlay needs the
+ * moment the dialog is really on screen. `openOfficeDialog` exposed only the
+ * settled promise, which resolves when the dialog is FINISHED, so the add-in had
+ * to reach inside its own Office bridge to get at this.
+ */
+describe("onOpened", () => {
+  const openWith = (fake: FakeOffice, onOpened?: () => void): Promise<string> =>
+    openOfficeDialog<string>({
+      office: fake.office,
+      url: "https://addin.example.com/dictate.html",
+      parse: message => message,
+      onOpened,
+    });
+
+  it("fires once, before the promise settles", async () => {
+    const fake = fakeOffice();
+    const order: string[] = [];
+
+    const pending = openWith(fake, () => order.push("opened"));
+
+    // Already fired, synchronously inside the displayDialogAsync callback and
+    // before any message could arrive. That ordering is the entire point: an
+    // overlay hidden only on settle was in the way for the whole sign-in.
+    expect(order).toEqual(["opened"]);
+
+    fake.postMessage("ok");
+    await pending;
+    order.push("settled");
+
+    expect(order).toEqual(["opened", "settled"]);
+  });
+
+  it("does not fire when the dialog fails to open", async () => {
+    // Nothing is on screen, so a surface that hid its own button on this signal
+    // would strand the user looking at a blank pane.
+    const fake = fakeOffice({ failToOpen: true });
+    const onOpened = vi.fn();
+
+    await expect(openWith(fake, onOpened)).rejects.toMatchObject({ reason: "open-failed" });
+
+    expect(onOpened).not.toHaveBeenCalled();
+  });
+
+  it("survives a handler that throws, without breaking sign-in", async () => {
+    // It runs on Office's stack inside the displayDialogAsync callback, OUTSIDE
+    // the promise executor, so an escaping error would strand the promise pending
+    // forever. A caller's broken progress indicator does not get to cost a login.
+    const fake = fakeOffice();
+
+    const pending = openWith(fake, () => {
+      throw new Error("setState on an unmounted overlay");
+    });
+    fake.postMessage("ok");
+
+    await expect(pending).resolves.toBe("ok");
+    expect(fake.closeCount()).toBe(1);
+  });
+
+  it("is optional, so existing callers are unaffected", async () => {
+    // Additive by construction: the key is absent, not undefined. Five live
+    // consumers call these two functions without it.
+    const fake = fakeOffice();
+    const identity = createOfficeIdentityAdapter({
+      office: fake.office,
+      redirectUri: REDIRECT_URI,
+    });
+
+    const pending = identity.launchOAuthFlow("https://idp.example.com/authorize");
+    fake.postMessage(`${REDIRECT_URI}?code=abc&state=n1`);
+
+    await expect(pending).resolves.toContain("code=abc");
+  });
+
+  it("is forwarded by createOfficeIdentityAdapter to the underlying dialog", async () => {
+    // The gap the add-in actually hit: it needed this on the OAuth hop, and the
+    // hop is built by the factory, so a signal only on openOfficeDialog would not
+    // have reached it.
+    const fake = fakeOffice();
+    const onOpened = vi.fn();
+
+    const pending = adapterFor(fake, onOpened).launchOAuthFlow("https://idp.example.com/authorize");
+    expect(onOpened).toHaveBeenCalledTimes(1);
+
+    fake.postMessage(`${REDIRECT_URI}?code=abc&state=n1`);
+    await pending;
+
+    expect(onOpened).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("login() through the Office adapter — the verifier never leaves the taskpane", () => {
   it("sends an opaque nonce as state and keeps the verifier out of the dialog", async () => {
     const { exchangeCode } = await import("../auth/tokens.js");
@@ -404,5 +663,229 @@ describe("login() through the Office adapter — the verifier never leaves the t
     expect(verifierUsed).toHaveLength(43);
     expect(fake.openedWith()).not.toContain(verifierUsed);
     expect(state).not.toContain(verifierUsed);
+  });
+});
+
+/**
+ * What `@types/office-js` DECLARES for `Office.context.officeTheme`, reproduced
+ * faithfully rather than imported (invariant A).
+ *
+ * Every member is required there, `isDarkTheme` included — even though the same
+ * typings say in prose that Outlook does not support it. `themeId` stands in for
+ * the members this SDK does not read: its exact type is irrelevant, it is here to
+ * prove that a namespace carrying MORE than {@link OfficeThemeColors} is still
+ * accepted.
+ *
+ * The assignment in the test below is the assertion. If `OfficeThemeHost` ever
+ * narrows in a way the real namespace cannot satisfy, this stops compiling —
+ * which is exactly how `OfficeToken` was found to be necessary.
+ */
+interface DeclaredOfficeTheme {
+  bodyBackgroundColor: string;
+  bodyForegroundColor: string;
+  controlBackgroundColor: string;
+  controlForegroundColor: string;
+  isDarkTheme: boolean;
+  themeId: number;
+}
+
+describe("readOfficeHostTheme", () => {
+  const withTheme = (officeTheme: OfficeThemeColors | undefined): OfficeThemeHost => ({
+    context: { officeTheme },
+  });
+
+  it("accepts a namespace typed the way @types/office-js declares it", () => {
+    const declared: { context: { officeTheme: DeclaredOfficeTheme } } = {
+      context: {
+        officeTheme: {
+          bodyBackgroundColor: "#1F1F1F",
+          bodyForegroundColor: "#FFFFFF",
+          controlBackgroundColor: "#1F1F1F",
+          controlForegroundColor: "#FFFFFF",
+          isDarkTheme: true,
+          themeId: 0,
+        },
+      },
+    };
+
+    expect(readOfficeHostTheme(declared)).toBe("dark");
+  });
+
+  // Word, Excel and PowerPoint. The host's own answer, so it wins outright.
+  it("takes the flag when the host reports one", () => {
+    expect(readOfficeHostTheme(withTheme({ isDarkTheme: true }))).toBe("dark");
+    expect(readOfficeHostTheme(withTheme({ isDarkTheme: false }))).toBe("light");
+  });
+
+  // Outlook. `isDarkTheme` is absent there despite `@types/office-js` declaring
+  // it required, so the colour is the only signal.
+  it("falls back to background luminance when there is no flag", () => {
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "#1F1F1F" }))).toBe("dark");
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "#FFFFFF" }))).toBe("light");
+  });
+
+  // The two paths can disagree, and a host that reports both is telling us the
+  // flag. Pinned because "try the flag first" is otherwise unfalsifiable: with a
+  // light background and a dark flag, only the flag gives "dark".
+  it("prefers the flag over the colour when both are present", () => {
+    expect(
+      readOfficeHostTheme(withTheme({ isDarkTheme: true, bodyBackgroundColor: "#FFFFFF" })),
+    ).toBe("dark");
+  });
+
+  // Weighted, not averaged: a saturated green is bright to the eye and its mean
+  // channel value is not. `(0+255+0)/3 = 85` reads as dark; BT.601 gives 0.587.
+  it("weights the channels rather than averaging them", () => {
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "#00FF00" }))).toBe("light");
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "#0000FF" }))).toBe("dark");
+  });
+
+  it("accepts a triplet with or without the leading hash, and either case", () => {
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "ffffff" }))).toBe("light");
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: " #1f1f1f " }))).toBe("dark");
+  });
+
+  // Every one of these is "no opinion", and the caller must leave
+  // `data-host-theme` off rather than defaulting to light — that absence is what
+  // re-arms `@media (prefers-color-scheme: dark)`.
+  it("says nothing rather than guessing when the host will not answer", () => {
+    expect(readOfficeHostTheme(null)).toBeNull();
+    expect(readOfficeHostTheme(undefined)).toBeNull();
+    // Outlook before Mailbox 1.14, and any dialog window.
+    expect(readOfficeHostTheme(withTheme(undefined))).toBeNull();
+    // Reported, but with nothing in it.
+    expect(readOfficeHostTheme(withTheme({}))).toBeNull();
+    // Not a six-digit triplet: a colour keyword, a short form, an rgb() string.
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "white" }))).toBeNull();
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "#fff" }))).toBeNull();
+    expect(readOfficeHostTheme(withTheme({ bodyBackgroundColor: "" }))).toBeNull();
+  });
+
+  // Office is present but not initialised: reading through the namespace throws
+  // rather than returning undefined. On a poll this would fire every tick.
+  it("survives a host that throws on the read", () => {
+    const hostile = {
+      get context(): { officeTheme?: OfficeThemeColors } {
+        throw new Error("Office is not ready");
+      },
+    };
+    expect(readOfficeHostTheme(hostile)).toBeNull();
+  });
+});
+
+describe("watchOfficeHostTheme", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** A host whose reported theme can be changed between ticks. */
+  function mutableHost(): {
+    host: OfficeThemeHost;
+    set: (theme: OfficeThemeColors | undefined) => void;
+  } {
+    let officeTheme: OfficeThemeColors | undefined;
+    return {
+      host: {
+        get context(): { officeTheme?: OfficeThemeColors } {
+          return { officeTheme };
+        },
+      },
+      set: next => {
+        officeTheme = next;
+      },
+    };
+  }
+
+  it("reports the theme immediately, without waiting for the first tick", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    set({ isDarkTheme: true });
+
+    const stop = watchOfficeHostTheme({ host, onChange });
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("dark");
+    stop();
+  });
+
+  it("reports a change the host makes while the surface is open", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    set({ isDarkTheme: false });
+    const stop = watchOfficeHostTheme({ host, onChange });
+
+    set({ isDarkTheme: true });
+    vi.advanceTimersByTime(OFFICE_HOST_THEME_POLL_MS);
+
+    expect(onChange).toHaveBeenLastCalledWith("dark");
+    expect(onChange).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
+  // The poll never stops, and the consumer's reaction is an attribute write that
+  // invalidates style for the whole subtree. Re-reporting an unchanged value
+  // would do that forever.
+  it("stays silent while nothing changes", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    set({ isDarkTheme: true });
+    const stop = watchOfficeHostTheme({ host, onChange });
+
+    vi.advanceTimersByTime(OFFICE_HOST_THEME_POLL_MS * 5);
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  // Office answers only after `Office.onReady`. A momentary "no opinion" must not
+  // wipe a theme already known, or the pane flashes back to the OS theme.
+  it("does not report a host that stops answering", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    set({ isDarkTheme: true });
+    const stop = watchOfficeHostTheme({ host, onChange });
+
+    set(undefined);
+    vi.advanceTimersByTime(OFFICE_HOST_THEME_POLL_MS * 3);
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("dark");
+    stop();
+  });
+
+  // Starting before `Office.onReady` is the normal case, not an edge one.
+  it("picks the theme up once a host that was silent starts answering", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    const stop = watchOfficeHostTheme({ host, onChange });
+    expect(onChange).not.toHaveBeenCalled();
+
+    set({ bodyBackgroundColor: "#1F1F1F" });
+    vi.advanceTimersByTime(OFFICE_HOST_THEME_POLL_MS);
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("dark");
+    stop();
+  });
+
+  it("stops polling when stopped", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    set({ isDarkTheme: false });
+
+    const stop = watchOfficeHostTheme({ host, onChange });
+    stop();
+    set({ isDarkTheme: true });
+    vi.advanceTimersByTime(OFFICE_HOST_THEME_POLL_MS * 3);
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("light");
+  });
+
+  it("honours a caller's own interval", () => {
+    const onChange = vi.fn();
+    const { host, set } = mutableHost();
+    const stop = watchOfficeHostTheme({ host, onChange, intervalMs: 50 });
+
+    set({ isDarkTheme: true });
+    vi.advanceTimersByTime(50);
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("dark");
+    stop();
   });
 });

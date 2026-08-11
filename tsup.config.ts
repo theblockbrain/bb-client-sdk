@@ -21,8 +21,18 @@ export default defineConfig({
     "src/analytics/mixpanel.ts",
     "src/telemetry/index.ts",
     "src/telemetry/cookiebot.ts",
+    // Node-only dev tooling. A LEAF: nothing under src/ imports it, and the `.`
+    // barrel must never re-export it — see src/dev/sdk-link.leaf.test.ts.
+    "src/dev/sdk-link.ts",
+    "src/dev/sdk-link-bin.ts",
   ],
   format: ["esm"],
+  // Keep `node:fs` as `node:fs`. tsup 8 rewrites it to a bare `fs` by default
+  // (the default flips to false in tsup 9), and a bare `fs` is an ordinary
+  // specifier to a bundler — Metro can resolve it to a userland shim instead of
+  // failing loudly, which is the opposite of what the prefix is for. esbuild
+  // preserves the prefix on its own; this is purely tsup's own rewrite.
+  removeNodeProtocol: false,
   // Declarations are emitted by `tsc -p tsconfig.build.json` in the build script.
   // tsup's dts builder hardcodes a deprecated `baseUrl` that TS 6 rejects, so we
   // let tsc (via tsconfig.build.json, which extends tsconfig.json — no baseUrl)

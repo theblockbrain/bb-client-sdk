@@ -47,11 +47,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
-        run: npm test
-
+      # Build first: `sdk-link.leaf.test.ts` asserts against the BUILT dist/, so
+      # the tests need the artifact to exist. Same order as ci.yml.
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm test
 
       - name: Package contract (publint + attw)
         run: npm run check:package

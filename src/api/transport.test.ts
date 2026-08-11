@@ -559,6 +559,56 @@ describe("retry (PDEV-7340)", () => {
     expect(doFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("calls an abort that interrupts the backoff 'aborted', not 'network'", async () => {
+    // The tail throw below the loop is reached only by breaking out of the
+    // backoff on `plan.signal.aborted`, so it is provably a cancellation — but it
+    // used to raise `new Error("aborted")`, whose name is `"Error"`, and land as
+    // `kind: "network"`. A consumer's cancellation guard then missed it and its
+    // error banner said "No connection" for a request the user had cancelled.
+    // `ms-word-addin` hit exactly this: every search-as-you-type hook there
+    // aborts the in-flight GET on each keystroke.
+    const controller = new AbortController();
+    const doFetch = vi.fn().mockImplementation(() => {
+      setTimeout(() => controller.abort(), 0);
+      return Promise.resolve(fail(503));
+    });
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 2, baseDelayMs: 20 } });
+
+    await expect(
+      t.send({ host: "blocky", path: "/x", method: "GET", signal: controller.signal }),
+    ).rejects.toMatchObject({ kind: "aborted", statusCode: 0 });
+    expect(doFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls it 'aborted' even when an earlier attempt had failed for real", async () => {
+    // The other half of the same bug, and the half no consumer can fix by
+    // inspecting the error: when a previous attempt threw, THAT error is what the
+    // tail throw carries, so nothing about it says the request was cancelled.
+    const controller = new AbortController();
+    const doFetch = vi.fn().mockImplementation(() => {
+      setTimeout(() => controller.abort(), 0);
+      return Promise.reject(new TypeError("Failed to fetch"));
+    });
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 2, baseDelayMs: 20 } });
+
+    await expect(
+      t.send({ host: "blocky", path: "/x", method: "GET", signal: controller.signal }),
+    ).rejects.toMatchObject({ kind: "aborted", statusCode: 0 });
+    expect(doFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("still calls a deadline that lands in the backoff a timeout", async () => {
+    // The transport's own deadline aborts the same signal, so the abort rule
+    // above must not swallow it: a timeout and a cancellation need different
+    // advice, and only one of them is worth retrying.
+    const doFetch = vi.fn().mockImplementation(() => Promise.resolve(fail(503)));
+    const t = createFetchTransport({ fetch: doFetch, retry: { attempts: 2, baseDelayMs: 40 } });
+
+    await expect(
+      t.send({ host: "blocky", path: "/x", method: "GET", timeoutMs: 10 }),
+    ).rejects.toMatchObject({ kind: "timeout", statusCode: 0 });
+  });
+
   it("gives up after the configured attempts and surfaces the last response", async () => {
     // A fresh Response per call, not one shared instance: a body is single-use by
     // spec, so a real fetch cannot hand back the same Response three times. The

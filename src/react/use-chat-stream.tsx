@@ -7,6 +7,7 @@ import {
   type MessageListBody,
   sendMessage,
 } from "../api/index.js";
+import { createStreamCoalescer } from "../utils/stream-coalescer.js";
 import { bbKeys } from "./keys.js";
 import { useBBContext } from "./provider.js";
 
@@ -16,7 +17,14 @@ export interface UseChatStreamArgs {
   convoId: string;
   /** Tool-call approval resolver for Agentic turns (forwarded to sendMessage). */
   approvalResolver?: ApprovalResolver;
-  /** Max ms between flushes of the live streaming text to React state. Default 60. */
+  /**
+   * Max ms between flushes of the live streaming text to React state. Default 60.
+   *
+   * Always honoured as a rate, on every platform: `createStreamCoalescer` uses a
+   * timer whenever an interval is given, and only follows the display when one
+   * is omitted. This hook never omits it, so a React Native consumer behaves
+   * exactly like a browser one.
+   */
   flushIntervalMs?: number;
 }
 
@@ -78,7 +86,6 @@ export function useChatStream({
   const [error, setError] = useState<Error | null>(null);
 
   const bufferRef = useRef("");
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const runIdRef = useRef(0);
@@ -86,48 +93,58 @@ export function useChatStream({
   // synchronous send() calls could otherwise both start a stream.
   const streamingRef = useRef(false);
 
-  const clearFlush = useCallback(() => {
-    if (flushTimerRef.current) {
-      clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = null;
-    }
-  }, []);
+  // One coalescer per interval. The mounted check stays on this side: the
+  // coalescer knows nothing about React, and a delivery that lands after unmount
+  // must not set state.
+  const coalescer = useMemo(
+    () =>
+      createStreamCoalescer<string>({
+        intervalMs: flushIntervalMs,
+        onFlush: text => {
+          if (mountedRef.current) setStreamingText(text);
+        },
+      }),
+    [flushIntervalMs],
+  );
+
+  // Cancels on unmount AND when a changed `flushIntervalMs` replaces the
+  // coalescer, so a delivery scheduled by the outgoing one cannot write after it
+  // stopped being the live one.
+  useEffect(() => () => coalescer.cancel(), [coalescer]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       abortRef.current?.abort();
-      clearFlush();
     };
-  }, [clearFlush]);
-
-  const scheduleFlush = useCallback(() => {
-    if (flushTimerRef.current) return;
-    flushTimerRef.current = setTimeout(() => {
-      flushTimerRef.current = null;
-      if (mountedRef.current) setStreamingText(bufferRef.current);
-    }, flushIntervalMs);
-  }, [flushIntervalMs]);
+  }, []);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
     runIdRef.current += 1; // any late `final` for the aborted run becomes a no-op
     streamingRef.current = false;
-    clearFlush();
+    coalescer.cancel();
     // Reconcile the cache: without this the optimistic (pending) user message would stay
     // pending forever, since the SDK request can't be aborted yet — refetch the server truth.
     void qc.invalidateQueries({ queryKey: bbKeys(orgId).messages.forConvo(convoId) });
     if (mountedRef.current) setIsStreaming(false);
-  }, [clearFlush, qc, orgId, convoId]);
+  }, [coalescer, qc, orgId, convoId]);
 
+  // Clears the composer mid-turn without ending the turn, so it must cancel the
+  // coalescer itself. A delivery armed before this point carries the value
+  // captured at push time, not whatever `bufferRef` holds when it fires, so
+  // clearing the buffer alone would let the pre-reset partial repaint up to
+  // `flushIntervalMs` later. Every other clearing path (`stop`, the final commit,
+  // the catch) already cancels for the same reason.
   const reset = useCallback(() => {
     bufferRef.current = "";
+    coalescer.cancel();
     if (mountedRef.current) {
       setStreamingText("");
       setError(null);
     }
-  }, []);
+  }, [coalescer]);
 
   const send = useCallback(
     async (content: string) => {
@@ -169,7 +186,7 @@ export function useChatStream({
         for await (const delta of stream.textDeltas) {
           if (controller.signal.aborted || runId !== runIdRef.current) break;
           bufferRef.current += delta;
-          scheduleFlush();
+          coalescer.push(bufferRef.current);
         }
 
         // Bail before awaiting `final` if the run was stopped/superseded — the SDK request
@@ -182,7 +199,10 @@ export function useChatStream({
         qc.setQueryData<MessagesCache>(liveKey, prev => insertLiveMessage(prev, assistant));
         void qc.invalidateQueries({ queryKey: bbKeys(orgId).messages.forConvo(convoId) });
 
-        clearFlush();
+        // Discarded, not flushed: `streamingText` is about to be cleared and the
+        // finished answer now lives in the message cache, so a late partial would
+        // paint over a completed message.
+        coalescer.cancel();
         bufferRef.current = "";
         if (mountedRef.current) {
           setStreamingText("");
@@ -192,7 +212,7 @@ export function useChatStream({
         if (runId !== runIdRef.current) return;
         qc.setQueryData<MessagesCache>(liveKey, previous); // roll back the optimistic user message
         void qc.invalidateQueries({ queryKey: bbKeys(orgId).messages.forConvo(convoId) });
-        clearFlush();
+        coalescer.cancel();
         if (mountedRef.current) {
           setError(err instanceof Error ? err : new Error(String(err)));
           setIsStreaming(false);
@@ -202,7 +222,7 @@ export function useChatStream({
         if (runId === runIdRef.current) streamingRef.current = false;
       }
     },
-    [qc, liveKey, getAuthContext, convoId, approvalResolver, scheduleFlush, clearFlush, orgId],
+    [qc, liveKey, getAuthContext, convoId, approvalResolver, coalescer, orgId],
   );
 
   return { send, isStreaming, streamingText, error, stop, reset };

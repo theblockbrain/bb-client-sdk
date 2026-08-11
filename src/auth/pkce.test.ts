@@ -15,7 +15,12 @@
  * vitest and moved here so `npm test` enforces it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { IdentityAdapter } from "../adapters/identity.js";
+import { AUTH_SCOPES } from "../config.js";
+import type { BrowserRedirectOptions } from "./browser-redirect.js";
 import { beginBrowserLogin, completeBrowserLogin } from "./browser-redirect.js";
+import { login } from "./login.js";
+import { ORG_SCOPE_PREFIX } from "./org-scope.js";
 import { generateChallenge, generateStateNonce, generateVerifier } from "./pkce.js";
 
 vi.mock("./tokens.js", () => ({
@@ -75,6 +80,38 @@ function onCallbackUrl(search: string): void {
     configurable: true,
     value: { search, pathname: "/", href: "" },
   });
+}
+
+const REDIRECT_URI = "https://app.example.com/callback";
+
+/**
+ * Drive `beginBrowserLogin` far enough to capture the authorize URL it navigates
+ * to. The call itself never settles, by design: the real page unloads.
+ */
+async function browserAuthorizeUrl(opts: BrowserRedirectOptions): Promise<URL> {
+  const nav = captureNavigation();
+  void beginBrowserLogin(opts);
+  await vi.waitFor(() => expect(nav.url).not.toBe(""));
+  return new URL(nav.url);
+}
+
+/** The `scope` parameter of an authorize URL, split back into a list. */
+function scopesOf(url: URL): string[] {
+  return (url.searchParams.get("scope") ?? "").split(" ");
+}
+
+/** Run `login()` far enough to capture the authorize URL, then abandon it. */
+async function dialogAuthorizeUrl(options: Parameters<typeof login>[1]): Promise<URL> {
+  let captured = "";
+  const identity: IdentityAdapter = {
+    getRedirectUri: () => REDIRECT_URI,
+    launchOAuthFlow: (url: string) => {
+      captured = url;
+      return Promise.reject(new Error("stop here"));
+    },
+  };
+  await login(identity, options).catch(() => undefined);
+  return new URL(captured);
 }
 
 beforeEach(() => {
@@ -185,6 +222,126 @@ describe("beginBrowserLogin — the verifier must not reach the URL", () => {
   });
 });
 
+/**
+ * PDEV-7369. `beginBrowserLogin` had no `orgId`, so a surface supporting both the
+ * dialog flow and the browser fallback had to hand-build
+ * `urn:zitadel:iam:org:id:<id>` for the browser half. `ms-word-addin` shipped that
+ * asymmetry: the dialog path passed `orgId`, the fallback did not, and a multi-org
+ * developer would have authenticated into their DEFAULT organization and seen
+ * another tenant's data. Nothing fails on that path, so review was the only guard.
+ */
+describe("beginBrowserLogin — organization pinning", () => {
+  it("omits any org scope when no orgId is given (org as output)", async () => {
+    const url = await browserAuthorizeUrl({ clientId: "c", redirectUri: REDIRECT_URI });
+
+    expect(scopesOf(url).some(s => s.startsWith(ORG_SCOPE_PREFIX))).toBe(false);
+    expect(scopesOf(url)).toEqual([...AUTH_SCOPES]);
+  });
+
+  it("appends the org scope WITHOUT dropping the defaults (org as input)", async () => {
+    // The whole point of the option: hand-building this scope means also
+    // remembering to re-list offline_access, and forgetting it kills refresh.
+    const url = await browserAuthorizeUrl({
+      clientId: "c",
+      redirectUri: REDIRECT_URI,
+      orgId: "org-42",
+    });
+
+    const scopes = scopesOf(url);
+    expect(scopes).toContain(`${ORG_SCOPE_PREFIX}org-42`);
+    for (const preserved of AUTH_SCOPES) expect(scopes).toContain(preserved);
+    expect(scopes).toContain("offline_access");
+  });
+
+  it("layers the org scope on top of a caller-supplied scope list", async () => {
+    const url = await browserAuthorizeUrl({
+      clientId: "c",
+      redirectUri: REDIRECT_URI,
+      scopes: ["openid", "offline_access"],
+      orgId: "org-42",
+    });
+
+    // Appended, not substituted for the caller's list.
+    expect(scopesOf(url)).toEqual(["openid", "offline_access", `${ORG_SCOPE_PREFIX}org-42`]);
+  });
+
+  it("does not duplicate an org scope the caller already listed", async () => {
+    const url = await browserAuthorizeUrl({
+      clientId: "c",
+      redirectUri: REDIRECT_URI,
+      scopes: ["openid", `${ORG_SCOPE_PREFIX}org-42`],
+      orgId: "org-42",
+    });
+
+    expect(scopesOf(url).filter(s => s === `${ORG_SCOPE_PREFIX}org-42`)).toHaveLength(1);
+  });
+
+  it("ignores a blank orgId rather than emitting a valueless scope", async () => {
+    // `urn:zitadel:iam:org:id:` with nothing after it is a malformed scope that
+    // Zitadel rejects, so an empty form field must not produce one.
+    const url = await browserAuthorizeUrl({
+      clientId: "c",
+      redirectUri: REDIRECT_URI,
+      orgId: "   ",
+    });
+
+    expect(scopesOf(url).some(s => s.startsWith(ORG_SCOPE_PREFIX))).toBe(false);
+  });
+
+  it("keeps the org scope out of every parameter except `scope`", async () => {
+    // Zitadel reads the org from the scope list. An org that travelled as its own
+    // query parameter would look pinned to a reviewer and be ignored by the IdP.
+    const url = await browserAuthorizeUrl({
+      clientId: "c",
+      redirectUri: REDIRECT_URI,
+      orgId: "org-42",
+    });
+
+    for (const [name, value] of url.searchParams) {
+      if (name === "scope") continue;
+      expect(value).not.toContain("org-42");
+    }
+  });
+});
+
+/**
+ * Cross-path parity. Both entry points build their own authorize URL, and both now
+ * pin an organization, so the two can drift: that drift IS the PDEV-7369 defect.
+ * These cases pin the two `scope` parameters to each other so a change to one path
+ * that is not made to the other fails here rather than in a customer's tenant.
+ */
+describe("organization pinning is identical on both PKCE paths", () => {
+  const cases: Array<{ name: string; scopes?: readonly string[]; orgId?: string }> = [
+    { name: "no org at all" },
+    { name: "a pinned org on the default scopes", orgId: "org-42" },
+    {
+      name: "a pinned org on a custom scope list",
+      scopes: ["openid", "offline_access"],
+      orgId: "org-42",
+    },
+    {
+      name: "an org the caller already listed",
+      scopes: ["openid", `${ORG_SCOPE_PREFIX}org-42`],
+      orgId: "org-42",
+    },
+    { name: "a blank org", orgId: "   " },
+  ];
+
+  for (const { name, scopes, orgId } of cases) {
+    it(`agrees on the scope list for ${name}`, async () => {
+      const browser = await browserAuthorizeUrl({
+        clientId: "c",
+        redirectUri: REDIRECT_URI,
+        scopes,
+        orgId,
+      });
+      const dialog = await dialogAuthorizeUrl({ clientId: "c", scopes, orgId });
+
+      expect(scopesOf(browser)).toEqual(scopesOf(dialog));
+    });
+  }
+});
+
 describe("completeBrowserLogin — CSRF guard and verifier lifetime", () => {
   it("rejects a state nonce it never issued", async () => {
     onCallbackUrl("?code=abc&state=tampered-nonce");
@@ -253,5 +410,30 @@ describe("completeBrowserLogin — CSRF guard and verifier lifetime", () => {
     await expect(
       completeBrowserLogin({ clientId: "c", redirectUri: "https://app.example.com/callback" }),
     ).rejects.toThrow(/access_denied/);
+  });
+
+  it("exchanges the code identically whether or not an orgId is passed", async () => {
+    // `orgId` is accepted here only because the options interface is shared with
+    // `beginBrowserLogin`, and it must stay inert: the authorization-code token
+    // request carries no `scope` (RFC 6749 §4.1.3), the granted scope was fixed at
+    // the authorize step, and `refreshTokens` omits scope for the same reason
+    // (Zitadel rejects custom scopes on a token request). If someone ever threads
+    // an org into the exchange, this fails and forces the question.
+    const { exchangeCode } = await import("./tokens.js");
+
+    const runWith = async (orgId?: string) => {
+      const nonce = generateStateNonce();
+      sessionStorage.setItem(VERIFIER_KEY(nonce), "fixed-verifier-for-comparison");
+      onCallbackUrl(`?code=authcode&state=${nonce}`);
+      await completeBrowserLogin({ clientId: "c", redirectUri: REDIRECT_URI, orgId });
+      return vi.mocked(exchangeCode).mock.calls.at(-1);
+    };
+
+    const without = await runWith(undefined);
+    const with_ = await runWith("org-42");
+
+    expect(with_).toEqual(without);
+    // And nothing that looks like an org URN reached the token endpoint.
+    expect(JSON.stringify(with_)).not.toContain(ORG_SCOPE_PREFIX);
   });
 });

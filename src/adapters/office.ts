@@ -1,6 +1,13 @@
 /**
- * Office dialog {@link IdentityAdapter} — the PKCE browser hop for Office add-ins,
- * shipped as an opt-in leaf (`@theblockbrain/bb-client-sdk/adapters/office`).
+ * Everything Office-specific the SDK knows, shipped as one opt-in leaf
+ * (`@theblockbrain/bb-client-sdk/adapters/office`): the PKCE browser hop, the
+ * generic dialog courier behind it, persistence, and the host theme.
+ *
+ * They live together because they share one constraint, not one feature: each is
+ * useless off an Office host and each is expressed *structurally*, so the SDK
+ * takes no dependency on `@types/office-js` and non-Office consumers (Slack, Lit,
+ * React Native) never pull any of it in. The dialog hop is the founding member
+ * and the rest of this header is its story.
  *
  * Why this exists (PDEV-7684). An Office add-in cannot do a full-page redirect,
  * so it opens the IdP in `Office.context.ui.displayDialogAsync` — a **separate
@@ -24,9 +31,14 @@
  *
  * Zero new SDK dependency: {@link OfficeGlobal} is a STRUCTURAL type over the
  * handful of Office.js members used, so the SDK never imports `@types/office-js`
- * and the core stays runtime-agnostic (invariants A + B). A real `Office`
- * namespace satisfies it; so does the test double in `office.test.ts`. Non-Office
- * consumers (Slack, Lit, React Native) never pull this subpath in.
+ * and the core stays runtime-agnostic (invariants A + B). The real `Office`
+ * namespace satisfies it directly, as does the test double in `office.test.ts`.
+ * Non-Office consumers (Slack, Lit, React Native) never pull this subpath in.
+ *
+ * "Directly" is load-bearing, and it was not true at first: the token positions
+ * were typed `string`, which no real `Office` can satisfy under
+ * `@types/office-js`. See {@link OfficeToken} for what that cost the first
+ * adopter and why the fix is a union rather than a cast.
  *
  * @example Taskpane
  * ```ts
@@ -52,6 +64,7 @@
  * ```
  */
 
+import type { Theme } from "../ui/theme-mode.js";
 import type { IdentityAdapter } from "./identity.js";
 
 // Persistence for an Office add-in ships from this same subpath: a surface that
@@ -67,17 +80,53 @@ export { createOfficeStorageAdapter } from "./office-storage.js";
 
 // ─── Structural Office.js surface ─────────────────────────────────────────────
 
+/**
+ * An Office.js enum-member token: an `AsyncResult.status`, an `EventType` member,
+ * an `AsyncResultStatus` member.
+ *
+ * **Why a union, and not sloppiness.** The declaration and the runtime disagree
+ * about what these are, and the SDK has to accept whichever the host actually
+ * hands over. `@types/office-js` declares both enums with no initialisers, which
+ * makes every member an *implicit numeric* enum member:
+ *
+ * ```ts
+ * enum AsyncResultStatus { Succeeded, Failed }   // => 0, 1
+ * enum EventType { ActiveViewChanged, ... }
+ * ```
+ *
+ * The values the Office runtime actually puts in them are strings (`"failed"`,
+ * `"dialogMessageReceived"`). This file used to type these positions `string`, on
+ * the strength of having read a live `Office` object, with a comment asserting it
+ * was verified. The runtime observation was right and the conclusion was wrong:
+ * `typeof Office` still does not satisfy {@link OfficeGlobal} under those
+ * typings, because the callback parameter is contravariant and the mismatch
+ * surfaces as `Type 'Office.AsyncResultStatus' is not assignable to type
+ * 'string'` on `displayDialogAsync`.
+ *
+ * The first adopter (`ms-word-addin`) paid for that with a ~50-line bridge whose
+ * only job was re-presenting the real namespace under this type. All four token
+ * positions were individually load-bearing: narrowing any single one back to
+ * `string` reproduces the failure, so all four use this alias.
+ *
+ * **Never coerce a token.** Every value of this type is either compared against
+ * another token from the same host or handed straight back to Office
+ * (`addEventHandler`). `String(token)` would look tidier and would silently break
+ * `addEventHandler` the day a host really does use the numeric representation.
+ * Passing the value through untouched is correct under both.
+ */
+export type OfficeToken = string | number;
+
 /** `Office.AsyncResult` — only `status`, `value` and `error` are read. */
 export interface OfficeAsyncResult<T> {
   /**
-   * Compared against {@link OfficeGlobal.AsyncResultStatus}.
+   * Compared against {@link OfficeGlobal.AsyncResultStatus}, never inspected.
    *
-   * A **string** enum in Office.js (`"succeeded"` / `"failed"`), not numeric —
-   * verified against a real `Office` object, having first assumed otherwise.
-   * Typing it `number` made the whole namespace fail to satisfy `OfficeGlobal`,
-   * which is the kind of thing only compiling against the real thing catches.
+   * An {@link OfficeToken} rather than `string`: the runtime supplies
+   * `"succeeded"` / `"failed"`, `@types/office-js` declares
+   * `AsyncResultStatus.Succeeded` / `.Failed` as `0` / `1`. Note that a numeric
+   * `Succeeded` is `0`, so a truthiness test on this field is always a bug.
    */
-  status: string;
+  status: OfficeToken;
   value: T;
   error?: { code?: number; message?: string };
 }
@@ -97,7 +146,8 @@ export interface OfficeDialogEventArgs {
 
 /** `Office.Dialog` — only the two members used. */
 export interface OfficeDialog {
-  addEventHandler(eventType: string, handler: (args: OfficeDialogEventArgs) => void): void;
+  /** `eventType` is whatever came off {@link OfficeGlobal.EventType}, unchanged. */
+  addEventHandler(eventType: OfficeToken, handler: (args: OfficeDialogEventArgs) => void): void;
   close(): void;
 }
 
@@ -117,7 +167,12 @@ export interface OfficeDialogOptions {
 
 /**
  * The slice of the `Office` namespace this adapter touches, typed structurally
- * so the SDK takes no dependency on Office.js. Pass the real global `Office`.
+ * so the SDK takes no dependency on Office.js.
+ *
+ * **Pass the real global `Office`.** That works as written, and no bridge is
+ * needed: every enum-member position is an {@link OfficeToken}, which a numeric
+ * enum member and a plain string both satisfy. A hand-written double keeps
+ * working too, since widening a type only ever accepts more.
  */
 export interface OfficeGlobal {
   context: {
@@ -128,13 +183,21 @@ export interface OfficeGlobal {
         callback: (result: OfficeAsyncResult<OfficeDialog>) => void,
       ): void;
     };
+    /**
+     * The host's own appearance. Optional because it genuinely is: see
+     * {@link OfficeThemeColors}.
+     *
+     * Declared here so one `OfficeGlobal` can be handed to both the identity
+     * adapter and {@link readOfficeHostTheme} without being re-typed.
+     */
+    officeTheme?: OfficeThemeColors;
   };
   EventType: {
-    DialogMessageReceived: string;
-    DialogEventReceived: string;
+    DialogMessageReceived: OfficeToken;
+    DialogEventReceived: OfficeToken;
   };
   AsyncResultStatus: {
-    Failed: string;
+    Failed: OfficeToken;
   };
 }
 
@@ -163,6 +226,13 @@ export interface OfficeIdentityAdapterConfig {
    * compile error instead of a blank dialog to debug.
    */
   dialog?: Omit<OfficeDialogOptions, "displayInIframe">;
+  /**
+   * Fires once the sign-in dialog is on screen, before `login()` resolves.
+   *
+   * Forwarded to {@link OpenOfficeDialogConfig.onOpened}, which explains why a
+   * sign-in screen needs this moment and cannot use the settled promise for it.
+   */
+  onOpened?: () => void;
 }
 
 /** Office's code for "the user closed the dialog", worth its own message. */
@@ -235,6 +305,28 @@ export interface OpenOfficeDialogConfig<T> {
   parse: (message: string) => T;
   /** Dialog sizing. Defaults to 60% × 30%. */
   dialog?: Omit<OfficeDialogOptions, "displayInIframe">;
+  /**
+   * Fires once, when the dialog is actually on screen, before this promise
+   * settles. Not called at all if the dialog fails to open.
+   *
+   * Ported from `ms-word-addin`, which had to reach inside its own Office bridge
+   * to get at this moment (PDEV-3804), because the promise was the only thing the
+   * SDK exposed. Between the click and `displayDialogAsync` calling back,
+   * Microsoft 365 puts up its own "this add-in wants to display a new window"
+   * prompt. A surface that raises a full-pane "Signing you in..." overlay on
+   * click therefore covers the very button the user still has to press, so the
+   * overlay has to wait for this signal rather than for the click.
+   *
+   * The settled promise cannot serve instead: it resolves when the dialog is
+   * finished, which is far too late to hide a progress indicator that was in the
+   * way the whole time.
+   *
+   * A throw from this handler is swallowed. It runs on Office's stack inside the
+   * `displayDialogAsync` callback, outside the promise executor, so an escaping
+   * error would take down the flow and leave the promise pending forever. Losing
+   * a sign-in to a broken progress indicator is not a trade worth making.
+   */
+  onOpened?: () => void;
 }
 
 /**
@@ -256,7 +348,7 @@ export interface OpenOfficeDialogConfig<T> {
  * browser's permission prompt. No caller has wanted `true`.
  */
 export function openOfficeDialog<T>(config: OpenOfficeDialogConfig<T>): Promise<T> {
-  const { office, url, parse } = config;
+  const { office, url, parse, onOpened } = config;
   const dialogOptions: OfficeDialogOptions = {
     ...DEFAULT_DIALOG,
     ...config.dialog,
@@ -330,6 +422,20 @@ export function openOfficeDialog<T>(config: OpenOfficeDialogConfig<T>): Promise<
           ),
         );
       });
+
+      // Announced last, once both handlers are wired. The caller is told the
+      // dialog is on screen only when this side can actually receive from it, so
+      // a slow or throwing handler cannot delay or reorder Office's delivery.
+      // Still strictly before the promise settles: settling needs one of the
+      // handlers above, which cannot run until this callback returns.
+      try {
+        onOpened?.();
+      } catch {
+        // See OpenOfficeDialogConfig.onOpened: this runs on Office's stack,
+        // outside the promise executor, so an escaping error would strand the
+        // promise pending forever. A caller's progress indicator does not get to
+        // break sign-in.
+      }
     });
   });
 }
@@ -355,6 +461,7 @@ export function createOfficeIdentityAdapter(config: OfficeIdentityAdapterConfig)
         office,
         url: authorizeUrl,
         dialog: config.dialog,
+        onOpened: config.onOpened,
         // The dialog is a courier: it posts back the redirect URL and nothing
         // else. Validating here means `login()` never has to defend against a
         // message from some other sender on the same channel.
@@ -422,4 +529,173 @@ function describeFragmentRoutedCallback(redirectUrl: string): string | null {
     "§3.1.2 forbids. Register a fragment-free redirect URI in Zitadel — route " +
     "to the callback view after the taskpane loads instead."
   );
+}
+
+// ─── Host theme ───────────────────────────────────────────────────────────────
+
+/**
+ * The slice of `Office.context.officeTheme` this module reads.
+ *
+ * **Both fields are optional, and `@types/office-js` declares both as required.**
+ * That is not sloppiness, it is the same declaration-versus-runtime gap
+ * {@link OfficeToken} documents, and it is the whole reason
+ * {@link readOfficeHostTheme} has two paths:
+ *
+ * - `isDarkTheme` is typed `boolean`, and the typings themselves say it "isn't
+ *   supported in Outlook". In Outlook it is `undefined` at runtime while the
+ *   compiler insists it is a boolean.
+ * - `officeTheme` itself is typed non-optional, but in Outlook it only exists
+ *   from Mailbox requirement set 1.14, and it is absent in the dialog window.
+ *
+ * So a surface cannot trust either field's declared type, and two Office add-ins
+ * independently reached opposite conclusions about which one to read: Word took
+ * the flag, Outlook computed luminance from the colours and asserted in a comment
+ * that "Office reports colours, not a light/dark flag". Both were right about
+ * their own host and wrong as a general rule.
+ */
+export interface OfficeThemeColors {
+  /**
+   * `true` when the host is on a dark theme. Word, Excel and PowerPoint report
+   * this. **Outlook does not** — it is `undefined` there.
+   */
+  isDarkTheme?: boolean;
+  /**
+   * Body background as a hex triplet, e.g. `"#FFA500"`. Reported by every host
+   * that reports a theme at all, and the only signal Outlook gives.
+   */
+  bodyBackgroundColor?: string;
+}
+
+/**
+ * Any object shaped like the `Office` namespace as far as the theme is
+ * concerned. {@link OfficeGlobal} satisfies it, and so does the real `Office`.
+ */
+export interface OfficeThemeHost {
+  context: { officeTheme?: OfficeThemeColors };
+}
+
+/**
+ * Perceived brightness of a `#rrggbb` colour, 0 (black) to 1 (white).
+ *
+ * ITU-R BT.601 coefficients rather than a plain average, because green
+ * contributes far more perceived brightness than blue and averaging
+ * misclassifies saturated backgrounds.
+ *
+ * Anything that is not a six-digit hex triplet returns `null` and is treated as
+ * "no opinion" by the caller. Guessing at some other notation would be inventing
+ * a host contract that has never been observed.
+ */
+function luminance(hex: string): number | null {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!match) return null;
+  const value = Number.parseInt(match[1], 16);
+  const r = (value >> 16) & 0xff;
+  const g = (value >> 8) & 0xff;
+  const b = value & 0xff;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+/** Below this, the background is dark. Midpoint, and it has never needed tuning. */
+const DARK_BACKGROUND_BELOW = 0.5;
+
+/**
+ * The Office host's own theme, or `null` when it will not say.
+ *
+ * **One function, two mechanisms, because the hosts genuinely differ.** The flag
+ * is tried first and the luminance of `bodyBackgroundColor` is the fallback:
+ *
+ * | Host | What answers |
+ * |---|---|
+ * | Word, Excel, PowerPoint | `isDarkTheme` |
+ * | Outlook (Mailbox 1.14+) | `bodyBackgroundColor` luminance |
+ * | Outlook (older), any dialog window | neither — `null` |
+ *
+ * Order matters: where the flag exists it is the host's own answer, and
+ * luminance is an inference from one colour. Where the flag is missing the
+ * inference is all there is. Neither add-in could have skipped the other's path
+ * without breaking on the other's host.
+ *
+ * **`null` is a real answer, not a failure.** It means "no opinion", and the
+ * caller must leave `data-host-theme` off the root rather than defaulting to
+ * light — that absence is what hands resolution back to
+ * `@media (prefers-color-scheme: dark)`. See `useTheme`'s `hostTheme` option,
+ * which takes this value directly and does exactly that.
+ *
+ * **Detection is adapter-side by design.** The SDK never touches the `Office`
+ * identifier itself (it takes no dependency on `@types/office-js`), so a surface
+ * passes the namespace in. Outside Office the identifier is not merely undefined
+ * but undeclared, and `Office?.context` still throws on it, so the caller's guard
+ * is `typeof Office === "undefined" ? null : Office` and this function accepts
+ * the nullish result rather than making every call site branch twice.
+ */
+export function readOfficeHostTheme(host: OfficeThemeHost | null | undefined): Theme | null {
+  try {
+    const theme = host?.context?.officeTheme;
+    if (!theme) return null;
+
+    if (typeof theme.isDarkTheme === "boolean") return theme.isDarkTheme ? "dark" : "light";
+
+    const background = theme.bodyBackgroundColor;
+    if (!background) return null;
+    const value = luminance(background);
+    if (value === null) return null;
+    return value < DARK_BACKGROUND_BELOW ? "dark" : "light";
+  } catch {
+    // Office is present but not initialised yet. Deliberately silent: this runs
+    // on a poll, so a log line here would repeat forever for a non-condition.
+    return null;
+  }
+}
+
+/**
+ * How often {@link watchOfficeHostTheme} asks. Slow enough to be free, fast
+ * enough that flipping the host theme feels immediate.
+ */
+export const OFFICE_HOST_THEME_POLL_MS = 2000;
+
+export interface WatchOfficeHostThemeConfig {
+  /** The Office namespace, or `null` outside Office. */
+  host: OfficeThemeHost | null | undefined;
+  /** Fires on the first known theme and on every change after it. */
+  onChange: (theme: Theme) => void;
+  /** Poll period. Defaults to {@link OFFICE_HOST_THEME_POLL_MS}. */
+  intervalMs?: number;
+}
+
+/**
+ * Follow the host theme for as long as the surface is open. Returns the stop
+ * function.
+ *
+ * **Why a poll and not an event.** Office raises `OfficeThemeChanged` only under
+ * Outlook's Mailbox 1.14, through `mailbox.addHandlerAsync` — and Word, Excel and
+ * PowerPoint have no `Office.context.mailbox` at all, so there is nothing to
+ * subscribe to there. Polling is the only mechanism that works on every host,
+ * which is why it belongs here rather than in one add-in: Word wrote this loop,
+ * and Outlook, which applied the theme once inside `Office.onReady`, silently
+ * ignored the user changing it afterwards.
+ *
+ * `onChange` fires only on a real change. The read is cheap but the consumer's
+ * reaction is not: writing an attribute invalidates style for the whole subtree
+ * even when the value is unchanged, and a poll that never stops would do that
+ * forever.
+ *
+ * A read that comes back `null` is skipped rather than reported. Office answers
+ * only after `Office.onReady`, and a momentary "no opinion" must not wipe out a
+ * theme already known — the surface would flash back to the OS theme and then
+ * correct itself.
+ */
+export function watchOfficeHostTheme(config: WatchOfficeHostThemeConfig): () => void {
+  const { host, onChange } = config;
+  let current: Theme | null = null;
+
+  const sync = (): void => {
+    const next = readOfficeHostTheme(host);
+    if (next === null || next === current) return;
+    current = next;
+    onChange(next);
+  };
+
+  sync();
+  const timer = setInterval(sync, config.intervalMs ?? OFFICE_HOST_THEME_POLL_MS);
+  return () => clearInterval(timer);
 }

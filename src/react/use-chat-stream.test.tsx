@@ -58,6 +58,145 @@ describe("useChatStream", () => {
     );
   });
 
+  // The hook holds live tokens in `streamingText` and hands ownership to the
+  // message cache on `final`. That handover is what breaks if the coalescer is
+  // wired up wrongly: a stream whose deltas never reach state renders an empty
+  // bubble until the turn ends, and one that is never cancelled paints a stale
+  // partial over the committed answer.
+  //
+  // The coalescing itself — one delivery per interval, newest value wins — is
+  // pinned in `utils/stream-coalescer.test.ts`, where it can be asserted exactly
+  // rather than inferred through React's scheduling.
+  it("renders live tokens while streaming, and clears them once the answer commits", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const liveKey = bbKeys("org-1").messages.list("c1");
+    client.setQueryData<InfiniteData<MessageListBody, number>>(liveKey, {
+      pages: [{ data: [], total: 0 }],
+      pageParams: [1],
+    });
+
+    // Held open so the in-flight state is observable at all: an unblocked
+    // generator runs to completion inside the same `act` and there is no moment
+    // where `streamingText` is non-empty.
+    let releaseStream = (): void => {};
+    const streamHeld = new Promise<void>(resolve => {
+      releaseStream = resolve;
+    });
+
+    const stream: MessageStream = {
+      textDeltas: (async function* () {
+        yield "He";
+        yield "llo";
+        await streamHeld;
+      })(),
+      final: Promise.resolve("Hello"),
+    };
+    vi.mocked(api.sendMessage).mockResolvedValue(stream);
+
+    const { result } = renderHook(
+      // 1ms so the flush lands promptly under real timers. The interval is a
+      // rate cap, and this test is about delivery, not about the cap.
+      () => useChatStream({ convoId: "c1", flushIntervalMs: 1 }),
+      { wrapper: makeWrapper(client) },
+    );
+
+    let sent: Promise<void> = Promise.resolve();
+    await act(async () => {
+      sent = result.current.send("hi");
+      // Let the generator reach the gate so both deltas have been pushed.
+      await Promise.resolve();
+    });
+
+    // Accumulated, not just the newest delta: the hook pushes the whole buffer.
+    await waitFor(() => expect(result.current.streamingText).toBe("Hello"));
+    expect(result.current.isStreaming).toBe(true);
+
+    await act(async () => {
+      releaseStream();
+      await sent;
+    });
+
+    expect(result.current.streamingText).toBe("");
+    expect(result.current.isStreaming).toBe(false);
+    const msgs =
+      client.getQueryData<InfiniteData<MessageListBody, number>>(liveKey)?.pages[0].data ?? [];
+    expect(msgs.some(m => m.role === "assistant" && m.content === "Hello")).toBe(true);
+  });
+
+  // `reset()` is the one path that clears the buffer *without* ending the turn,
+  // so it is the one path that has to cancel the coalescer by hand. The old timer
+  // read `bufferRef.current` at fire time, which made clearing the buffer enough;
+  // the coalescer captures its value at push time, so a delivery armed before the
+  // reset still carries the pre-reset partial. Without the cancel the composer
+  // clears and then, up to `flushIntervalMs` later, repaints the stale text.
+  it("stays cleared when reset() lands while a delivery is already armed", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const liveKey = bbKeys("org-1").messages.list("c1");
+    client.setQueryData<InfiniteData<MessageListBody, number>>(liveKey, {
+      pages: [{ data: [], total: 0 }],
+      pageParams: [1],
+    });
+
+    // Resolves once the loop body has run for the first delta, so the test acts
+    // on "a delivery is armed" rather than on a guessed number of microtasks.
+    let deltaPushed = (): void => {};
+    const pushed = new Promise<void>(resolve => {
+      deltaPushed = resolve;
+    });
+    let releaseStream = (): void => {};
+    const streamHeld = new Promise<void>(resolve => {
+      releaseStream = resolve;
+    });
+
+    const stream: MessageStream = {
+      textDeltas: (async function* () {
+        yield "Hello";
+        // Reached only after the consumer pushed the delta and asked for the next.
+        deltaPushed();
+        await streamHeld;
+      })(),
+      final: Promise.resolve("Hello"),
+    };
+    vi.mocked(api.sendMessage).mockResolvedValue(stream);
+
+    const { result } = renderHook(
+      // Long enough that reset() reliably lands inside the armed window under
+      // real timers, short enough that waiting it out does not slow the suite.
+      () => useChatStream({ convoId: "c1", flushIntervalMs: 50 }),
+      { wrapper: makeWrapper(client) },
+    );
+
+    let sent: Promise<void> = Promise.resolve();
+    await act(async () => {
+      sent = result.current.send("hi");
+      await pushed;
+    });
+
+    // The delivery is armed but has not fired, so nothing has reached state yet.
+    expect(result.current.streamingText).toBe("");
+
+    act(() => result.current.reset());
+
+    // Past the armed delivery.
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 150));
+    });
+    const afterArmedDelivery = result.current.streamingText;
+
+    // Let the turn unwind before asserting, so a failure does not strand the
+    // generator on its gate.
+    await act(async () => {
+      releaseStream();
+      await sent;
+    });
+
+    expect(afterArmedDelivery).toBe("");
+  });
+
   it("does not commit a truncated agentic run as the final assistant message", async () => {
     // PDEV-7333. The defect this locks down: `callAgenticStream` used to `break`
     // when the resume budget ran out, so a turn that stopped mid-work resolved
