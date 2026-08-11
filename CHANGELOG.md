@@ -1,21 +1,197 @@
 # Changelog
 
+## 0.19.0 — the client-executed tool relay, and the Office adopter gaps
+
+Everything here landed on `main` **after** the commit `v0.18.0` was cut from, so
+none of it is in the published `0.18.0`. Purely additive: three new exports from
+PDEV-7369, twenty-odd from PDEV-8061 including a new `./dev/sdk-link` entry point,
+and the relay surface below. Nothing renamed, nothing removed, no behaviour change
+to a stable export — so a consumer on `^0.18.0` compiles unchanged against this.
+
+It is a **minor** and not a patch even though it looks like catch-up. New exports
+and new optional parameters are a minor by the table in
+`.claude/skills/sdk/references/release-and-versioning.md`, and the contract
+snapshot moved in all three commits, which is that table's own tripwire. Shipping
+it as `0.18.1` would push it into every `^0.18.0` consumer on their next install
+with nobody choosing the upgrade — and Outlook is mid-migration (PDEV-6809).
+
+Consumers pin `^0.MINOR`, so this does **not** reach a surface until its
+`package.json` moves off `^0.18.0`. That is the point.
+
+### Why 0.18.0 shipped without the relay
+
+Worth recording, because the notes for this content were briefly folded into the
+`0.18.0` section on the belief that no `0.18.0` existed.
+
+The `v0.18.0` tag was pushed at 16:59 on 2026-08-06, pointing at the
+dependency-floor merge. `publish.yml` fires on a `v*` tag push, so it published
+from **that** commit. The relay merged at 19:39 the same evening — two hours and
+forty minutes later, and therefore not in the artifact. A registry version is
+immutable, so `0.18.0` cannot be re-cut to include it; this is why the number is
+`0.19.0`.
+
+The check that settles it in one line, and which belongs in the release routine
+after every publish:
+
+```bash
+grep -rl externalTools node_modules/@theblockbrain/bb-client-sdk/dist
+```
+
+Empty output against a version whose notes promise the relay means the tag
+predates it. Run against published `0.18.0` it is empty — that is how this was
+found, after a consumer declared `^0.18.0`, called `externalTools`, and had the
+field dropped from the request body with no error.
+
+---
+
+## Added
+
+### Client-executed tools, relayed through the agentic stream
+
+The half of the agent loop only the host can run. `AgenticCallOptions.externalTools`
+declares tools to the model; when it calls one the run suspends server-side,
+`executeExternalTool` runs it locally, and the SDK resumes the run with the result.
+That is what lets an agent insert at the Word cursor or read the open mail item —
+the model plans, the surface acts, and neither needs the other's runtime.
+
+Dispatch is **by name**, and only when the caller supplied both halves. A relayed
+call and an ask-user-question arrive as the same frame type, distinguishable only by
+the tool name, so answering one with the other's shape would hand the model an empty
+answers map where it expected its tool's output. Declaring tools with no executor
+falls back to the approval resolver rather than calling `undefined` mid-turn.
+
+Two failure modes are handled rather than left to the caller:
+
+- **`externalTools` is re-sent on every resume**, not just the initial request. The
+  server rebuilds the relay tool per request, so dropping it mid-turn strands the
+  suspended run — which is why every request body is built from one `baseBody()`
+  rather than assembled by hand at each resume site.
+- **A throwing tool resumes with `{ error }`** instead of ending the turn. The run
+  is suspended server-side; throwing abandons it and costs the user a whole turn
+  because one tool failed. Telling the model lets it retry another way — the same
+  courtesy the server extends via `tool-output-error` for its own tools.
+
+`maxExternalToolCalls` (default 32) is a **separate** budget from `maxAutoResumes`,
+since a legitimate multi-step edit consumes relay calls at a rate a resume cap was
+never sized for.
+
+New on `./agentic` (and `./api`, which re-exports it): `ExternalToolDef`,
+`ExternalToolExecutor`, `ExternalToolCall`, `AgenticExternalToolResumeData`,
+`JsonValue`, `ToolInputAvailableFrame` and `isToolInputAvailableFrame` — the
+`tool-input-available` frame is what carries the arguments, keyed by `toolCallId`,
+so the executor receives real `input` instead of re-deriving it.
+
+**Server-side allow-list.** Relay is honoured only for agents on the server's list
+(today the WebComponent Agent and the Word Agent). For any other agent the tools are
+shown to the model but its calls are never relayed, so no suspend arrives and the
+turn stalls on the model's side — a server-side fact the SDK cannot detect or fix.
+
+### Closing the gaps the Word add-in worked around (PDEV-7369)
+
+Each item is something `packages/word-addin` hit while migrating onto 0.18.0 and
+either worked around locally or found the SDK weaker than the code it replaced.
+Filed here so the next Office adopter (PowerPoint, Excel) does not repeat it.
+
+- **`extractJson` gets two-token lookahead and truncation recovery.**
+  `repairUnescapedQuotes` decided a string terminator from ONE token of lookahead,
+  which a stray quote inside prose also satisfies: a German translation containing
+  `„node", was die Map ignoriert` lost string parity for the rest of the document,
+  and keywords matched by first letter read `nein` as the start of `null`. Replaced
+  by the add-in's algorithm — seven inputs that returned `null` now recover.
+  PDEV-7477 is the incident, where a whole-document translation produced ~90
+  correct edits and every one was discarded. New `closeUnbalancedJson` recovers the
+  complete elements from a response cut off at a token ceiling, and bails when the
+  fragment ends inside an unterminated string, because guessing there corrupts
+  content rather than recovering it. The module had no test file at all, which is
+  how the weak lookahead survived; it now has 41.
+- **`./adapters/office` accepts the real `Office` object.** `@types/office-js`
+  declares `AsyncResultStatus` and `EventType` as implicit NUMERIC enums while the
+  runtime populates them with strings, so `typeof Office` was not assignable to
+  `OfficeGlobal` and the add-in needed a 50-line bridge to pass it in. Widened to an
+  `OfficeToken` union with values passed through untransformed, since every token is
+  either compared against another from the same source or handed straight back to
+  Office. Adds `onOpened`, fired once the dialog is really on screen: Microsoft 365
+  shows its own permission prompt first, and a surface that raises an overlay on
+  click covers the button the user has to press (PDEV-3804).
+- **`orgId` works on the browser auth path.** `withOrgScope` was private to
+  `login.ts`, so only the adapter-driven path could pin an organization and
+  `BrowserRedirectOptions` had none. The add-in shipped exactly that asymmetry — the
+  dialog path passed `orgId`, the browser fallback did not — and nothing fails when
+  the scope is missing: Zitadel resolves the user's home org instead, so a
+  multi-org developer authenticated into the wrong tenant with no error and no
+  telemetry to find it by. Extracted to `auth/org-scope.ts`, used by both, with a
+  test asserting the two paths produce byte-identical `scope` parameters.
+  `completeBrowserLogin` still ignores `orgId`: a code exchange carries no scope.
+- **`useTheme` gains a setter and a host theme.** It returned
+  `[theme, mode, cycleTheme]` with no setter, so a surface with three explicit
+  controls could not be built on it. `setMode` is appended as a FOURTH tuple
+  element, leaving existing three-element destructuring untouched. `hostTheme`
+  closes a JS-versus-CSS disagreement: resolution used `prefers-color-scheme` only,
+  but an Office task pane follows Word's own theme, so a consumer branching on
+  `theme` to pick a light or dark asset chose the wrong one for the background it
+  sat on. Mirrored onto `data-host-theme` and deliberately NOT folded into
+  `data-theme`, which keeps carrying `mode` verbatim, `system` included, because
+  blokkit resolves `system` in CSS through its own media query and writing a
+  resolved value there makes that branch dead code (PDEV-7000).
+- **Fixed a stale warning that cost an adopter the whole transport seam.** The
+  header read "NOT WIRED YET, ON PURPOSE … deliberately absent from
+  `src/api/index.ts`" while `index.ts` sixty lines in says "public since
+  PDEV-7337/7338". It stayed wrong through two releases, and an adopter reading it
+  reasonably concluded the transport was off limits and rebuilt timeouts, retries
+  and 401 replay by hand.
+
+New exports: `closeUnbalancedJson` (`.` and `./text`), `OfficeToken`
+(`./adapters/office`), `UseThemeOptions` (`./ui/react`).
+
+### Agentic finish metadata, and five more adopter gaps (PDEV-8061)
+
+- **The finish frame's metadata is no longer dropped.** The terminal finish part
+  carries the answer's citations and nothing else does, and it fell through to
+  `UnknownFrame`. A consumer therefore received an answer full of `[1]` markers
+  with nothing to resolve them against — which is why those markers are inert in
+  the Word add-in while the web app renders them as links. Adds `FinishFrame`,
+  `isFinishFrame`, `AgenticCitation`, `AgenticStreamMetadata` and an `onMetadata`
+  callback. A callback rather than a widened yield type, because
+  `callAgenticStream` still yields `AsyncIterable<string>` and changing that would
+  break every caller. It fires at most once per TURN rather than once per resume
+  request, and stays silent when the server sends no `messageMetadata`, so a caller
+  cannot be tricked into clearing state an earlier turn filled.
+- **The `externalTools` wire guard** (`assertRelayOnTheWire`, `bodyDeclaresRelay`,
+  `RelayNotOnTheWireError`, `isRelayNotOnTheWireError`). It observes the serialized
+  request body, so it catches both ways a relay silently fails to reach the server:
+  a build that predates the relay, and a caller that assembled a body and dropped
+  the field. Either one leaves the model holding tools it can never call, with no
+  error and no 4xx.
+- **The Office host theme reader** — `readOfficeHostTheme`,
+  `watchOfficeHostTheme`, `OfficeThemeColors`, `OfficeThemeHost`,
+  `WatchOfficeHostThemeConfig`, `OFFICE_HOST_THEME_POLL_MS`.
+- **A new `./dev/sdk-link` entry point**, the dev tool for testing an adopter
+  against an unreleased checkout without touching its `package.json` or lockfile.
+  It is the supported answer to the situation this release exists to fix.
+- **File-icon helpers** (`getFileIconName`, `EXTENSION_TO_FILE_ICON`,
+  `FILE_ICON_FALLBACK`) and the **stream coalescer** (`createStreamCoalescer`,
+  `StreamCoalescer`, `StreamCoalescerConfig`), both lifted out of the add-in.
+
+---
+
 ## 0.18.0 — the consolidation baseline
 
 The first release since `v0.17.0` (2026-06-23), and the baseline every adapter
 migration builds on. It carries the whole of **WS2** (one transport for every
 call), the **rename cluster**, a **React-free root barrel**, the host ports
 (crypto, capabilities, flags), the `./i18n` and `./media` layers, the shared
-Office add-in logic, the client-executed tool relay, and a set of security fixes.
+Office add-in logic, and a set of security fixes.
 
 Breaking changes are batched into this single bump on purpose. Every one of them
 is breaking, and three repos install this package — spreading them across several
 minors would make consumers pay the migration tax repeatedly.
 
-Part of this was briefly drafted under a `0.19.0` heading while an earlier
-`v0.18.0` tag was in flight. That tag never published, so there is no `0.18.0`
-on the registry to stay compatible with and no reason to spend a second minor
-era: it is all one release.
+**This section describes the published `0.18.0` artifact and nothing more.** It
+briefly said the opposite: that an in-flight `v0.18.0` tag never published, so
+content drafted under a `0.19.0` heading could be folded back in here. That was
+wrong. The tag published from the commit it pointed at, and the registry has been
+serving it since — `latest: 0.18.0`, immutable. Everything drafted after that
+commit is in `0.19.0` above, where it was originally filed.
 
 **Read the two breaking-change sections first.** Consumers pin `^0.MINOR`, so
 this bump does not reach a surface until someone changes its `package.json` —
@@ -416,46 +592,6 @@ renders it, so keep the sanitiser.
 `BB_MESSAGE_KEYS` must add them. They live in the SDK's key space because the
 *condition* is the SDK's to detect: two surfaces had already written the same
 three-branch `DOMException.name` ladder.
-
-### Client-executed tools, relayed through the agentic stream
-
-The half of the agent loop only the host can run. `AgenticCallOptions.externalTools`
-declares tools to the model; when it calls one the run suspends server-side,
-`executeExternalTool` runs it locally, and the SDK resumes the run with the result.
-That is what lets an agent insert at the Word cursor or read the open mail item —
-the model plans, the surface acts, and neither needs the other's runtime.
-
-Dispatch is **by name**, and only when the caller supplied both halves. A relayed
-call and an ask-user-question arrive as the same frame type, distinguishable only by
-the tool name, so answering one with the other's shape would hand the model an empty
-answers map where it expected its tool's output. Declaring tools with no executor
-falls back to the approval resolver rather than calling `undefined` mid-turn.
-
-Two failure modes are handled rather than left to the caller:
-
-- **`externalTools` is re-sent on every resume**, not just the initial request. The
-  server rebuilds the relay tool per request, so dropping it mid-turn strands the
-  suspended run — which is why every request body is built from one `baseBody()`
-  rather than assembled by hand at each resume site.
-- **A throwing tool resumes with `{ error }`** instead of ending the turn. The run
-  is suspended server-side; throwing abandons it and costs the user a whole turn
-  because one tool failed. Telling the model lets it retry another way — the same
-  courtesy the server extends via `tool-output-error` for its own tools.
-
-`maxExternalToolCalls` (default 32) is a **separate** budget from `maxAutoResumes`,
-since a legitimate multi-step edit consumes relay calls at a rate a resume cap was
-never sized for.
-
-New on `./agentic` (and `./api`, which re-exports it): `ExternalToolDef`,
-`ExternalToolExecutor`, `ExternalToolCall`, `AgenticExternalToolResumeData`,
-`JsonValue`, `ToolInputAvailableFrame` and `isToolInputAvailableFrame` — the
-`tool-input-available` frame is what carries the arguments, keyed by `toolCallId`,
-so the executor receives real `input` instead of re-deriving it.
-
-**Server-side allow-list.** Relay is honoured only for agents on the server's list
-(today the WebComponent Agent and the Word Agent). For any other agent the tools are
-shown to the model but its calls are never relayed, so no suspend arrives and the
-turn stalls on the model's side — a server-side fact the SDK cannot detect or fix.
 
 ---
 
