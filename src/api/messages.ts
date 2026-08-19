@@ -1,5 +1,5 @@
 import { getCryptoAdapter } from "../adapters/crypto.js";
-import { telemetryErrorCode } from "../analytics/error-code.js";
+import { failureStage, telemetryErrorCode } from "../analytics/error-code.js";
 import { trackEvent } from "../analytics/index.js";
 import { subFromAccessToken } from "../auth/jwt-claims.js";
 import type { AuthContext } from "../settings/auth-mode.js";
@@ -139,25 +139,6 @@ export function invalidateConvoDetailCache(convoId: string): void {
  *
  * @overload Non-streaming (default) — returns the full response as a string.
  */
-/**
- * A cancelled turn is not a failed one, and `outcome` cannot say so.
- *
- * `Outcome` is a closed `success | error`, so a user who navigates away mid-send
- * has to be filed as `error` in `message_completed` — which would inflate the very
- * error rate the taxonomy warns about ("`client_abort` is separated from the true
- * failures because a user navigating away is not a reliability defect"). `stage`
- * is the field that keeps the distinction, so a dashboard excludes
- * `stage = cancelled` rather than losing the turn entirely.
- *
- * Read off the error's SHAPE only. The transport converts a caller abort into
- * `BBApiError{kind: "aborted"}`; a raw `fetch` rejection that never reached it is
- * still named `AbortError`.
- */
-function failureStage(error: unknown, reached: MessageFailedStage): MessageFailedStage {
-  const shape = error as { kind?: unknown; name?: unknown } | null | undefined;
-  if (shape?.kind === "aborted" || shape?.name === "AbortError") return "cancelled";
-  return reached;
-}
 
 export async function sendMessage(
   ctx: AuthContext,
@@ -204,6 +185,10 @@ export async function sendMessage(
     route,
     conversation_id: convoId,
     request_id: requestId,
+    // From the SEND, not from stream creation. The agentic source is lazy, so its
+    // request leg runs inside the stream's drain while Blocky's runs before it —
+    // measuring from creation made `ttft_ms` mean two different things per route.
+    startedAt,
   };
   // NEVER `content` — the taxonomy carries no message text, and this is the call
   // site where the temptation is greatest. `input_mode` is likewise absent: only
@@ -265,11 +250,16 @@ export async function sendMessage(
         return createMessageStream(deltaSource, streamTelemetry);
       }
 
-      // Buffer all text-deltas into a final string. Past this point a failure is
-      // the stream breaking, not the send being refused.
-      stage = "stream";
+      // Buffer all text-deltas into a final string.
+      //
+      // `stage` flips only once a delta has actually arrived. `callAgenticStream` is
+      // an `async function*`, so the request is issued by the FIRST iteration of this
+      // loop, not by the call above — advancing to "stream" before the loop labelled
+      // a refused send (a 503 on the agentic endpoint) as a mid-stream death, which
+      // sends anyone grouping failures by stage looking at the wrong subsystem.
       let text = "";
       for await (const delta of deltaSource) {
+        stage = "stream";
         text += delta;
       }
       // The buffered path produces no stream events, so it closes its own funnel —

@@ -158,3 +158,110 @@ describe("wrapStringAsStream telemetry", () => {
     expect(events.some(e => e.event === "message_first_token")).toBe(false);
   });
 });
+
+describe("ttft_ms and duration_ms mean the same thing on every route", () => {
+  /**
+   * `callAgenticStream` is an `async function*`, so its request round trip runs on
+   * the first `next()` — inside the drain — whereas the Blocky path has already
+   * awaited its request before `createMessageStream` is called. Timestamping from
+   * stream creation therefore measured TTFB-inclusive latency on one route and
+   * TTFB-exclusive on the other, under one metric name feeding one p95.
+   */
+  const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+  const LEG_MS = 120;
+
+  it("reports comparable ttft for a lazy source and an already-awaited one", async () => {
+    const { adapter, events } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+
+    // Chat shape: the request leg is spent BEFORE the stream exists.
+    const sentAt = Date.now();
+    await sleep(LEG_MS);
+    await drain(createMessageStream(source(["a"]), { ...TELEMETRY, startedAt: sentAt }));
+
+    // Agent shape: the same leg is spent INSIDE the drain, by a lazy generator.
+    const agentSentAt = Date.now();
+    const lazy: AsyncIterable<string> = {
+      async *[Symbol.asyncIterator]() {
+        await sleep(LEG_MS);
+        yield "a";
+      },
+    };
+    await drain(
+      createMessageStream(lazy, { ...TELEMETRY, route: "agent", startedAt: agentSentAt }),
+    );
+
+    const ttfts = events.filter(e => e.event === "message_first_token").map(e => e.props.ttft_ms);
+    expect(ttfts).toHaveLength(2);
+    // Both must include the leg. Before the fix the chat one was ~1ms.
+    for (const t of ttfts) expect(t).toBeGreaterThanOrEqual(LEG_MS - 20);
+  });
+
+  it("falls back to stream-creation time when the caller supplies no startedAt", async () => {
+    const { adapter, events } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+
+    await drain(createMessageStream(source(["a"]), TELEMETRY));
+
+    // `createMessageStream` is a public export; an existing caller passing no
+    // `startedAt` must keep working rather than get a NaN or a 1970 duration.
+    expect(events.find(e => e.event === "message_first_token")?.props.ttft_ms).toEqual(
+      expect.any(Number),
+    );
+  });
+});
+
+describe("a stream that dies before its first token is a send failure, not a drop", () => {
+  it("emits message_failed{stage:send} and NO stream_dropped", async () => {
+    const { adapter, events } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+
+    // The agentic generator's own request 503s: nothing was ever streamed, so
+    // filing this as a mid-stream drop burns the < 1% drop SLO on send failures.
+    await drain(
+      createMessageStream(source([], new BBApiError("down", 503, { kind: "http" })), TELEMETRY),
+    );
+
+    const names = events.map(e => e.event);
+    expect(names).not.toContain("stream_dropped");
+    expect(names).toContain("message_failed");
+    expect(events.find(e => e.event === "message_failed")?.props).toMatchObject({
+      route: "chat",
+      stage: "send",
+      error_code: "503",
+    });
+    expect(events.find(e => e.event === "message_completed")?.props).toMatchObject({
+      outcome: "error",
+    });
+  });
+
+  it("still reports a genuine mid-stream drop as stream_dropped", async () => {
+    const { adapter, events } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+
+    // A token arrived first, so the stream really did open and then break.
+    await drain(
+      createMessageStream(source(["a"], new BBApiError("net", 0, { kind: "network" })), TELEMETRY),
+    );
+
+    const names = events.map(e => e.event);
+    expect(names).toContain("message_first_token");
+    expect(names).toContain("stream_dropped");
+    expect(events.find(e => e.event === "stream_dropped")?.props).toMatchObject({
+      reason: "network",
+    });
+  });
+
+  it("labels a pre-token cancellation as stage:cancelled", async () => {
+    const { adapter, events } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+
+    await drain(
+      createMessageStream(source([], new BBApiError("gone", 0, { kind: "aborted" })), TELEMETRY),
+    );
+
+    expect(events.find(e => e.event === "message_failed")?.props).toMatchObject({
+      stage: "cancelled",
+    });
+  });
+});

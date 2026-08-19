@@ -51,8 +51,8 @@ function jsonResponse(payload: unknown, init?: { ok?: boolean; status?: number }
   } as unknown as Response;
 }
 
-/** `sendMessage` first resolves routing via `GET …/general-info`. */
-const NO_AGENT = { body: { agentId: null } };
+/** `sendMessage` resolves routing via `GET …/general-info`; `agent` absent = Blocky. */
+const NO_AGENT = { id: CONVO };
 
 /**
  * Stub routing to "no agent" (the Blocky path), then answer the send itself with
@@ -186,5 +186,168 @@ describe("sendMessage — every failure closes the funnel", () => {
     // terminal event here would invent a turn that was never attempted.
     expect(events.map(e => e.event)).not.toContain("message_sent");
     expect(events.map(e => e.event)).not.toContain("message_completed");
+  });
+});
+
+describe("sendMessage — the agent route", () => {
+  const AGENT = "agent-tel";
+
+  /** Routing says this conversation HAS an agent, so sendMessage takes the agentic path. */
+  function stubAgentRouting(agenticReply: () => Response | Promise<Response>): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("general-info")) {
+          return Promise.resolve(jsonResponse({ id: CONVO, agent: AGENT }));
+        }
+        return Promise.resolve(agenticReply());
+      }),
+    );
+  }
+
+  /** An SSE body carrying text-deltas then the terminator. */
+  function sseResponse(frames: object[]): Response {
+    const text = `${frames.map(f => `data: ${JSON.stringify(f)}`).join("\n\n")}\n\ndata: [DONE]\n\n`;
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(text));
+          controller.close();
+        },
+      }),
+    } as unknown as Response;
+  }
+
+  it("emits route:agent, not route:chat", async () => {
+    const { adapter, events } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+    stubAgentRouting(() => sseResponse([{ type: "text-delta", textDelta: "hi" }]));
+
+    await sendMessage(CTX, CONVO, "hello");
+
+    expect(events[0].event).toBe("message_sent");
+    expect(events[0].props.route).toBe("agent");
+  });
+
+  it("labels a REFUSED agentic send as stage:send, not stage:stream", async () => {
+    const { adapter, events } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+    // The agentic endpoint 503s. Because `callAgenticStream` is a lazy generator the
+    // request is issued by the first loop iteration, so a naive `stage = "stream"`
+    // before the loop would blame the stream for a send that was refused.
+    stubAgentRouting(() => jsonResponse({ error: "down" }, { ok: false, status: 503 }));
+
+    await expect(sendMessage(CTX, CONVO, "hello")).rejects.toThrow();
+
+    const failed = events.find(e => e.event === "message_failed");
+    expect(failed?.props).toMatchObject({ route: "agent", stage: "send" });
+  });
+
+  it("closes the funnel exactly once on the buffered agentic path", async () => {
+    const { adapter, events } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+    stubAgentRouting(() => sseResponse([{ type: "text-delta", textDelta: "a" }]));
+
+    await sendMessage(CTX, CONVO, "hello");
+
+    expect(events.filter(e => e.event === "message_completed")).toHaveLength(1);
+    expect(events.find(e => e.event === "message_completed")?.props).toMatchObject({
+      route: "agent",
+      outcome: "success",
+    });
+  });
+
+  it("a streaming agentic turn is closed by the stream, never twice", async () => {
+    const { adapter, events } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+    stubAgentRouting(() => sseResponse([{ type: "text-delta", textDelta: "a" }]));
+
+    const stream = await sendMessage(CTX, CONVO, "hello", { enableStreaming: true });
+    if (typeof stream === "string") throw new Error("expected a MessageStream");
+    await stream.final;
+
+    // `sendMessage` returns before the stream finishes, so its catch must not also
+    // fire — exactly one terminal event for the turn.
+    expect(events.filter(e => e.event === "message_completed")).toHaveLength(1);
+    expect(events.map(e => e.event)).toEqual([
+      "message_sent",
+      "stream_started",
+      "message_first_token",
+      "message_completed",
+    ]);
+  });
+
+  it("ttft_ms on a streaming agentic turn includes the request leg the lazy source pays", async () => {
+    const { adapter, events } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+    stubAgentRouting(
+      () =>
+        new Promise<Response>(resolve => {
+          setTimeout(() => resolve(sseResponse([{ type: "text-delta", textDelta: "a" }])), 60);
+        }),
+    );
+
+    const stream = await sendMessage(CTX, CONVO, "hello", { enableStreaming: true });
+    if (typeof stream === "string") throw new Error("expected a MessageStream");
+    await stream.final;
+
+    const ttft = events.find(e => e.event === "message_first_token")?.props.ttft_ms as number;
+    expect(ttft).toBeGreaterThanOrEqual(50);
+  });
+});
+
+describe("ttft_ms is measured from the SEND on the chat route too", () => {
+  /**
+   * The test that actually pins the `startedAt` wiring.
+   *
+   * The agent-route case cannot: `callAgenticStream` is lazy, so its request leg sits
+   * inside the drain and `ttft_ms` includes it whether or not `sendMessage` passes a
+   * baseline. Only the Blocky path — which awaits its response BEFORE building the
+   * stream — collapses to ~0 when the baseline is missing, which is precisely the
+   * asymmetry that made one metric mean two things.
+   */
+  const BLOCKY_LEG_MS = 60;
+
+  function blockySseResponse(): Response {
+    const frames =
+      'event: new_token\r\ndata: {"role":"assistant","token":"hi","gid":"g1"}\r\n\r\n' +
+      'event: message_ready\r\ndata: {"messageIds":["m1"]}\r\n\r\n';
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(frames));
+          controller.close();
+        },
+      }),
+    } as unknown as Response;
+  }
+
+  it("includes the Blocky request leg, which finishes before the stream is built", async () => {
+    const { adapter, events } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("general-info")) return Promise.resolve(jsonResponse(NO_AGENT));
+        return new Promise<Response>(resolve => {
+          setTimeout(() => resolve(blockySseResponse()), BLOCKY_LEG_MS);
+        });
+      }),
+    );
+
+    const stream = await sendMessage(CTX, CONVO, "hi", { enableStreaming: true });
+    if (typeof stream === "string") throw new Error("expected a MessageStream");
+    await stream.final;
+
+    const first = events.find(e => e.event === "message_first_token");
+    expect(first?.props.route).toBe("chat");
+    // Without the baseline this is ~0, because `request()` already resolved.
+    expect(first?.props.ttft_ms as number).toBeGreaterThanOrEqual(BLOCKY_LEG_MS - 15);
   });
 });

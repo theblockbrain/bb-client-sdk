@@ -84,9 +84,9 @@ Streaming is where the health-telemetry invariant (`/sdk`, invariant **E**) is m
 | Event | Emit at | Notes |
 | --- | --- | --- |
 | `stream_started` | send accepted, before first byte | one per turn; props `{route, request_id?, conversation_id?}` |
-| `message_first_token` | first delta yielded from either parser | this IS the first-token-latency SLO signal; carries `ttft_ms`. Do **not** emit it on the non-SSE JSON path (`wrapStringAsStream`) — the only TTFT it could report is a fabricated `0` feeding the same p95 |
+| `message_first_token` | first delta yielded from either parser | this IS the first-token-latency SLO signal; carries `ttft_ms`, measured from the **send** via `StreamTelemetry.startedAt` — never from stream creation, because `callAgenticStream` is lazy and pays its request leg inside the drain while Blocky pays it before, which made one metric mean two things. Do **not** emit it on the non-SSE JSON path (`wrapStringAsStream`) — the only TTFT it could report is a fabricated `0` feeding the same p95 |
 | `message_completed` | terminal sentinel seen + `final` resolved | the turn's terminal event, not the transport's, so a non-streaming send closes the same funnel. Requires `outcome` |
-| `stream_dropped` | reader closed before sentinel | requires the "saw terminal?" flag from Phase 3. Emit **alongside** `message_completed{outcome:"error"}` — the drop is transport health, the completion is the funnel, and emitting only the drop leaves failed turns with no denominator |
+| `stream_dropped` | reader closed before sentinel, **and at least one token had arrived** | requires the "saw terminal?" flag from Phase 3. Emit **alongside** `message_completed{outcome:"error"}` — the drop is transport health, the completion is the funnel, and emitting only the drop leaves failed turns with no denominator. If NO token ever arrived the turn never opened a stream: emit `message_failed{stage}` instead, or a 503 on a lazily-issued request spends the < 1% drop SLO on send failures |
 | `stream_stalled` | no delta for longer than the stall budget | props `{route, request_id?, stall_ms}` |
 | `stream_reconnect` | on a retry attempt (if/when added) | idempotency required |
 | `api_error` | on `BBApiError` from a send path | event prop is `status_code` (the error field is `statusCode`); scrub `responseBody` — never log tokens |

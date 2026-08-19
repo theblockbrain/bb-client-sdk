@@ -9,6 +9,7 @@
  * and Agentic paths separately would produce two funnels that drift.
  */
 
+import { failureStage, telemetryErrorCode } from "../analytics/error-code.js";
 import { trackEvent } from "../analytics/index.js";
 import type { StreamDropReason } from "../telemetry/taxonomy.js";
 import type { Route } from "../telemetry/vocabulary.js";
@@ -25,6 +26,24 @@ export interface StreamTelemetry {
   route: Route;
   conversation_id?: string;
   request_id?: string;
+  /**
+   * When the SEND began, as `Date.now()` — the baseline for `ttft_ms` and
+   * `duration_ms`.
+   *
+   * camelCase because it is an input, not a wire property; it is never emitted.
+   *
+   * It has to come from the caller, because the two backends put their request leg
+   * on opposite sides of this function. `callAgenticStream` is an `async function*`,
+   * so its round trip runs on the first `next()` — inside the drain below — while the
+   * Blocky path has already awaited its response before calling here. Timestamping
+   * from stream creation therefore measured TTFB-inclusive latency on the agent route
+   * and TTFB-exclusive on the chat route, and fed both to one p95 under one name:
+   * identical user-perceived latency reported 1ms and 301ms.
+   *
+   * Optional so an existing caller of this public export keeps working; it then
+   * falls back to stream-creation time, which is the old behaviour.
+   */
+  startedAt?: number;
 }
 
 /**
@@ -159,9 +178,10 @@ export function createMessageStream(
   source: AsyncIterable<string>,
   telemetry?: StreamTelemetry,
 ): MessageStream {
-  // The drain task starts below, on creation — so this is the moment the stream
-  // opens, and the right one to timestamp TTFT from.
-  const startedAt = Date.now();
+  // Prefer the caller's send-start so the metric means one thing on every route
+  // (see `StreamTelemetry.startedAt`); fall back to creation time for a caller
+  // that predates the field.
+  const startedAt = telemetry?.startedAt ?? Date.now();
   let firstTokenSeen = false;
   if (telemetry) {
     trackEvent("stream_started", {
@@ -236,11 +256,27 @@ export function createMessageStream(
       doneSignal = true;
       notify();
       if (telemetry) {
-        // Both, and they are not redundant: `stream_dropped` is transport health
-        // (the mid-stream-drop SLO), while `message_completed` is the turn funnel.
-        // Emitting only the drop would leave the funnel with no denominator for
-        // failed turns, so its success rate would read 100% while streams broke.
-        trackEvent("stream_dropped", { route: telemetry.route, reason: dropReason(err) });
+        // ONE diagnostic per failure, chosen by whether a stream ever existed.
+        //
+        // `firstTokenSeen` is the dividing line. A lazy source (the agentic
+        // generator) issues its request inside this loop, so a 503 arrives here
+        // having produced nothing — that is a send that never opened a stream, and
+        // filing it as `stream_dropped` spends the < 1% mid-stream-drop SLO on send
+        // failures. Once a token has arrived the stream demonstrably opened, so a
+        // later failure IS a drop, and `reason` (which separates `client_abort` from
+        // the true faults) is the richer diagnostic there.
+        if (firstTokenSeen) {
+          trackEvent("stream_dropped", { route: telemetry.route, reason: dropReason(err) });
+        } else {
+          trackEvent("message_failed", {
+            route: telemetry.route,
+            stage: failureStage(err, "send"),
+            error_code: telemetryErrorCode(err),
+          });
+        }
+        // Always, either way: `message_completed` is the funnel's denominator for
+        // failed turns. Without it the success rate is computed over successes alone
+        // and reads 100% while streams break.
         trackEvent("message_completed", {
           route: telemetry.route,
           request_id: telemetry.request_id,

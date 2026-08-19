@@ -116,12 +116,32 @@ sites are wired, and the events they emit are the ones the SLO catalog is keyed 
   every send fails. `stage` also carries `cancelled`, which is how a dashboard
   excludes user cancellations — `outcome` is a closed `success | error` and cannot.
 - **`src/api/stream-result.ts`** — `stream_started`, `message_first_token{ttft_ms}`,
-  `message_completed` and `stream_dropped{reason}`. TTFT is measured from stream
-  creation rather than the consumer's first read, because the drain runs whether or
-  not a caller iterates; keying off the consumer would make TTFT a function of UI
-  code. `wrapStringAsStream` deliberately emits no `message_first_token`: it is
-  handed an already-complete response, so the only TTFT available is a fabricated
-  `0` feeding the same p95 as the real path.
+  `message_completed` and `stream_dropped{reason}`. TTFT is measured from the SEND,
+  not from the consumer's first read (the drain runs whether or not a caller
+  iterates, so keying off the consumer would make TTFT a function of UI code) and
+  not from stream creation either — see below. `wrapStringAsStream` deliberately
+  emits no `message_first_token`: it is handed an already-complete response, so the
+  only TTFT available is a fabricated `0` feeding the same p95 as the real path.
+
+**`ttft_ms` and `duration_ms` are measured from one point that means the same thing
+on every route.** `StreamTelemetry` gained an optional `startedAt`, which
+`sendMessage` fills with the send's start. This is not a refinement — without it the
+metric was wrong. `callAgenticStream` is an `async function*`, so its request leg
+runs on the first `next()`, INSIDE the stream's drain, whereas the Blocky path has
+already awaited its response before the stream is built. Timestamping from stream
+creation therefore fed TTFB-inclusive latency from `route:agent` and TTFB-exclusive
+from `route:chat` into one p95 under one name: measured on identical user-perceived
+latency, chat reported `1ms` and agent `301ms`. A caller of the public
+`createMessageStream` that omits `startedAt` keeps the old behaviour.
+
+**A stream that dies before its first token is a send failure, not a drop.** For the
+same laziness reason, a 503 from the agentic endpoint surfaces inside the drain
+having produced nothing — and filing that as `stream_dropped` spends the < 1%
+mid-stream-drop SLO on send failures. The drain now emits `message_failed{stage}`
+when no token was ever seen and `stream_dropped{reason}` only once one has, so each
+failure carries exactly one diagnostic. On the buffered agentic path `stage`
+likewise advances to `"stream"` only after a delta arrives, so a refused send is no
+longer labelled a mid-stream death.
 
 `stream_dropped.reason` is classified from **`BBApiError.kind`**, not `statusCode`.
 `errors.ts` says why: "`statusCode` alone cannot tell a network drop from a timeout
