@@ -47,7 +47,7 @@ The SDK already wraps auth, the API client, streaming, and error typing — so i
 To be emitted from SDK internals, identical across surfaces. The typed names live in
 `AnalyticsEventMap` (which *is* on `main`); only the auth call site is wired:
 
-- **Auth funnel** — `sign_in_started` → `sign_in_completed` / `sign_in_failed` (coarse `stage`, never error detail) — **wired in `src/auth/login.ts`** (PDEV-6855), which also binds identity/group on success. `session_token_refreshed` / `session_token_refresh_failed` not yet wired.
+- **Auth funnel** — `sign_in_started` → `sign_in_completed` / `sign_in_failed` (coarse `stage`, never error detail) — **wired in `src/auth/login.ts`** (PDEV-6855), which also binds identity/group on success. `session_token_refreshed` / `session_token_refresh_failed` are **wired in `src/auth/refresh-singleton.ts`**, inside the single-flight guard so they count real refreshes rather than waiters.
 - **AI funnel** — `message_sent` → `stream_started` → `message_first_token` (TTFT, `ttft_ms`) → `message_completed{outcome}`; `stream_dropped` / `stream_stalled` / `stream_reconnect`.
 - **Errors** — `api_error` (scrubbed to `status_code` + `endpoint`; **never** `responseBody`) and `error_raised`.
 
@@ -109,5 +109,6 @@ if (profile.orgId) setAnalyticsGroup(profile.orgId);
 The intent is that the SDK emits the core catalog (auth, chat/streaming, api_error) with the
 surface adding only its own thin events. ⚠️ **Only the auth third is wired today** —
 `src/auth/login.ts` emits `sign_in_started`/`sign_in_completed`/`sign_in_failed` and binds identity
-(PDEV-6855). `session_token_*`, `message_*`/`stream_*` and `api_error` are unwired, so §4 still
-describes a target catalog rather than shipped behaviour for those.
+(PDEV-6855), and `0.20.0` wires `session_token_*`, `message_*` and `stream_*` as well.
+**`api_error` is the one group still unwired**, so §4 describes a target catalog rather than
+shipped behaviour for that one only.

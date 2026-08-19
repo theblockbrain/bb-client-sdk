@@ -98,16 +98,71 @@ reaching Mixpanel will see it dropped.
   Exit `1` means the artifact is wrong; `2` means the check could not run. See the
   header for what a pass does and does not prove.
 
+### The SDK now emits the funnel it declares
+
+Until this version `src/auth/login.ts` was the only wired call site, so a surface
+that registered an adapter got the auth funnel and nothing else. Three more call
+sites are wired, and the events they emit are the ones the SLO catalog is keyed on:
+
+- **`src/auth/refresh-singleton.ts`** — `session_token_refreshed{latency_ms}` /
+  `session_token_refresh_failed{error_code}`, emitted from inside the single-flight
+  guard. The placement is the point: one event per REAL refresh rather than one per
+  waiter, so a refresh storm is visible instead of looking like normal traffic.
+- **`src/api/messages.ts`** — `message_sent`, and a guarantee that **every** send
+  which emitted it emits exactly one terminal event. A failure emits
+  `message_failed{stage, error_code}` alongside `message_completed{outcome:"error"}`:
+  the first is the diagnostic, the second is the funnel's denominator. Without the
+  denominator a success rate is computed over successes alone and reads 100% while
+  every send fails. `stage` also carries `cancelled`, which is how a dashboard
+  excludes user cancellations — `outcome` is a closed `success | error` and cannot.
+- **`src/api/stream-result.ts`** — `stream_started`, `message_first_token{ttft_ms}`,
+  `message_completed` and `stream_dropped{reason}`. TTFT is measured from the SEND,
+  not from the consumer's first read (the drain runs whether or not a caller
+  iterates, so keying off the consumer would make TTFT a function of UI code) and
+  not from stream creation either — see below. `wrapStringAsStream` deliberately
+  emits no `message_first_token`: it is handed an already-complete response, so the
+  only TTFT available is a fabricated `0` feeding the same p95 as the real path.
+
+**`ttft_ms` and `duration_ms` are measured from one point that means the same thing
+on every route.** `StreamTelemetry` gained an optional `startedAt`, which
+`sendMessage` fills with the send's start. This is not a refinement — without it the
+metric was wrong. `callAgenticStream` is an `async function*`, so its request leg
+runs on the first `next()`, INSIDE the stream's drain, whereas the Blocky path has
+already awaited its response before the stream is built. Timestamping from stream
+creation therefore fed TTFB-inclusive latency from `route:agent` and TTFB-exclusive
+from `route:chat` into one p95 under one name: measured on identical user-perceived
+latency, chat reported `1ms` and agent `301ms`. A caller of the public
+`createMessageStream` that omits `startedAt` keeps the old behaviour.
+
+**A stream that dies before its first token is a send failure, not a drop.** For the
+same laziness reason, a 503 from the agentic endpoint surfaces inside the drain
+having produced nothing — and filing that as `stream_dropped` spends the < 1%
+mid-stream-drop SLO on send failures. The drain now emits `message_failed{stage}`
+when no token was ever seen and `stream_dropped{reason}` only once one has, so each
+failure carries exactly one diagnostic. On the buffered agentic path `stage`
+likewise advances to `"stream"` only after a delta arrives, so a refused send is no
+longer labelled a mid-stream death.
+
+`stream_dropped.reason` is classified from **`BBApiError.kind`**, not `statusCode`.
+`errors.ts` says why: "`statusCode` alone cannot tell a network drop from a timeout
+— both report `0`". The transport also converts a caller abort into
+`BBApiError{kind:"aborted"}` rather than re-throwing an `AbortError`, so a
+classifier reading `name === "AbortError"` then falling back to `statusCode` files
+every transport-level drop as `unknown` — and a stream that already got its 200 is
+almost always failing at transport level. `timeout` was unreachable entirely.
+
+`StreamTelemetry` is now exported from `./api` (and the root barrel). It is the type
+of a public parameter on `createMessageStream`/`wrapStringAsStream`; leaving it
+internal made that parameter unnameable and kept it out of the contract snapshot.
+
 ### Not in this change
 
-The call-site instrumentation — `message_*` and `stream_*` from
-`src/api/messages.ts` / `stream-result.ts`, `session_token_*` from
-`refresh-singleton.ts`, and `api_error` from `_send.ts` — is deliberately held
-back. It has open correctness work (a `sendMessage` failure emits no terminal
-funnel event; `dropReason` reads `statusCode` instead of `BBApiError.kind` and so
-reports `unknown` for every transport-level drop) and no tests observe any emitted
-event. Shipping the vocabulary and the sinks first means a surface can adopt both
-without also adopting that.
+**`api_error` is still unwired.** `throwIfNotOk` in `src/api/_send.ts` is the
+intended single emit point — every non-2xx from every endpoint on every host passes
+through it, so no endpoint has to remember and none can drift (PDEV-7009). One
+thing to settle before it lands: `endpoint` is the request path, and several are
+built as `/cortex/conversation/${convoId}`, so raw conversation and bot ids would
+reach a property the taxonomy treats as a low-cardinality dimension.
 
 ---
 

@@ -1,6 +1,10 @@
 import { getCryptoAdapter } from "../adapters/crypto.js";
+import { failureStage, telemetryErrorCode } from "../analytics/error-code.js";
+import { trackEvent } from "../analytics/index.js";
 import { subFromAccessToken } from "../auth/jwt-claims.js";
 import type { AuthContext } from "../settings/auth-mode.js";
+import type { MessageFailedStage } from "../telemetry/taxonomy.js";
+import type { Route } from "../telemetry/vocabulary.js";
 import { request, requestJson, throwIfNotOk } from "./_send.js";
 import type { ApprovalResolver } from "./agentic/client.js";
 import { callAgenticStream, denyAllResolver } from "./agentic/client.js";
@@ -8,7 +12,7 @@ import { parseBlockySseStream } from "./blocky-sse.js";
 import { getConversationDetail } from "./conversations.js";
 import { authHeaders } from "./headers.js";
 import type { MessageStream } from "./stream-result.js";
-import { createMessageStream } from "./stream-result.js";
+import { createMessageStream, type StreamTelemetry } from "./stream-result.js";
 
 // ─── sendMessage ──────────────────────────────────────────────────────────────
 
@@ -135,6 +139,7 @@ export function invalidateConvoDetailCache(convoId: string): void {
  *
  * @overload Non-streaming (default) — returns the full response as a string.
  */
+
 export async function sendMessage(
   ctx: AuthContext,
   convoId: string,
@@ -163,94 +168,172 @@ export async function sendMessage(
   options: SendMessageOptions = {},
 ): Promise<string | MessageStream> {
   const streaming = options.enableStreaming === true;
+  const startedAt = Date.now();
 
   // ── Routing: look up whether this conversation has an agent ─────────────────
   const agentId = await getCachedConvoAgent(ctx, convoId);
 
-  if (agentId) {
-    // ── Agentic path ──────────────────────────────────────────────────────────
-    //
-    // Resolve resourceId (Zitadel user sub) via three-tier fallback:
-    //   1. ctx.userId — explicitly set by the caller (most reliable)
-    //   2. sub decoded from the access-token JWT — covers callers that build
-    //      AuthContext manually without threading a userId param through
-    //      (chrome-addon, ms-outlook-addin without 0.15.0 upgrade, etc.)
-    //   3. null → hard error (only when token carries no sub, e.g. api-key)
-    //
-    // We read ctx.token here because: (a) getAuthContext may have already
-    // derived sub and set ctx.userId, but (b) some callers construct
-    // AuthContext directly and bypass getAuthContext entirely.
-    const resourceId = ctx.userId ?? subFromAccessToken(ctx.token) ?? null;
-    if (!resourceId) {
-      throw new Error(
-        "Agentic API requires a Zitadel user ID. " +
-          "Either pass `config.userId = profile.sub` to `getAuthContext`, or " +
-          "ensure the access token is a Zitadel OAuth JWT (not an API key). " +
-          "Agentic routing is not available in api-key mode.",
-      );
+  // One id per send, used as `message_id` here and as `request_id` on every event
+  // the resulting stream emits. That correlation is the whole point: without it a
+  // `message_first_token` cannot be tied back to the turn that produced it, and
+  // TTFT stops being attributable to a route, a tenant, or a bad release.
+  const requestId = getCryptoAdapter().randomUUID();
+  // Routing is decided at runtime from the conversation's agent, so the route is
+  // only knowable here — not from the caller's options.
+  const route: Route = agentId ? "agent" : "chat";
+  const streamTelemetry: StreamTelemetry = {
+    route,
+    conversation_id: convoId,
+    request_id: requestId,
+    // From the SEND, not from stream creation. The agentic source is lazy, so its
+    // request leg runs inside the stream's drain while Blocky's runs before it —
+    // measuring from creation made `ttft_ms` mean two different things per route.
+    startedAt,
+  };
+  // NEVER `content` — the taxonomy carries no message text, and this is the call
+  // site where the temptation is greatest. `input_mode` is likewise absent: only
+  // the surface knows whether this string was typed or dictated, and defaulting it
+  // to "text" here would silently report every dictation as typing.
+  trackEvent("message_sent", { conversation_id: convoId, message_id: requestId, route });
+
+  // Every exit below this point must close the funnel. `message_sent` has already
+  // fired, so a throw that emits nothing leaves a turn that was started and never
+  // finished — indistinguishable, in Mixpanel, from a user who wandered off. The
+  // streaming paths `return` a MessageStream and are closed by `stream-result.ts`
+  // instead, which is why this catch only ever sees a synchronous failure.
+  //
+  // `stage` narrows as the send progresses, the same device `login.ts` uses: a
+  // catch cannot tell how far it got, and the phase is the one genuinely useful
+  // thing a coarse failure label can carry.
+  let stage: MessageFailedStage = "send";
+  try {
+    if (agentId) {
+      // ── Agentic path ──────────────────────────────────────────────────────────
+      //
+      // Resolve resourceId (Zitadel user sub) via three-tier fallback:
+      //   1. ctx.userId — explicitly set by the caller (most reliable)
+      //   2. sub decoded from the access-token JWT — covers callers that build
+      //      AuthContext manually without threading a userId param through
+      //      (chrome-addon, ms-outlook-addin without 0.15.0 upgrade, etc.)
+      //   3. null → hard error (only when token carries no sub, e.g. api-key)
+      //
+      // We read ctx.token here because: (a) getAuthContext may have already
+      // derived sub and set ctx.userId, but (b) some callers construct
+      // AuthContext directly and bypass getAuthContext entirely.
+      const resourceId = ctx.userId ?? subFromAccessToken(ctx.token) ?? null;
+      if (!resourceId) {
+        throw new Error(
+          "Agentic API requires a Zitadel user ID. " +
+            "Either pass `config.userId = profile.sub` to `getAuthContext`, or " +
+            "ensure the access token is a Zitadel OAuth JWT (not an API key). " +
+            "Agentic routing is not available in api-key mode.",
+        );
+      }
+
+      const deltaSource = callAgenticStream({
+        token: ctx.token,
+        orgId: ctx.orgId,
+        agentId,
+        convoId,
+        userId: resourceId,
+        content,
+        // botId is not available from /general-info; X-BLOCKBRAIN-ACTIVE-BOT-ID
+        // is sent conditionally — absent here means the header is omitted.
+        botId: null,
+        // Deny by default (PDEV-7330). Routing to Agentic is decided at runtime from
+        // the conversation's agent, so a caller cannot always know a resolver will be
+        // needed — but "didn't know" must not mean "approve on the user's behalf".
+        approvalResolver: options.approvalResolver ?? warnAndDenyResolver(agentId),
+      });
+
+      if (streaming) {
+        return createMessageStream(deltaSource, streamTelemetry);
+      }
+
+      // Buffer all text-deltas into a final string.
+      //
+      // `stage` flips only once a delta has actually arrived. `callAgenticStream` is
+      // an `async function*`, so the request is issued by the FIRST iteration of this
+      // loop, not by the call above — advancing to "stream" before the loop labelled
+      // a refused send (a 503 on the agentic endpoint) as a mid-stream death, which
+      // sends anyone grouping failures by stage looking at the wrong subsystem.
+      let text = "";
+      for await (const delta of deltaSource) {
+        stage = "stream";
+        text += delta;
+      }
+      // The buffered path produces no stream events, so it closes its own funnel —
+      // otherwise a non-streaming caller reports sends that never complete.
+      trackEvent("message_completed", {
+        route,
+        request_id: requestId,
+        duration_ms: Date.now() - startedAt,
+        outcome: "success",
+      });
+      return text;
     }
 
-    const deltaSource = callAgenticStream({
-      token: ctx.token,
-      orgId: ctx.orgId,
-      agentId,
-      convoId,
-      userId: resourceId,
-      content,
-      // botId is not available from /general-info; X-BLOCKBRAIN-ACTIVE-BOT-ID
-      // is sent conditionally — absent here means the header is omitted.
-      botId: null,
-      // Deny by default (PDEV-7330). Routing to Agentic is decided at runtime from
-      // the conversation's agent, so a caller cannot always know a resolver will be
-      // needed — but "didn't know" must not mean "approve on the user's behalf".
-      approvalResolver: options.approvalResolver ?? warnAndDenyResolver(agentId),
+    // ── Blocky path ──────────────────────────────────────────────────────────────
+    const endpoint = "/cortex/completions/v2/user-input";
+    const res = await request(ctx, {
+      host: "blocky",
+      path: endpoint,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders(ctx.token, ctx.orgId) },
+      body: JSON.stringify({
+        convoId,
+        content,
+        sessionId: getCryptoAdapter().randomUUID(),
+        messageType: "user-question",
+        enableStreaming: streaming,
+      }),
+      // A streamed turn gets no deadline — a long agent run legitimately outlives
+      // any fixed one. Cancel it with `signal`.
+      stream: streaming,
+      signal: options.signal,
     });
+    await throwIfNotOk(res, endpoint);
 
     if (streaming) {
-      return createMessageStream(deltaSource);
+      // Blocky returns `text/event-stream` when enableStreaming is true.
+      // `chunks` is decoded text, so the parser never touches a ReadableStream —
+      // which is what lets RN (XHR) and Lit (EventSource) supply one too.
+      if (!res.chunks) throw new Error("Blocky returned empty body for streaming request.");
+      return createMessageStream(parseBlockySseStream(res.chunks), streamTelemetry);
     }
 
-    // Buffer all text-deltas into a final string
-    let text = "";
-    for await (const delta of deltaSource) {
-      text += delta;
-    }
-    return text;
+    // Non-streaming: Blocky returns JSON with the full response in body.content.
+    // The status was already accepted by `throwIfNotOk`, so a failure from here is
+    // the payload not being what was promised — `parse`, not `send`.
+    stage = "parse";
+    const data = await res.json<SendMessageResponse>();
+    if (!data?.body?.content) throw new Error("No response received from bot.");
+    trackEvent("message_completed", {
+      route,
+      request_id: requestId,
+      duration_ms: Date.now() - startedAt,
+      outcome: "success",
+    });
+    return data.body.content;
+  } catch (err) {
+    // Both, and not redundant. `message_failed` is the diagnostic — WHY and WHERE,
+    // in closed vocabularies. `message_completed{outcome:"error"}` is the funnel's
+    // denominator; without it the success rate is computed over successes alone and
+    // reads 100% while every send fails.
+    trackEvent("message_failed", {
+      route,
+      stage: failureStage(err, stage),
+      error_code: telemetryErrorCode(err),
+    });
+    trackEvent("message_completed", {
+      route,
+      request_id: requestId,
+      duration_ms: Date.now() - startedAt,
+      outcome: "error",
+    });
+    // Re-thrown unchanged: telemetry observes the failure, it does not absorb it.
+    throw err;
   }
-
-  // ── Blocky path ──────────────────────────────────────────────────────────────
-  const endpoint = "/cortex/completions/v2/user-input";
-  const res = await request(ctx, {
-    host: "blocky",
-    path: endpoint,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders(ctx.token, ctx.orgId) },
-    body: JSON.stringify({
-      convoId,
-      content,
-      sessionId: getCryptoAdapter().randomUUID(),
-      messageType: "user-question",
-      enableStreaming: streaming,
-    }),
-    // A streamed turn gets no deadline — a long agent run legitimately outlives
-    // any fixed one. Cancel it with `signal`.
-    stream: streaming,
-    signal: options.signal,
-  });
-  await throwIfNotOk(res, endpoint);
-
-  if (streaming) {
-    // Blocky returns `text/event-stream` when enableStreaming is true.
-    // `chunks` is decoded text, so the parser never touches a ReadableStream —
-    // which is what lets RN (XHR) and Lit (EventSource) supply one too.
-    if (!res.chunks) throw new Error("Blocky returned empty body for streaming request.");
-    return createMessageStream(parseBlockySseStream(res.chunks));
-  }
-
-  // Non-streaming: Blocky returns JSON with the full response in body.content.
-  const data = await res.json<SendMessageResponse>();
-  if (!data?.body?.content) throw new Error("No response received from bot.");
-  return data.body.content;
 }
 
 // ─── getMessageList ───────────────────────────────────────────────────────────
