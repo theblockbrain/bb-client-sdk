@@ -155,6 +155,40 @@ almost always failing at transport level. `timeout` was unreachable entirely.
 of a public parameter on `createMessageStream`/`wrapStringAsStream`; leaving it
 internal made that parameter unnameable and kept it out of the contract snapshot.
 
+### Also in 0.20.0
+
+**`content` and the profile spellings are denied.** `DENIED_PROPERTY_KEYS` gained
+`content` — what `sendMessage` calls the prompt — plus the Office
+(`emailAddress`) and Graph (`userPrincipalName`, `upn`, `surname`, `mobilePhone`,
+`businessPhones`) spellings and `nickname`, `login_name`, `user_mail`,
+`email_address`.
+
+This matters because **the typed taxonomy does not cover the path that leaks.**
+Excess-property checking rejects an undeclared key in an object literal, so
+`trackEvent("sign_in_completed", { method, content })` fails to compile — but it does
+not apply to a spread, so `trackEvent("sign_in_completed", { method, ...userProfile })`
+compiles clean on a fully-typed surface and every key on that object reaches the sink.
+Verified: before this, `emailAddress` and `content` arrived at Mixpanel untouched. On
+that path the runtime denylist is not a backstop behind the types, it is the only
+control there is.
+
+**`sendMessage` forwards `options.signal` to the agentic branch.** It always did for
+Blocky and never did for agentic, so an agent-routed turn was uncancellable — and once
+the funnel landed, the drain ran to completion and a user's stop was recorded as
+`message_completed{outcome:"success"}` carrying the full server duration, while the
+identical stop on the chat route reported an error. Cancellations were counted as
+successes on one route and errors on the other. `callAgenticStream`'s pre-request guard
+now fires, so a turn the caller already cancelled is never sent, and `failureStage`
+files it as `stage:"cancelled"`.
+
+**`./i18n` gains a translator.** `createTranslator` + `resolveCatalogueName` for hosts
+that ship their own string catalogues: the SDK owns the mechanism, the app owns the
+strings — the same split `BBMessageKey` already draws. Deliberately an instance rather
+than a process-wide singleton like `FormatterAdapter`, because two panes in one host can
+want different catalogues. Handles the region subtag Office actually sends, script
+fallback (Traditional Chinese served from Simplified before English), plural categories
+under the target language's own rules, and per-key fallback.
+
 ### Not in this change
 
 **`api_error` is still unwired.** `throwIfNotOk` in `src/api/_send.ts` is the
@@ -552,6 +586,13 @@ types are the toggle.
 - **Real cancellation.** `SendMessageOptions.signal` / `AgenticCallOptions.signal`
   reach the transport, so `useChatStream().stop()` genuinely aborts rather than
   merely abandoning the response.
+  > **Correction, made in `0.20.0`.** True for the Blocky branch only.
+  > `sendMessage` did not forward `options.signal` into `callAgenticStream`, so an
+  > agent-routed turn was never cancellable through this path — and once the funnel
+  > was instrumented, a user's stop on that route was booked as
+  > `message_completed{outcome:"success"}`. Fixed in `0.20.0`. `useChatStream` also
+  > still has its own `signal` line commented out, so the React hook's `stop()` is
+  > best-effort regardless of the transport.
 - **`BBHosts.auth`** — the Zitadel authority is a host like any other, so token
   calls get the same proxy rewrite, timeout and retry as everything else.
 - **`./adapters/office`** — the Office dialog PKCE flow, shared by all four add-ins.
