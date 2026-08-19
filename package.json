@@ -91,6 +91,11 @@
       "react-native": "./dist/analytics/mixpanel.js",
       "import": "./dist/analytics/mixpanel.js"
     },
+    "./analytics/faro": {
+      "types": "./dist/analytics/faro.d.ts",
+      "react-native": "./dist/analytics/faro.js",
+      "import": "./dist/analytics/faro.js"
+    },
     "./telemetry": {
       "types": "./dist/telemetry/index.d.ts",
       "react-native": "./dist/telemetry/index.js",
@@ -155,7 +160,8 @@
     "prepack": "npm run build",
     "prepublishOnly": "npm run build",
     "check:cleanroom": "node scripts/clean-room-check.mjs",
-    "release:status": "node scripts/release-status.mjs"
+    "release:status": "node scripts/release-status.mjs",
+    "verify:published": "node scripts/verify-published.mjs"
   },
   "engines": {
     "node": ">=24"

@@ -94,9 +94,9 @@ This is invariant D and a zero-tolerance isolation boundary. See `../sdk/referen
 Invariant E: nothing ships without product analytics **and** health telemetry. The SDK's job is the seam, wired per surface.
 
 - The `AnalyticsAdapter` seam is **on `main`** (**WS9** — PDEV-6854/6855): emit via `trackEvent(...)` / `trackApiError(err)` from `@theblockbrain/bb-client-sdk/analytics` (the surface registers the adapter). `api_error` is **not auto-emitted by the core** — it is wired incrementally per call site — so your obligation is both to call it at the throw/catch site and to keep the endpoint *instrumentable*:
-  - Every non-2xx throws `BBApiError` carrying **`statusCode` and `endpoint`** (Phase 1) — that is exactly the payload `trackApiError(err)` forwards to the `api_error{ statusCode, endpoint }` event (call it in a catch block, then re-throw). A bare `Error` or a swallowed failure is un-instrumentable and blocks the gate.
+  - Every non-2xx throws `BBApiError` carrying **`statusCode` and `endpoint`** (Phase 1) — that is exactly the payload `trackApiError(err)` forwards to the `api_error{ status_code, endpoint }` event (note the rename across the boundary: the error field is `statusCode`, the event prop is `status_code`, because taxonomy prop names double as Prometheus label names) (call it in a catch block, then re-throw). A bare `Error` or a swallowed failure is un-instrumentable and blocks the gate.
   - **Never** log the token or put `responseBody` into a thrown `message` — `responseBody` may echo secrets. `trackApiError` forwards only `statusCode` + `endpoint` (never `responseBody`); scrub before any surface forwards it to Sentry.
-- If your endpoint is a new streamed turn, note the taxonomy it must emit (`stream_start` / `stream_first_token` / `stream_complete` / `stream_dropped`), wired via `trackEvent(...)`, so the surface wiring is unambiguous.
+- If your endpoint is a new streamed turn, note the taxonomy it must emit (`stream_started` / `message_first_token` / `message_completed` / `stream_dropped`), wired via `trackEvent(...)`, so the surface wiring is unambiguous. Names and props come from `CoreEventMap` in `./telemetry`; the terminal event is `message_completed{outcome}` because it belongs to the turn, not the transport.
 - The standing checklist item is that a surface can derive the standard events from what you throw.
 
 ---

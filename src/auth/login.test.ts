@@ -52,7 +52,7 @@ afterEach(() => {
 });
 
 describe("login telemetry", () => {
-  it("emits auth_started at entry and auth_success with identity on completion", async () => {
+  it("emits sign_in_started at entry and sign_in_completed with identity on completion", async () => {
     const { adapter, events, calls } = makeRecorder();
     setAnalyticsAdapter(adapter);
 
@@ -77,20 +77,20 @@ describe("login telemetry", () => {
     expect(result.profile.sub).toBe("user-sub-123");
     expect(result.orgId).toBe("org-abc");
 
-    expect(events[0]).toMatchObject({ event: "auth_started", props: { mode: "oauth" } });
-    const success = events.find(e => e.event === "auth_success");
-    expect(success?.props.mode).toBe("oauth");
-    expect(typeof success?.props.latencyMs).toBe("number");
+    expect(events[0]).toMatchObject({ event: "sign_in_started", props: { method: "oidc" } });
+    const success = events.find(e => e.event === "sign_in_completed");
+    expect(success?.props.method).toBe("oidc");
+    expect(typeof success?.props.latency_ms).toBe("number");
     expect(success?.identity).toEqual({ distinctId: "user-sub-123", orgId: "org-abc" });
-    expect(events.some(e => e.event === "auth_failed")).toBe(false);
+    expect(events.some(e => e.event === "sign_in_failed")).toBe(false);
 
-    // Identity is bound BEFORE auth_success, so every later (identity-less) event
+    // Identity is bound BEFORE sign_in_completed, so every later (identity-less) event
     // is attributed to this user + tenant rather than the anonymous device id.
     expect(calls).toEqual([
-      "track:auth_started",
+      "track:sign_in_started",
       "identify:user-sub-123",
       "group:org-abc",
-      "track:auth_success",
+      "track:sign_in_completed",
     ]);
   });
 
@@ -118,9 +118,13 @@ describe("login telemetry", () => {
     const result = await login(identity, OPTIONS);
 
     expect(result.orgId).toBeNull();
-    expect(calls).toEqual(["track:auth_started", "identify:user-sub-123", "track:auth_success"]);
+    expect(calls).toEqual([
+      "track:sign_in_started",
+      "identify:user-sub-123",
+      "track:sign_in_completed",
+    ]);
     // A null orgId must not travel as a property either.
-    expect(events.find(e => e.event === "auth_success")?.identity).toEqual({
+    expect(events.find(e => e.event === "sign_in_completed")?.identity).toEqual({
       distinctId: "user-sub-123",
     });
   });
@@ -135,7 +139,7 @@ describe("login telemetry", () => {
 
     await expect(login(identity, OPTIONS)).rejects.toThrow("user cancelled");
 
-    expect(calls).toEqual(["track:auth_started", "track:auth_failed"]);
+    expect(calls).toEqual(["track:sign_in_started", "track:sign_in_failed"]);
   });
 
   it("reports stage 'launch' when the OAuth flow throws", async () => {
@@ -148,8 +152,8 @@ describe("login telemetry", () => {
 
     await expect(login(identity, OPTIONS)).rejects.toThrow("user cancelled");
 
-    const failed = events.find(e => e.event === "auth_failed");
-    expect(failed?.props).toEqual({ mode: "oauth", stage: "launch" });
+    const failed = events.find(e => e.event === "sign_in_failed");
+    expect(failed?.props).toEqual({ method: "oidc", stage: "launch" });
   });
 
   it("reports stage 'launch' (not 'parse') when the redirect URL is missing", async () => {
@@ -160,8 +164,8 @@ describe("login telemetry", () => {
 
     await expect(login(identity, OPTIONS)).rejects.toThrow(/No redirect URL/);
 
-    const failed = events.find(e => e.event === "auth_failed");
-    expect(failed?.props).toEqual({ mode: "oauth", stage: "launch" });
+    const failed = events.find(e => e.event === "sign_in_failed");
+    expect(failed?.props).toEqual({ method: "oidc", stage: "launch" });
   });
 
   it("reports stage 'parse' when the returned state does not round-trip (CSRF)", async () => {
@@ -174,8 +178,8 @@ describe("login telemetry", () => {
 
     await expect(login(identity, OPTIONS)).rejects.toThrow(/State mismatch/);
 
-    const failed = events.find(e => e.event === "auth_failed");
-    expect(failed?.props).toEqual({ mode: "oauth", stage: "parse" });
+    const failed = events.find(e => e.event === "sign_in_failed");
+    expect(failed?.props).toEqual({ method: "oidc", stage: "parse" });
   });
 
   it("re-throws the original error unchanged even when no adapter is registered", async () => {

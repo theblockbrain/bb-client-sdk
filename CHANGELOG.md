@@ -1,5 +1,116 @@
 # Changelog
 
+## Unreleased — 0.20.0: one telemetry vocabulary, and the second sink
+
+**Not yet cut.** `package.json` still declares `0.19.0`; the bump, the tag and the
+Outlook canary belong to the release commit, not to this one. The note is written
+here now because the contract snapshot has already moved, and a snapshot diff with
+no migration note is a review blocker
+(`.claude/skills/sdk/references/release-and-versioning.md` §1).
+
+**It is a minor, and the minor is this package's major.** Renaming an event is the
+`MAJOR` row of that table ("Change an event-taxonomy name, header, or wire shape a
+surface depends on"), and because consumers pin `^0.MINOR.PATCH` — which npm
+resolves as `<0.M+1.0` — a breaking change must land as a **minor** with a
+migration note and never as a patch. `0.19.1` would push this into every
+`^0.19.0` consumer on their next install with nobody choosing it.
+
+### ⚠️ Breaking: the event taxonomy has ONE vocabulary now
+
+`AnalyticsEventMap` was a second, independently-declared event map that overlapped
+`CoreEventMap` from `./telemetry` and disagreed with it on every name and property
+spelling. It is now an alias:
+
+```ts
+export type AnalyticsEventMap = CoreEventMap; // @deprecated — import CoreEventMap
+```
+
+`CoreEventMap` won on three counts: its property names are legal Prometheus label
+names (`status_code`, `ttft_ms`, `latency_ms` — `statusCode` reads as foreign in
+every PromQL query written against it), it carries `route` (shared with the
+backend's `llmActionTypeSchema`) rather than an SDK-private
+`backend: "blocky" | "agentic"`, and `CORE_EVENT_NAMES` is proved exhaustive
+against it at compile time.
+
+**The alias keeps the NAME resolving, not the SHAPE.** A consumer that only writes
+`track<K extends AnalyticsEventName>(...)` compiles untouched. A consumer that
+switches on an event name, or emits one, does not — and a dashboard keyed on the
+old names goes quiet without any compile error at all. That second failure is the
+one to plan for.
+
+| Was | Now | Property changes |
+| --- | --- | --- |
+| `auth_started` | `sign_in_started` | `mode: "oauth" \| "api-key"` → `method: SignInMethod` (`password \| sso \| oidc \| api_key`) |
+| `auth_success` | `sign_in_completed` | `latencyMs` → `latency_ms`; adds `owner_permission?` |
+| `auth_failed` | `sign_in_failed` | adds `error_code?`; `stage` unchanged |
+| `token_refresh{ ok }` | **splits** into `session_token_refreshed` / `session_token_refresh_failed` | a boolean discriminator is not a funnel step in Mixpanel |
+| `message_send` | `message_sent` | `conversationId` → `conversation_id`; `message_id` and `route` now REQUIRED; `streaming` dropped |
+| `stream_start` | `stream_started` | `backend?` → `route`; adds `request_id?`, `conversation_id?` |
+| `stream_first_token` | `message_first_token` | `latencyMs?` → `ttft_ms` (required) |
+| `stream_complete` | `message_completed` | `durationMs?` → `duration_ms?`; adds required `outcome` |
+| `stream_dropped` | `stream_dropped` | `backend?` → `route`; `reason` is now the closed `StreamDropReason` |
+| `stream_reconnect` | `stream_reconnect` | `backend?` → `route` |
+| `api_error` | `api_error` | **`statusCode` → `status_code`** |
+
+`LEGACY_EVENT_RENAMES` in `./telemetry` is the machine-readable form of this table
+and is kept deliberately: a surface still emitting the old names needs a documented
+target, and losing an entry strands its dashboards.
+
+**To migrate a surface:** rename at your call sites and in your Mixpanel/Grafana
+queries together. There is no translation layer in the adapter, by design — two
+vocabularies live on the wire is exactly the state this removes.
+
+### ⚠️ Behaviour change: `stripDeniedProperties` strips more
+
+`DENIED_PROPERTY_KEYS` gained the OIDC/Zitadel claim spellings — `mail`,
+`user_email`, `username`, `preferred_username`, `given_name`, `family_name` — and
+`message`.
+
+This is a **security fix, and it is why the entry is here rather than under Added.**
+Extracting the Mixpanel adapter's private denylist into the shared
+`./analytics/scrub` split one list into two — credentials in `SECRET_DENYLIST`, PII
+in `DENIED_PROPERTY_KEYS` — and six names fell through the gap between them, so
+they reached Mixpanel and, once the Faro leaf landed, a second sink as well. Those
+six are precisely the names an ID-token claims object uses, which is the bag the
+guard exists to catch.
+
+Matching folds case and separators, so one entry covers `userEmail`, `user_email`
+and `User_Email` alike. A surface that was (incorrectly) relying on one of these
+reaching Mixpanel will see it dropped.
+
+### Added
+
+- **`./analytics/faro`** — `createFaroAdapter`, typed structurally against
+  `@grafana/faro-web-sdk` so the SDK still declares no analytics dependency. Faro
+  answers "is it slow or broken", Mixpanel answers "are people using it"; the
+  release gate wants both. Browser surfaces only — Faro has no React Native
+  support. Exports `FaroLike`, `FaroUser`, `FaroAdapterConfig`.
+- **`createCompositeAdapter`** (from `./analytics`, also on the root barrel) —
+  `setAnalyticsAdapter` takes exactly one adapter, and the gate wants two. Each
+  child call is guarded individually, so one throwing sink cannot silence the rest;
+  `identify`/`group`/`flush` are declared only when a child implements them, which
+  is how a multi-tenant Node process keeps omitting the process-wide binding.
+  ⚠️ Composing a child that HAS `identify` with one that deliberately omits it
+  re-arms the process-wide binding — for Slack, compose only sinks that omit it.
+- **`npm run verify:published`** (`scripts/verify-published.mjs`) — asks whether a
+  published tarball actually contains the surface its source claimed, by reading
+  the contract snapshot **at the release tag** and searching the shipped `dist/`.
+  Exit `1` means the artifact is wrong; `2` means the check could not run. See the
+  header for what a pass does and does not prove.
+
+### Not in this change
+
+The call-site instrumentation — `message_*` and `stream_*` from
+`src/api/messages.ts` / `stream-result.ts`, `session_token_*` from
+`refresh-singleton.ts`, and `api_error` from `_send.ts` — is deliberately held
+back. It has open correctness work (a `sendMessage` failure emits no terminal
+funnel event; `dropReason` reads `statusCode` instead of `BBApiError.kind` and so
+reports `unknown` for every transport-level drop) and no tests observe any emitted
+event. Shipping the vocabulary and the sinks first means a surface can adopt both
+without also adopting that.
+
+---
+
 ## 0.19.0 — the client-executed tool relay, and the Office adopter gaps
 
 Everything here landed on `main` **after** the commit `v0.18.0` was cut from, so

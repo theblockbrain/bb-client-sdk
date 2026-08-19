@@ -31,28 +31,60 @@ We have shipped Apps surfaces **blind** — no funnel, no crash-free number, no 
 
 `AnalyticsAdapter` is a **peer of `StorageAdapter` and `IdentityAdapter`** (both verified in `src/adapters/`, exported as **types only** from `src/adapters/index.ts` and re-exported via `./adapters` + the root barrel `src/index.ts`). It follows the same injection pattern: **a pure interface, zero runtime, zero React, zero DOM** — the SDK calls it; the surface supplies the concrete implementation.
 
+> ### ⚠️ The vocabulary moved in `0.20.0` — this section was rewritten
+>
+> `AnalyticsEventMap` used to declare its own event map here, with `auth_*` names
+> and camelCase props. It was a **second vocabulary for the same concepts**, and
+> the one in `src/telemetry/taxonomy.ts` won. `AnalyticsEventMap` is now an alias:
+> `export type AnalyticsEventMap = CoreEventMap`. Import `CoreEventMap` from
+> `@theblockbrain/bb-client-sdk/telemetry`; the alias is `@deprecated` and keeps
+> only the NAME resolving, not the old shape. `LEGACY_EVENT_RENAMES` (also in
+> `./telemetry`) is the machine-readable old→new map. Full migration table: see
+> the `0.20.0` section of [`CHANGELOG.md`](../../../../CHANGELOG.md).
+
 ```ts
-// Shipped (WS9): types in src/adapters/analytics.ts (exported via ./adapters);
-// runtime sink + these type re-exports in src/analytics/index.ts (exported via ./analytics).
+// src/telemetry/taxonomy.ts — the ONE vocabulary, exported via ./telemetry.
+// src/adapters/analytics.ts aliases it so `./adapters` type references keep resolving.
 
 /** Typed taxonomy — a keyed interface, NOT a closed union. Keys are event names;
- *  values are the (PII-free) prop shape. Extend deliberately. See §2. */
-export interface AnalyticsEventMap {
-  auth_started: { mode: "oauth" | "api-key" };
-  auth_success: { mode: "oauth" | "api-key"; latencyMs?: number };
-  auth_failed: { mode: "oauth" | "api-key"; stage?: "launch" | "parse" | "exchange" };
-  token_refresh: { ok: boolean; latencyMs?: number };
-  message_send: { conversationId?: string; backend?: "blocky" | "agentic"; streaming: boolean };
-  stream_start: { backend?: "blocky" | "agentic" };
-  stream_first_token: { backend?: "blocky" | "agentic"; latencyMs?: number };
-  stream_complete: { backend?: "blocky" | "agentic"; durationMs?: number };
-  stream_dropped: { backend?: "blocky" | "agentic"; reason?: string };
-  stream_reconnect: { backend?: "blocky" | "agentic"; attempt: number };
+ *  values are the (PII-free) prop shape. Extend deliberately. See §2.
+ *  snake_case on the wire, because these property names double as Prometheus
+ *  label names downstream (`status_code`, `ttft_ms`, `latency_ms`). */
+export interface CoreEventMap {
+  // ── auth ──
+  sign_in_started: { method: SignInMethod };                  // password | sso | oidc | api_key
+  sign_in_completed: { method: SignInMethod; owner_permission?: OwnerPermission; latency_ms?: number };
+  sign_in_failed: { method: SignInMethod; stage?: SignInStage; error_code?: string };
+  session_token_refreshed: { latency_ms?: number };
+  session_token_refresh_failed: { error_code?: string };
+  sign_out: { cause: SignOutCause };
+
+  // ── the AI funnel ──
+  conversation_started: { conversation_id: string; route: Route; bot_id?: string; /* … */ };
+  message_sent: { conversation_id: string; message_id: string; route: Route; /* … */ };
+  /** Carries `ttft_ms`, the source of the TTFT p95 SLO. */
+  message_first_token: { route: Route; request_id?: string; ttft_ms: number };
+  message_completed: { route: Route; request_id?: string; duration_ms?: number; outcome: Outcome; /* … */ };
+  message_failed: { route: Route; stage?: MessageFailedStage; error_code?: string };
+
+  // ── stream health ──
+  stream_started: { route: Route; request_id?: string; conversation_id?: string };
+  stream_stalled: { route: Route; request_id?: string; stall_ms: number };
+  stream_dropped: { route: Route; reason?: StreamDropReason };
+  stream_reconnect: { route: Route; attempt: number };
+
+  // ── errors ──
+  error_raised: { scope: ErrorScope; error_code?: string; request_id?: string; is_blocking?: boolean };
   /** HTTP failure — status + endpoint (+ method) only; NEVER the response body. */
-  api_error: { statusCode: number; endpoint?: string; method?: string };
+  api_error: { status_code: number; endpoint?: string; method?: string };
 }
-export type AnalyticsEventName = keyof AnalyticsEventMap;
-export type AnalyticsEventProps<K extends AnalyticsEventName> = AnalyticsEventMap[K];
+/** `CORE_EVENT_NAMES` is proved exhaustive against this map at compile time. */
+export type CoreEventName = keyof CoreEventMap;
+
+// src/adapters/analytics.ts — @deprecated aliases, kept so 0.19.0 type references resolve.
+export type AnalyticsEventMap = CoreEventMap;
+export type AnalyticsEventName = CoreEventName;
+export type AnalyticsEventProps<K extends AnalyticsEventName> = CoreEventProps<K>;
 
 /** Stable, pseudonymous identity attached to events — never PII. */
 export interface AnalyticsIdentity {
@@ -91,7 +123,7 @@ export interface AnalyticsAdapter {
 
 The **runtime sink** is `./analytics` (`src/analytics/index.ts`): `setAnalyticsAdapter(adapter | null)` registers the process-wide adapter (call once at startup), `getAnalyticsAdapter()` / `resetAnalyticsAdapter()` read/detach it, and the SDK emits through the safe helpers `trackEvent(event, props, identity?)`, `captureError(error, context?)`, `trackApiError(error, identity?)`, and `flushAnalytics()`. These **no-op when no adapter is registered and never throw/reject into the caller** — telemetry cannot break a product flow. `./analytics` also re-exports every analytics type from `./adapters`.
 
-**Identity binding — `identifyUser(distinctId)` / `setAnalyticsGroup(orgId)`.** The `identity` argument to `trackEvent` tags only the one event it is passed to. Most events (`message_send`, `stream_*`, `api_error`) carry none, so without a binding a Mixpanel-backed adapter attributes them to the anonymous device id and org roll-up stays empty. These two guarded helpers forward to the adapter's optional `identify`/`group` (same contract: no-op when absent, never throw). `login()` calls both on success; a surface that restores a session from storage — no `login()` call — must call them itself at startup.
+**Identity binding — `identifyUser(distinctId)` / `setAnalyticsGroup(orgId)`.** The `identity` argument to `trackEvent` tags only the one event it is passed to. Most events (`message_sent`, `stream_*`, `api_error`) carry none, so without a binding a Mixpanel-backed adapter attributes them to the anonymous device id and org roll-up stays empty. These two guarded helpers forward to the adapter's optional `identify`/`group` (same contract: no-op when absent, never throw). `login()` calls both on success; a surface that restores a session from storage — no `login()` call — must call them itself at startup.
 
 ⚠️ **The binding is process-wide.** A **multi-tenant server** adapter (bb-slack-integrations: one process, many orgs) must **NOT** implement `identify`/`group` — the last caller's identity would become the default for every later event, a cross-tenant attribution leak. Such adapters omit both, the helpers no-op, and per-event `identity` remains the only attribution path.
 
@@ -108,10 +140,10 @@ The **runtime sink** is `./analytics` (`src/analytics/index.ts`): `setAnalyticsA
 
 | Event group | Call site (verified file) |
 |---|---|
-| `auth_started` / `auth_success` / `auth_failed` | `src/auth/login.ts` — **wired** (PDEV-6855, recovered from the dead `feat/PDEV-6855/instrument-auth-telemetry` branch after PR #20 merged into an already-merged base). Emits `auth_started` at entry, `auth_success{latencyMs}` + identity binding (`identifyUser`/`setAnalyticsGroup`) on success, `auth_failed{stage}` from a `catch` with a coarse `launch\|parse\|exchange` label and no error detail; the original error is re-thrown unchanged. Covered by `src/auth/login.test.ts`. `src/auth/browser-redirect.ts` + `src/auth/tokens.ts` (exchange) to follow |
-| `token_refresh` | `src/auth/refresh-singleton.ts` (single-flight guard — emit once per real refresh, not per waiter) — **not yet wired** |
-| `message_send`, `stream_*` | `src/api/messages.ts` (`sendMessage`) + `src/api/stream-result.ts` (`MessageStream`) / `src/api/blocky-sse.ts` — **wired incrementally** via `trackEvent(...)` |
-| `api_error` | endpoints/surfaces call `trackApiError(err)` in a catch block (forwards only `statusCode` + `endpoint` off `BBApiError`; never `responseBody`) — **wired incrementally** per call site |
+| `sign_in_started` / `sign_in_completed` / `sign_in_failed` | `src/auth/login.ts` — **wired** (PDEV-6855, recovered from the dead `feat/PDEV-6855/instrument-auth-telemetry` branch after PR #20 merged into an already-merged base). Emits `sign_in_started{method:"oidc"}` at entry, `sign_in_completed{latency_ms}` + identity binding (`identifyUser`/`setAnalyticsGroup`) on success, `sign_in_failed{stage}` from a `catch` with a coarse `launch\|parse\|exchange` label and no error detail; the original error is re-thrown unchanged. Covered by `src/auth/login.test.ts`. `src/auth/browser-redirect.ts` + `src/auth/tokens.ts` (exchange) to follow |
+| `session_token_refreshed` / `session_token_refresh_failed` | `src/auth/refresh-singleton.ts` (single-flight guard — emit once per real refresh, not per waiter, so the events count refreshes rather than contention) — **not yet wired** |
+| `message_sent`, `message_first_token`, `message_completed`, `stream_*` | `src/api/messages.ts` (`sendMessage`) + `src/api/stream-result.ts` (`MessageStream`) / `src/api/blocky-sse.ts` — **not yet wired** |
+| `api_error` | `throwIfNotOk` in `src/api/_send.ts` is the intended single emit point (PDEV-7009) — every non-2xx from every endpoint on every host passes through it, so no endpoint has to remember. It forwards only `statusCode` → `status_code` and `endpoint`, never `responseBody`. **Not yet wired** |
 
 ### 1a. The Mixpanel leaf (`./analytics/mixpanel`)
 
@@ -159,23 +191,38 @@ The SDK emits **one** standard event set through the seam so every surface repor
 
 ### Event taxonomy
 
+Names and props below are the `0.20.0` vocabulary (`CoreEventMap`). For the old
+`auth_*` / camelCase set and the old→new mapping, see `LEGACY_EVENT_RENAMES` in
+`./telemetry` and the `0.20.0` section of [`CHANGELOG.md`](../../../../CHANGELOG.md).
+
 | Event | When | Key props |
 |---|---|---|
-| `auth_started` | OAuth/PKCE or api-key flow begins | `mode` (`oauth` \| `api-key`) |
-| `auth_success` | Token obtained / valid `AuthContext` produced | `mode`, `latencyMs` |
-| `auth_failed` | Login or token exchange fails | `mode`, `stage` (coarse phase — no token, no PII) |
-| `token_refresh` | A real refresh completes (single-flight — one event per refresh) | `ok`, `latencyMs` |
-| `message_send` | `sendMessage` invoked | `backend` (`blocky` \| `agentic`), `streaming`, `conversationId` |
-| `stream_start` | Stream opened (first read of `MessageStream.textDeltas`) | `backend` |
-| `stream_first_token` | First delta yielded — the perceived-latency milestone | `backend`, `latencyMs` |
-| `stream_complete` | `MessageStream.final` resolves | `backend`, `durationMs` |
-| `stream_dropped` | `final` rejects / source throws mid-stream | `backend`, `reason` |
-| `stream_reconnect` | Transport reconnect attempted (SSE/EventSource) | `backend`, `attempt` |
-| `api_error` | Any `./api` call throws `BBApiError` | `statusCode`, `endpoint`, `method` |
+| `sign_in_started` | OAuth/PKCE or api-key flow begins | `method` (`password` \| `sso` \| `oidc` \| `api_key`) |
+| `sign_in_completed` | Token obtained / valid `AuthContext` produced | `method`, `latency_ms`, `owner_permission` |
+| `sign_in_failed` | Login or token exchange fails | `method`, `stage` (coarse phase — no token, no PII), `error_code` |
+| `session_token_refreshed` | A real refresh succeeds (single-flight — one event per refresh) | `latency_ms` |
+| `session_token_refresh_failed` | A real refresh fails | `error_code` (coarse — never a message) |
+| `sign_out` | Session ends | `cause` |
+| `message_sent` | `sendMessage` invoked | `conversation_id`, `message_id`, `route` (`chat` \| `agent` \| …) |
+| `stream_started` | Stream opened | `route`, `request_id`, `conversation_id` |
+| `message_first_token` | First delta yielded — the perceived-latency milestone | `route`, `request_id`, `ttft_ms` |
+| `message_completed` | `MessageStream.final` resolves, or a buffered send returns | `route`, `request_id`, `duration_ms`, `outcome` |
+| `message_failed` | The turn fails before completing | `route`, `stage`, `error_code` |
+| `stream_stalled` | No delta for longer than the stall budget | `route`, `request_id`, `stall_ms` |
+| `stream_dropped` | `final` rejects / source throws mid-stream | `route`, `reason` (closed `StreamDropReason`) |
+| `stream_reconnect` | Transport reconnect attempted (SSE/EventSource) | `route`, `attempt` |
+| `error_raised` | A handled error surfaced to the user | `scope`, `error_code`, `is_blocking` |
+| `api_error` | Any `./api` call throws `BBApiError` | `status_code`, `endpoint`, `method` |
 
-**Streaming lifecycle maps to the verified `MessageStream` contract** (`src/api/stream-result.ts`): first yield of `textDeltas` → `stream_first_token`; `final` resolve → `stream_complete`; `final` reject → `stream_dropped`. Blocky's non-SSE JSON path (`wrapStringAsStream`) still emits `stream_start` + `stream_complete` (single delta), so the funnel shape is uniform across Blocky and Agentic.
+**`message_completed` replaced `stream_complete` deliberately**: the terminal event
+belongs to the TURN, not to the transport, so a non-streaming send closes the same
+funnel a streamed one does. `stream_dropped` is transport health and is emitted
+*alongside* `message_completed{outcome:"error"}` — they are not redundant, and
+emitting only the drop leaves the funnel with no denominator for failed turns.
 
-**`api_error` props come straight off `BBApiError`** (`src/api/errors.ts`): `statusCode` and `endpoint` (optionally `method`) — there is **no** `path` field. The SDK's `trackApiError(err)` forwards only `statusCode` + `endpoint`. **Never** attach `responseBody` raw — scrub it first (see below). README already ties `statusCode===401` → re-auth and `503` → not configured; those become dashboard slices.
+**Streaming lifecycle maps to the verified `MessageStream` contract** (`src/api/stream-result.ts`): first yield of `textDeltas` → `message_first_token`; `final` resolve → `message_completed{outcome:"success"}`; `final` reject → `stream_dropped` + `message_completed{outcome:"error"}`. Blocky's non-SSE JSON path (`wrapStringAsStream`) emits `stream_started` + `message_completed` but deliberately **no** `message_first_token`: it is handed an already-complete response, so the only TTFT it could report is a fabricated `0` feeding the same p95 the real path does.
+
+**`api_error` props come straight off `BBApiError`** (`src/api/errors.ts`): `statusCode` and `endpoint` (optionally `method`) — there is **no** `path` field. Note the rename across the boundary: the error field is `statusCode`, the **event** prop is `status_code`, because the taxonomy's names double as Prometheus label names. The SDK's `trackApiError(err)` forwards only those two. **Never** attach `responseBody` raw — scrub it first (see below). README already ties `statusCode===401` → re-auth and `503` → not configured; those become dashboard slices.
 
 ### Identity model (org-wide, one model)
 
@@ -213,7 +260,7 @@ The SDK emits **one** standard event set through the seam so every surface repor
 Every surface ticks **every** box before promotion to production. This is the checklist referenced by the gate; it is not optional or partial.
 
 - [ ] **`AnalyticsAdapter` wired** — a concrete implementation is injected via `setAnalyticsAdapter` at startup (forwarding to Mixpanel + Sentry). No no-op left in production.
-- [ ] **Minimum event set emitting** — `auth_success` / `auth_failed`, `message_send`, `stream_start` / `stream_first_token` / `stream_complete` / `stream_dropped`, `api_error{statusCode,endpoint}`, all with the §2 props.
+- [ ] **Minimum event set emitting** — `sign_in_completed` / `sign_in_failed`, `message_sent`, `stream_started` / `message_first_token` / `message_completed` / `stream_dropped`, `api_error{status_code,endpoint}`, all with the §2 props.
 - [ ] **Events verified** — confirmed **arriving in Mixpanel** (not just called locally): correct names, `distinct_id` = Zitadel `sub`, group = `orgId`, **no PII / no tokens** in any payload.
 - [ ] **Sentry live** — errors reach the correct Sentry project with release/version tags; **`captureError` scrubs tokens** and `BBApiError.responseBody`.
 - [ ] **Browser RUM live** (browser surfaces) — **Faro** reporting Web Vitals; **mobile** — Sentry RN + store vitals instead (Faro N/A).

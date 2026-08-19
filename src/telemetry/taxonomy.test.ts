@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AnalyticsEventMap } from "../adapters/analytics.js";
+import type { CoreEventName } from "./taxonomy.js";
 import {
   CHAT_TOPICS,
   CONVERSATION_ENTRY_POINTS,
@@ -170,15 +171,29 @@ describe("the legacy rename map", () => {
     expect(LEGACY_RENAME_TARGETS).toContain("session_token_refresh_failed");
   });
 
-  it("covers every event currently declared on the seam", () => {
-    // Type-level exhaustiveness: if PDEV-7009 adds an event to AnalyticsEventMap
-    // without giving it a canonical name here, this stops type-checking. It
-    // cannot be a runtime check because an interface is not enumerable.
-    type Uncovered = Exclude<keyof AnalyticsEventMap, keyof typeof LEGACY_EVENT_RENAMES>;
-    const _covered: Uncovered extends never
+  it("the seam speaks only canonical names", () => {
+    // The seam used to declare its OWN vocabulary (`auth_success`, `message_send`,
+    // `stream_start`, …), and this assertion checked that each of those had a
+    // canonical rename waiting for it. That second vocabulary is gone —
+    // `AnalyticsEventMap` is now an alias of `CoreEventMap` — so the guard that
+    // matters is the inverse: nothing can reintroduce a non-canonical event name
+    // through the seam.
+    //
+    // Type-level, because an interface is not enumerable at runtime.
+    type NonCanonical = Exclude<keyof AnalyticsEventMap, CoreEventName>;
+    const _canonical: NonCanonical extends never
       ? true
-      : { error: "AnalyticsEventMap has an event with no canonical rename" } = true;
-    expect(_covered).toBe(true);
+      : { error: "the analytics seam declares an event outside CoreEventMap" } = true;
+    expect(_canonical).toBe(true);
+  });
+
+  it("still translates every legacy name a surface may be emitting", () => {
+    // The rename map outlives the seam change: a surface pinned to an older SDK,
+    // or one that hand-rolled the pre-standard names, still needs a documented
+    // target. Losing an entry here would strand that surface's dashboards.
+    for (const legacy of ["auth_started", "auth_success", "message_send", "stream_start"]) {
+      expect(LEGACY_EVENT_RENAMES).toHaveProperty(legacy);
+    }
   });
 
   it("does not resurrect a retired name", () => {

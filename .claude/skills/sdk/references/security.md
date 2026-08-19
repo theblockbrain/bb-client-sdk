@@ -164,13 +164,16 @@ Never `dangerouslySetInnerHTML` / `.innerHTML =` on model output.
 **Telemetry seam ships in `0.18.0` (WS9 — PDEV-6854 seam + PDEV-6855 `auth_*` instrumentation).** The `AnalyticsAdapter` (peer of
 `StorageAdapter`/`IdentityAdapter`) is exported as types from `./adapters`, with the runtime sink at
 `./analytics` (`setAnalyticsAdapter`, `trackEvent`, `trackApiError`, `identifyUser`/`setAnalyticsGroup`, …) and an opt-in Mixpanel
-implementation at `./analytics/mixpanel` (`createMixpanelAdapter` — PII denylist + consent gate). Its taxonomy is the typed
-**`AnalyticsEventMap`** (`AnalyticsEventName = keyof AnalyticsEventMap`) — `auth_started`,
-`auth_success`, `auth_failed`, `token_refresh`, `message_send`, `stream_start`,
-`stream_first_token`, `stream_complete`, `stream_dropped`, `stream_reconnect`, `api_error` —
-defined in [`./telemetry-release-gate.md`](./telemetry-release-gate.md) §1; use those keys
+implementations at `./analytics/mixpanel` and `./analytics/faro` (`createMixpanelAdapter`/`createFaroAdapter` — both apply the shared
+`scrubProps` PII + credential scrub and a consent gate). Its taxonomy is the typed
+**`CoreEventMap`** in `./telemetry` (`CoreEventName = keyof CoreEventMap`) — `sign_in_started`,
+`sign_in_completed`, `sign_in_failed`, `session_token_refreshed`, `session_token_refresh_failed`,
+`sign_out`, `conversation_started`, `message_sent`, `message_first_token`, `message_completed`,
+`message_failed`, `stream_started`, `stream_stalled`, `stream_dropped`, `stream_reconnect`,
+`error_raised`, `api_error` — defined in [`./telemetry-release-gate.md`](./telemetry-release-gate.md) §1; use those keys
 **verbatim** (there is no `auth_fail` / `first_token` / `complete` / `dropped` shorthand — the
-typed map rejects anything else). Now that the seam has landed, invariant-E "Part B" is measurable
+typed map rejects anything else). `AnalyticsEventMap`/`AnalyticsEventName` remain as
+`@deprecated` aliases from `0.20.0`; the `auth_*` names they used to declare are retired. Now that the seam has landed, invariant-E "Part B" is measurable
 once a surface wires it — and the **release gate still applies**: nothing ships to prod without
 BOTH product analytics (Mixpanel) AND health telemetry (Sentry + Faro), each surface still
 registering its own adapter. When emitting `api_error`, send only `statusCode` + `endpoint` —
@@ -208,7 +211,7 @@ the org **Code Cleanup & Refactoring** standard.)
 - [ ] **Transport/CSP.** HTTPS only; no `eval`/`new Function`/inline script (SPFx + Office webviews); no new hard dependency on `window`/`fetch`/`EventSource` in the core.
 - [ ] **Supply chain.** No new runtime dep without justification; `./api`/`./auth` still React-free (`check:package` green); `npm audit` clean.
 - [ ] **Public-API contract test passes** — or the snapshot change is intentional, declared, and canary-tested in a consumer (Outlook) **before** promoting to `latest` (invariant C; Outlook's `^0.7.3` era is the cautionary tale).
-- [ ] **Telemetry.** If this adds a security-relevant event, it emits a valid `AnalyticsEvent` from the union (e.g. `auth_success`/`auth_failed`, `token_refresh`, `api_error{statusCode,endpoint}`) with **no PII and no token/responseBody** (identity = `sub`, org = group).
+- [ ] **Telemetry.** If this adds a security-relevant event, it emits a valid `CoreEventMap` key (e.g. `sign_in_completed`/`sign_in_failed`, `session_token_refresh_failed`, `api_error{status_code,endpoint}`) with **no PII and no token/responseBody** (identity = `sub`, org = group). The runtime backstop is `scrubProps` (`src/analytics/scrub.ts`) over `DENIED_PROPERTY_KEYS` (PII, incl. the OIDC claim spellings) + `SECRET_DENYLIST` (credentials) — a name added to only one of those two lists is a name the other sink still leaks.
 
 **Adapter reviewers:** the same list applies to you — your `StorageAdapter` secure-storage choice,
 your `IdentityAdapter` OAuth flow, your logging, and your tenant resolution all uphold these

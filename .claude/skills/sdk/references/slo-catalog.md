@@ -14,16 +14,24 @@ event (WS9, on `main`), so once a surface registers an adapter the number can ac
 
 ## SLIs the SDK taxonomy feeds (map event → SLO → tool)
 
-| SLI | `AnalyticsEventMap` event(s) | Target | Tool |
+> **Renamed in `0.20.0`.** Every event and property below is the `CoreEventMap`
+> vocabulary (`./telemetry`). The previous column used the retired `auth_*` /
+> camelCase names, so **any dashboard, PromQL rule or Mixpanel funnel built from
+> the old rows has to be re-keyed** — that is the migration work this rename
+> creates, and it is why the change is a breaking minor. Old→new map:
+> `LEGACY_EVENT_RENAMES`, plus the table in the CHANGELOG.
+
+| SLI | `CoreEventMap` event(s) | Target | Tool |
 |---|---|---|---|
-| **Auth success rate** | `auth_started` → `auth_success` / `auth_failed` | ≥ 99% | Mixpanel funnel + Sentry; Faro (browser) |
-| **Auth latency** | `auth_success.latencyMs` | p95 ≤ 4s (add-in dialog) · ≤ 1.5s token-exchange leg (SPA) | Faro span / Sentry perf |
-| **Token-refresh success** | `token_refresh.ok` | ≥ 99.5%, 0 refresh storms (single-flight) | Faro / Sentry |
-| **Chat/agent error rate** | `api_error{statusCode,endpoint}` + `message_send` | < 1% of sends fail | Mixpanel + Sentry; Mimir burn-rate |
-| **Stream connect success** | `stream_start` → `stream_first_token` | ≥ 99% | Faro/OTel → Mimir |
-| **Time-to-first-token (TTFT)** | `stream_first_token.latencyMs` | client-observed p95 ≤ 2.5s / p99 ≤ 5s (shared backend budget) | Tempo + Mimir |
-| **Mid-stream drop** | `stream_dropped` (vs `stream_complete`) | < 1% | Faro/OTel |
-| **Stream reconnection** | `stream_reconnect` → `stream_complete` | ≥ 95% recover | Faro/OTel |
+| **Auth success rate** | `sign_in_started` → `sign_in_completed` / `sign_in_failed` | ≥ 99% | Mixpanel funnel + Sentry; Faro (browser) |
+| **Auth latency** | `sign_in_completed.latency_ms` | p95 ≤ 4s (add-in dialog) · ≤ 1.5s token-exchange leg (SPA) | Faro span / Sentry perf |
+| **Token-refresh success** | `session_token_refreshed` vs `session_token_refresh_failed` | ≥ 99.5%, 0 refresh storms (single-flight) | Faro / Sentry |
+| **Chat/agent error rate** | `api_error{status_code,endpoint}` + `message_sent` | < 1% of sends fail | Mixpanel + Sentry; Mimir burn-rate |
+| **Stream connect success** | `stream_started` → `message_first_token` | ≥ 99% | Faro/OTel → Mimir |
+| **Time-to-first-token (TTFT)** | `message_first_token.ttft_ms` | client-observed p95 ≤ 2.5s / p99 ≤ 5s (shared backend budget) | Tempo + Mimir |
+| **Mid-stream drop** | `stream_dropped` (vs `message_completed`) | < 1% | Faro/OTel |
+| **Stream stall** | `stream_stalled.stall_ms` | (no target set yet — new in the taxonomy) | Faro/OTel |
+| **Stream reconnection** | `stream_reconnect` → `message_completed` | ≥ 95% recover | Faro/OTel |
 | **Crash-free sessions / users** | (health telemetry, not a track event) | ≥ 99.5% / ≥ 99.5% web+add-in · users ≥ 99% mobile · ≥ 99.7% blocky-frontend | Sentry release-health (+ Faro) |
 | **Min-event-set coverage** | all of the above, emitting | 100% of shipping surfaces | Mixpanel + Faro coverage check |
 
