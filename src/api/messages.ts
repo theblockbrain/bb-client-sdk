@@ -244,6 +244,15 @@ export async function sendMessage(
         // the conversation's agent, so a caller cannot always know a resolver will be
         // needed — but "didn't know" must not mean "approve on the user's behalf".
         approvalResolver: options.approvalResolver ?? warnAndDenyResolver(agentId),
+        // The Blocky branch has always forwarded this; the agentic branch never did, so
+        // an agent turn was not cancellable even though `AgenticCallOptions` accepts a
+        // signal. The telemetry consequence was the visible one: the drain ran to
+        // completion, so a user who pressed stop was recorded as
+        // `message_completed{outcome:"success"}` carrying the full server duration, while
+        // the identical stop() on the chat route reported an error. `dropReason` already
+        // maps `kind: "aborted"` to `client_abort`, so threading it is all that the two
+        // routes needed to agree.
+        signal: options.signal,
       });
 
       if (streaming) {

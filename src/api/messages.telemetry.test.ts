@@ -221,6 +221,80 @@ describe("sendMessage — the agent route", () => {
     } as unknown as Response;
   }
 
+  it("threads the caller's AbortSignal into the agentic stream", async () => {
+    // Without this the agent route is not cancellable at all, and the telemetry
+    // consequence is worse than the missing feature: the drain runs to completion, so
+    // a user who pressed stop is recorded as `message_completed{outcome:"success"}`
+    // carrying the full server duration — while the SAME stop() on the chat route
+    // (which HAS had `signal` threaded) yields stream_dropped{client_abort} +
+    // outcome:"error". Cancellations counted as successes on one route and errors on
+    // the other, with the flattered side being the flagship Word-agentic route.
+    const controller = new AbortController();
+    let agenticSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: { signal?: AbortSignal }) => {
+        if (url.includes("general-info")) {
+          return Promise.resolve(jsonResponse({ id: CONVO, agent: AGENT }));
+        }
+        agenticSignal = init?.signal;
+        return Promise.resolve(sseResponse([{ type: "text-delta", textDelta: "a" }]));
+      }),
+    );
+
+    const stream = await sendMessage(CTX, CONVO, "hello", {
+      enableStreaming: true,
+      signal: controller.signal,
+    });
+    if (typeof stream === "string") throw new Error("expected a MessageStream");
+    await stream.final;
+
+    expect(agenticSignal).toBeInstanceOf(AbortSignal);
+    // Not asserted here: that aborting `controller` later flips this one. The transport
+    // derives its own signal and detaches the forwarding listener at stream end, so
+    // after `final` resolves the two are legitimately decoupled. The case that proves
+    // the link is the next test, which aborts before the request is made.
+  });
+
+  it("records a cancelled agent turn as cancelled, not as a success", async () => {
+    // The end-to-end consequence of the threading, and the defect itself. With the
+    // signal reaching `callAgenticStream`, its pre-request guard raises
+    // `BBApiError{kind:"aborted"}` before any POST, the drain sees no token, and
+    // `failureStage` turns that into `stage:"cancelled"`. Without the threading the
+    // guard never fires, the stubbed SSE resolves, and the turn is booked as
+    // `message_completed{outcome:"success"}` with the user's stop invisible.
+    const { adapter, events } = makeRecorder();
+    setAnalyticsAdapter(adapter);
+    let agenticRequests = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("general-info")) {
+          return Promise.resolve(jsonResponse({ id: CONVO, agent: AGENT }));
+        }
+        agenticRequests += 1;
+        return Promise.resolve(sseResponse([{ type: "text-delta", textDelta: "a" }]));
+      }),
+    );
+
+    const stream = await sendMessage(CTX, CONVO, "hello", {
+      enableStreaming: true,
+      signal: AbortSignal.abort(),
+    });
+    if (typeof stream === "string") throw new Error("expected a MessageStream");
+    await stream.final.catch(() => undefined);
+
+    // A turn the caller already cancelled must not be sent at all.
+    expect(agenticRequests).toBe(0);
+    expect(events.find(e => e.event === "message_failed")?.props).toMatchObject({
+      route: "agent",
+      stage: "cancelled",
+    });
+    expect(events.find(e => e.event === "message_completed")?.props).toMatchObject({
+      outcome: "error",
+    });
+  });
+
   it("emits route:agent, not route:chat", async () => {
     const { adapter, events } = makeRecorder();
     setAnalyticsAdapter(adapter);
