@@ -10,3 +10,5 @@ export {
 } from "./formatter.js";
 export type { BBMessageKey, MessageKeyListIsComplete } from "./keys.js";
 export { BB_MESSAGE_KEYS } from "./keys.js";
+export type { Catalogue, Translator, TranslatorOptions } from "./translator.js";
+export { createTranslator, resolveCatalogueName } from "./translator.js";

@@ -263,12 +263,31 @@ export interface PeopleProperties {
  * `scrubProps` in `../analytics/scrub.ts`. A leaf that keeps its own copy is a
  * leaf whose copy drifts, so add a name here rather than there.
  *
- * The OIDC/Zitadel claim spellings (`mail`, `user_email`, `username`,
- * `preferred_username`, `given_name`, `family_name`) earn their place because the
- * bag this guard exists to catch is a profile or ID-token claims object spread
- * into props — and those are the names such an object actually uses. Folding
- * (see {@link foldPropertyKey}) means each entry also covers its camelCase and
- * `Title_Case` spellings, so `userEmail` and `givenName` need no entry of their
+ * The identity spellings earn their place because the bag this guard exists to catch
+ * is a profile or claims object SPREAD into props — and those are the names such an
+ * object actually uses. Three real sources are covered deliberately:
+ *
+ * - **Zitadel / OIDC claims**: `email`, `mail`, `user_email`, `username`,
+ *   `preferred_username`, `nickname`, `given_name`, `family_name`, `name`, `phone`.
+ * - **Office** (`Office.context.mailbox.userProfile`): `displayName`,
+ *   `emailAddress`.
+ * - **Microsoft Graph** (`/me`): `userPrincipalName`, `upn`, `surname`,
+ *   `mobilePhone`, `businessPhones`.
+ *
+ * Plus **`content`** — which is not identity at all, but is what `sendMessage`
+ * calls the prompt, making it the single likeliest key a surface passes by accident.
+ *
+ * ─── Why the type system does not make this redundant ──────────────────────────
+ *
+ * Excess-property checking rejects an undeclared key in an object LITERAL, so
+ * `trackEvent("sign_in_completed", { method, content })` fails to compile. It does
+ * NOT apply to a spread: `trackEvent("sign_in_completed", { method, ...userProfile })`
+ * compiles clean on a fully-typed surface, and every key on `userProfile` reaches the
+ * sink. So on the one path that matters — a bag built from somewhere else — this list
+ * is not a backstop behind the types, it is the only control there is.
+ *
+ * Folding (see {@link foldPropertyKey}) means each entry also covers its camelCase
+ * and `Title_Case` spellings, so `userEmail` and `givenName` need no entry of their
  * own; `$first_name`/`$last_name` likewise already cover bare `first_name`.
  */
 export const DENIED_PROPERTY_KEYS = [
@@ -280,20 +299,30 @@ export const DENIED_PROPERTY_KEYS = [
   "email",
   "mail",
   "user_email",
+  "email_address",
   "name",
   "username",
   "preferred_username",
+  "login_name",
+  "nickname",
+  "user_principal_name",
+  "upn",
   "given_name",
   "family_name",
+  "surname",
   "display_name",
   "full_name",
   "phone",
+  "mobile_phone",
+  "business_phones",
   "subject",
   "body",
   // Free text under a generic key. `message_text` is the taxonomy's own spelling,
-  // but `message` is what an `Error` and most API payloads call it, so it is the
-  // shape a dynamically-built bag arrives in.
+  // but `message` is what an `Error` and most API payloads call it, and `content` is
+  // what `sendMessage` calls the prompt — so these are the shapes a dynamically-built
+  // bag actually arrives in.
   "message",
+  "content",
   "message_text",
   "prompt",
   "query",
