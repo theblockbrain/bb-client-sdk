@@ -227,6 +227,49 @@ describe("coerceChatTopic", () => {
 });
 
 describe("stripDeniedProperties", () => {
+  /**
+   * The realistic leak, and the one the type system does NOT stop.
+   *
+   * A literal with an undeclared key is rejected by excess-property checking, but a
+   * SPREAD is not — `trackEvent("sign_in_completed", { method, ...userProfile })`
+   * compiles clean on a fully-typed surface. So the runtime denylist is the only
+   * control on that path, and it has to cover the names a real profile object uses:
+   * Office's `Office.context.mailbox.userProfile`, Microsoft Graph's `/me`, and the
+   * SDK's own `content`, which is what `sendMessage` calls the prompt.
+   */
+  it("strips the keys a spread-in profile object actually carries", () => {
+    const officeProfile = {
+      displayName: "Alice Brown",
+      emailAddress: "alice@corp.example",
+      timeZone: "Europe/Berlin",
+    };
+    const graphMe = {
+      userPrincipalName: "alice@corp.example",
+      surname: "Brown",
+      givenName: "Alice",
+      mobilePhone: "+49 000",
+      jobTitle: "Engineer",
+    };
+
+    const out = stripDeniedProperties({
+      method: "oidc",
+      ...officeProfile,
+      ...graphMe,
+      content: "the prompt text the taxonomy must never carry",
+    });
+
+    expect(out).toEqual({ method: "oidc", timeZone: "Europe/Berlin", jobTitle: "Engineer" });
+  });
+
+  it("strips `content`, the SDK's own name for prompt text", () => {
+    // `sendMessage(ctx, convoId, content)` — so this is the single most likely key a
+    // surface passes by accident, and messages.ts calls it out as the call site where
+    // the temptation is greatest.
+    expect(stripDeniedProperties({ route: "chat", content: "secret prompt" })).toEqual({
+      route: "chat",
+    });
+  });
+
   it("keeps safe properties untouched", () => {
     const props = { route: "chat", duration_ms: 1200, outcome: "success" };
     expect(stripDeniedProperties(props)).toEqual(props);
