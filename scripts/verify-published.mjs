@@ -65,7 +65,10 @@
  *   0  every expected symbol is present
  *   1  symbols are missing — the artifact does not match the source
  *   2  could not verify — no `gh`, no auth, version not published, no `tar`, an
- *      unreachable registry, or a tarball that would not unpack. A broken CHECK
+ *      unreachable registry, a tarball that would not unpack, or a run whose
+ *      expectation fell back to the WORKING TREE (see `readExpectedSurface`): that
+ *      baseline describes a checkout rather than the release, so a `✘` computed
+ *      from it is not an accusation this script is entitled to make. A broken CHECK
  *      must never borrow code 1, or a flaky network reads as a bad artifact.
  *
  * Safe to run anywhere: it needs network and `gh auth`, so it belongs in the
@@ -204,8 +207,25 @@ const parseSurface = raw => {
   return surface;
 };
 
-/** The snapshot as this checkout has it. Used for the lag report, never as the expectation. */
-const readSurfaceFromWorkingTree = () => parseSurface(readFileSync(SNAPSHOT, "utf8"));
+/**
+ * The snapshot as this checkout has it, or `null` if it cannot be read.
+ *
+ * Returns rather than throws, because the two callers want opposite things and
+ * NEITHER wants an exception. The expectation path turns `null` into
+ * EXIT_CANNOT_VERIFY — an unreadable snapshot means the check cannot run, which is
+ * exit 2 and not the exit 1 that accuses the release. The lag report turns it into
+ * an empty list, because an informational extra must never be the reason a good run
+ * fails. Left throwing, it would escape the main `try` — which has only a `finally`
+ * — and an uncaught throw exits 1, reintroducing exactly the conflation the exit
+ * codes exist to prevent.
+ */
+const tryReadSurfaceFromWorkingTree = () => {
+  try {
+    return parseSurface(readFileSync(SNAPSHOT, "utf8"));
+  } catch {
+    return null;
+  }
+};
 
 const readExpectedSurface = version => {
   // `maxBuffer` because the snapshot outgrows `execFileSync`'s 1MB default as
@@ -213,10 +233,16 @@ const readExpectedSurface = version => {
   const fromTag = tryRun("git", ["show", `v${version}:${SNAPSHOT_REL}`], {
     maxBuffer: 32 * 1024 * 1024,
   });
-  return {
-    surface: fromTag === null ? readSurfaceFromWorkingTree() : parseSurface(fromTag),
-    source: fromTag === null ? "working tree" : `tag v${version}`,
-  };
+  if (fromTag !== null) return { surface: parseSurface(fromTag), source: `tag v${version}` };
+  const local = tryReadSurfaceFromWorkingTree();
+  if (local === null) {
+    fail(
+      EXIT_CANNOT_VERIFY,
+      `tag v${version} is unavailable and ${SNAPSHOT_REL} could not be read, so there is ` +
+        "no expected surface to check against.",
+    );
+  }
+  return { surface: local, source: "working tree" };
 };
 
 // ─── The published artifact ───────────────────────────────────────────────────
@@ -388,7 +414,9 @@ try {
   const lagBehindCheckout = (() => {
     if (symbolOverrides.length > 0 || surfaceSource === "working tree") return [];
     const atTag = new Set([...surface.values()].flat());
-    const local = new Set([...readSurfaceFromWorkingTree().values()].flat());
+    const localSurface = tryReadSurfaceFromWorkingTree();
+    if (localSurface === null) return [];
+    const local = new Set([...localSurface.values()].flat());
     return [...local].filter(name => !atTag.has(name)).sort();
   })();
   const missing = [];
@@ -474,7 +502,17 @@ try {
     }
   }
 
-  process.exit(missing.length === 0 && !versionMismatch ? EXIT_OK : EXIT_MISSING);
+  /**
+   * A `✘` computed from the WORKING TREE is not an accusation this script is
+   * entitled to make. The expectation was the wrong baseline by construction — it
+   * describes a checkout, not the release — so the honest code is "could not
+   * verify" rather than "the artifact does not match its source". A `✔` in that
+   * mode still means something (everything the checkout claims is present, which is
+   * a stronger bar than the release had to clear), so only the failure is remapped.
+   */
+  const degraded = surfaceSource === "working tree";
+  if (missing.length === 0 && !versionMismatch) process.exit(EXIT_OK);
+  process.exit(degraded ? EXIT_CANNOT_VERIFY : EXIT_MISSING);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
