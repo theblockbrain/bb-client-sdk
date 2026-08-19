@@ -1,12 +1,17 @@
 # Changelog
 
-## Unreleased — 0.20.0: one telemetry vocabulary, and the second sink
+## 0.20.0 — one telemetry vocabulary, the wired funnel, and a real sign-out
 
-**Not yet cut.** `package.json` still declares `0.19.0`; the bump, the tag and the
-Outlook canary belong to the release commit, not to this one. The note is written
-here now because the contract snapshot has already moved, and a snapshot diff with
-no migration note is a review blocker
-(`.claude/skills/sdk/references/release-and-versioning.md` §1).
+Cut from `main` after PRs #51, #52, #53 and #54. Four things a consumer will notice:
+the analytics taxonomy is renamed (breaking, table below), the SDK now actually
+EMITS the funnel it declares rather than only describing it, a sign-out ends the
+session at the identity provider instead of only in local storage, and there is a
+second analytics sink so both halves of the release gate can register at once.
+
+**Canary before `latest`.** A taxonomy rename reaches a surface silently on its next
+install once it moves off `^0.19.0`, so this version is validated in Outlook via the
+`canary` dist-tag before it is promoted — the rule in
+`.claude/skills/sdk/references/release-and-versioning.md` §1, not a formality here.
 
 **It is a minor, and the minor is this package's major.** Renaming an event is the
 `MAJOR` row of that table ("Change an event-taxonomy name, header, or wire shape a
@@ -14,6 +19,32 @@ surface depends on"), and because consumers pin `^0.MINOR.PATCH` — which npm
 resolves as `<0.M+1.0` — a breaking change must land as a **minor** with a
 migration note and never as a patch. `0.19.1` would push this into every
 `^0.19.0` consumer on their next install with nobody choosing it.
+
+### 🔒 A sign-out now ends the session, instead of appearing to
+
+`logout()` (new, from `./auth`) revokes at the IdP. Until it existed the SDK had **no
+revocation and no RP-initiated logout at all** — `grep -rn "revoke|end_session|logout"
+src/` matched only a telemetry event *name*. So signing out discarded the stored
+tokens locally while the refresh token issued under `offline_access` stayed valid at
+Zitadel for its full lifetime: whoever held it could keep minting access tokens after
+the user believed they had left. On a shared or stolen device that is the difference
+between a sign-out and the appearance of one, and it affected every surface.
+
+It prefers the **refresh** token, because revoking that drops the whole grant rather
+than one short-lived credential; the access token is the fallback for a surface never
+granted `offline_access`. `REVOKE_ENDPOINT` routes through the existing `BBHosts.auth`
+slot, so it inherits the proxy rewrite, timeout and retry every other call gets.
+
+**It never rejects.** Revocation is a best-effort call made at the moment the user
+asked to leave, so refusing to sign someone out because the IdP is unreachable is
+strictly worse than the token outliving the session. Failure is `{ revoked: false }`
+and the caller clears local state either way. RFC 7009 §2.2 already requires a 200 for
+a token the server does not recognise, so `revoked: false` means the request did not
+land — never that the token was bad.
+
+**What a surface must still do:** call it on sign-out, and emit `sign_out{cause}`
+itself. `SignOutCause` is `user | expired | forced` and only the surface knows which
+applies, so the SDK does not guess.
 
 ### ⚠️ Breaking: the event taxonomy has ONE vocabulary now
 
