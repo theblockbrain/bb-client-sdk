@@ -3,6 +3,7 @@ import { createWebStorageAdapter } from "../adapters/web-storage.js";
 import { AUTH_SCOPES, AUTHORIZE_ENDPOINT, TOKEN_ENDPOINT } from "../config.js";
 import { extractProfile } from "./jwt-claims.js";
 import type { LoginResult } from "./login.js";
+import { readOAuthError } from "./oauth-error.js";
 import { withOrgScope } from "./org-scope.js";
 import { generateChallenge, generateStateNonce, generateVerifier } from "./pkce.js";
 import { computeExpiration, exchangeCode } from "./tokens.js";
@@ -58,6 +59,19 @@ export interface BrowserRedirectOptions {
    * pinned when it is not, which is the PDEV-7369 defect in a different shape.
    */
   orgId?: string;
+  /**
+   * The address the user already typed, forwarded as OIDC `login_hint`. Same
+   * contract as {@link LoginOptions.loginHint}.
+   */
+  loginHint?: string;
+  /**
+   * OIDC `prompt`. Same contract as {@link LoginOptions.prompt}, and needed here
+   * for the same reason: without it a live provider session completes the
+   * authorize silently as whoever signed in last, so a second person on a shared
+   * machine is handed the first person's account. The dialog flow had this and
+   * this one did not, which made the redirect fallback the weaker of the two.
+   */
+  prompt?: "login" | "consent" | "select_account" | "none";
   /** Default: AUTHORIZE_ENDPOINT from config */
   authorizeEndpoint?: string;
   /** Default: TOKEN_ENDPOINT from config */
@@ -123,6 +137,9 @@ export async function beginBrowserLogin(opts: BrowserRedirectOptions): Promise<n
   url.searchParams.set("code_challenge", challenge);
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("state", state);
+  // Blank is treated as absent, so an empty field does not become `login_hint=`.
+  if (opts.loginHint?.trim()) url.searchParams.set("login_hint", opts.loginHint.trim());
+  if (opts.prompt) url.searchParams.set("prompt", opts.prompt);
 
   window.location.href = url.toString();
   // Promise never resolves — page navigates away
@@ -136,7 +153,8 @@ export async function beginBrowserLogin(opts: BrowserRedirectOptions): Promise<n
  * Call once at app initialisation (e.g. a top-level useEffect or main.ts).
  *
  * - No ?code= in URL → returns { isCallback: false, ...empty }
- * - ?error= in URL → throws with the OAuth error message
+ * - ?error= in URL → throws an {@link OAuthError} carrying the provider's code,
+ *   so the caller can word it (see `isOAuthDenied` for the user-facing case)
  * - State mismatch → throws (CSRF guard)
  * - Valid code + state → exchanges code, cleans URL, returns { isCallback: true, ... }
  *
@@ -165,12 +183,11 @@ export async function completeBrowserLogin(
   const tokenEndpoint = opts.tokenEndpoint ?? TOKEN_ENDPOINT;
 
   const params = new URLSearchParams(window.location.search);
-  const oauthError = params.get("error");
 
-  if (oauthError) {
-    const desc = params.get("error_description");
-    throw new Error(`OAuth error: ${oauthError}${desc ? ` — ${desc}` : ""}`);
-  }
+  // Same typed failure the dialog flow throws, so a consumer classifies a refused
+  // authorization once regardless of which flow it uses.
+  const failure = readOAuthError(params);
+  if (failure) throw failure;
 
   const code = params.get("code");
 

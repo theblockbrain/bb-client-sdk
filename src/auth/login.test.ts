@@ -256,3 +256,146 @@ describe("login scopes", () => {
     expect(scopes.some(s => s.startsWith("urn:zitadel:iam:org:id:"))).toBe(false);
   });
 });
+
+/**
+ * Two authorize-request parameters the flow was missing.
+ *
+ * `nonce` closes an OIDC gap: the OAuth `state` nonce was generated and verified
+ * correctly, so CSRF on the redirect was covered, but nothing bound the returned ID
+ * token to the request that asked for it. OIDC Core section 3.1.2.1 makes `nonce`
+ * the mechanism for that binding.
+ *
+ * `login_hint` is what carries the address the user already typed into the
+ * email-first screen, so they are not asked for it a second time on the login page.
+ * Without it the "hidden" tenant resolve is still hidden, but the user re-types
+ * their e-mail immediately afterwards, which is the exact papercut the flow exists
+ * to remove.
+ */
+describe("login authorize parameters", () => {
+  /** Run login far enough to capture the authorize URL, then abandon it. */
+  async function capturedUrl(options: Parameters<typeof login>[1]): Promise<URL> {
+    let authorizeUrl = "";
+    const identity = makeIdentity((url: string) => {
+      authorizeUrl = url;
+      return Promise.reject(new Error("stop here"));
+    });
+    await login(identity, options).catch(() => undefined);
+    return new URL(authorizeUrl);
+  }
+
+  it("sends a nonce so the ID token is bound to this request", async () => {
+    const url = await capturedUrl(OPTIONS);
+    const nonce = url.searchParams.get("nonce");
+    expect(nonce).toBeTruthy();
+    // Same generator as the state nonce: 32 random bytes, base64url.
+    expect((nonce ?? "").length).toBeGreaterThanOrEqual(43);
+  });
+
+  it("uses a different value for nonce and state", async () => {
+    // Reusing one value for both would make the CSRF token guessable from the ID
+    // token, and vice versa.
+    const url = await capturedUrl(OPTIONS);
+    expect(url.searchParams.get("nonce")).not.toBe(url.searchParams.get("state"));
+  });
+
+  it("issues a fresh nonce on every login attempt", async () => {
+    const first = await capturedUrl(OPTIONS);
+    const second = await capturedUrl(OPTIONS);
+    expect(first.searchParams.get("nonce")).not.toBe(second.searchParams.get("nonce"));
+  });
+
+  it("passes the already-typed address through as login_hint", async () => {
+    const url = await capturedUrl({ ...OPTIONS, loginHint: "ada@acme.com" });
+    expect(url.searchParams.get("login_hint")).toBe("ada@acme.com");
+  });
+
+  it("omits login_hint when no address was collected", async () => {
+    const url = await capturedUrl(OPTIONS);
+    expect(url.searchParams.has("login_hint")).toBe(false);
+  });
+
+  it("forces re-authentication when the caller asks for prompt=login", async () => {
+    // The shared-workstation case: `login_hint` alone can complete silently against
+    // the provider's existing session, landing the second person in the first
+    // person's account.
+    const url = await capturedUrl({ ...OPTIONS, loginHint: "ada@acme.com", prompt: "login" });
+    expect(url.searchParams.get("prompt")).toBe("login");
+  });
+
+  it("omits prompt entirely when the caller does not ask for one", async () => {
+    // A returning user must keep the instant path.
+    const url = await capturedUrl(OPTIONS);
+    expect(url.searchParams.has("prompt")).toBe(false);
+  });
+
+  it("ignores a blank login_hint rather than sending an empty parameter", async () => {
+    const url = await capturedUrl({ ...OPTIONS, loginHint: "   " });
+    expect(url.searchParams.has("login_hint")).toBe(false);
+  });
+});
+
+/**
+ * Sending a nonce and never checking it back is theatre, so this verifies the
+ * claim. The asymmetry between the two cases is deliberate and worth stating.
+ *
+ * A MISMATCH is unambiguous: the ID token was minted for a different authorize
+ * request than the one this client started, which is the substitution attack the
+ * nonce exists to catch. It fails hard.
+ *
+ * An ABSENT claim is not the same signal. OIDC Core requires the provider to echo
+ * the nonce when one was sent, but this has never been exercised against our
+ * deployed Zitadel, and hard-failing on it would turn an unverified assumption into
+ * a total sign-in outage across six surfaces on the day it shipped. So it is
+ * allowed by default and gated behind `requireNonce` for a surface that has
+ * confirmed its provider echoes it. That default is a knowing trade-off, not an
+ * oversight, and it should be flipped once verified.
+ */
+describe("login nonce verification", () => {
+  /** A login whose token response carries the given ID-token claims. */
+  async function loginReturning(
+    claims: (nonce: string) => Record<string, unknown>,
+    options: Parameters<typeof login>[1] = OPTIONS,
+  ) {
+    let sentNonce = "";
+    const identity = makeIdentity(async (url: string) => {
+      const params = new URL(url).searchParams;
+      sentNonce = params.get("nonce") ?? "";
+      return `https://app.example.com/callback?code=abc&state=${params.get("state")}`;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () =>
+          JSON.stringify({
+            access_token: "at",
+            id_token: makeJwt({ sub: "u1", ...claims(sentNonce) }),
+            expires_in: 3600,
+          }),
+      })),
+    );
+    return login(identity, options);
+  }
+
+  it("accepts an ID token whose nonce matches the request", async () => {
+    const result = await loginReturning(nonce => ({ nonce }));
+    expect(result.profile.sub).toBe("u1");
+  });
+
+  it("rejects an ID token minted for a different request", async () => {
+    await expect(loginReturning(() => ({ nonce: "some-other-nonce" }))).rejects.toThrow(/nonce/i);
+  });
+
+  it("allows a missing nonce claim by default, because the provider is unverified", async () => {
+    const result = await loginReturning(() => ({}));
+    expect(result.profile.sub).toBe("u1");
+  });
+
+  it("rejects a missing nonce claim when the surface opts into strictness", async () => {
+    await expect(loginReturning(() => ({}), { ...OPTIONS, requireNonce: true })).rejects.toThrow(
+      /nonce/i,
+    );
+  });
+});

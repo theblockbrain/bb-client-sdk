@@ -20,6 +20,7 @@ import { AUTH_SCOPES } from "../config.js";
 import type { BrowserRedirectOptions } from "./browser-redirect.js";
 import { beginBrowserLogin, completeBrowserLogin } from "./browser-redirect.js";
 import { login } from "./login.js";
+import { isOAuthDenied, OAuthError } from "./oauth-error.js";
 import { ORG_SCOPE_PREFIX } from "./org-scope.js";
 import { generateChallenge, generateStateNonce, generateVerifier } from "./pkce.js";
 
@@ -156,6 +157,48 @@ describe("generateVerifier / generateChallenge", () => {
   it("is deterministic for a given verifier", async () => {
     const verifier = generateVerifier();
     expect(await generateChallenge(verifier)).toBe(await generateChallenge(verifier));
+  });
+});
+
+/**
+ * The redirect flow has to carry the same two parameters the dialog flow does.
+ * It did not, and the consequence was not cosmetic: with a live provider session
+ * and no `prompt`, the authorize completes silently as whoever signed in last, so
+ * "add another account" signed the second person in as the first.
+ */
+describe("beginBrowserLogin — parity with the dialog flow", () => {
+  it("forwards the typed address as login_hint", async () => {
+    const url = await browserAuthorizeUrl({
+      clientId: "c",
+      redirectUri: REDIRECT_URI,
+      loginHint: "ada@acme.com",
+    });
+    expect(url.searchParams.get("login_hint")).toBe("ada@acme.com");
+  });
+
+  it("forces re-authentication when asked, so a live session cannot answer for someone else", async () => {
+    const url = await browserAuthorizeUrl({
+      clientId: "c",
+      redirectUri: REDIRECT_URI,
+      loginHint: "grace@acme.com",
+      prompt: "login",
+    });
+    expect(url.searchParams.get("prompt")).toBe("login");
+  });
+
+  it("sends neither when neither was asked for", async () => {
+    const url = await browserAuthorizeUrl({ clientId: "c", redirectUri: REDIRECT_URI });
+    expect(url.searchParams.has("login_hint")).toBe(false);
+    expect(url.searchParams.has("prompt")).toBe(false);
+  });
+
+  it("ignores a blank login_hint rather than sending an empty parameter", async () => {
+    const url = await browserAuthorizeUrl({
+      clientId: "c",
+      redirectUri: REDIRECT_URI,
+      loginHint: "  ",
+    });
+    expect(url.searchParams.has("login_hint")).toBe(false);
   });
 });
 
@@ -404,12 +447,19 @@ describe("completeBrowserLogin — CSRF guard and verifier lifetime", () => {
     expect(result.access_token).toBe("");
   });
 
-  it("surfaces an OAuth error from the IdP", async () => {
+  it("surfaces an OAuth error from the IdP as a typed failure", async () => {
     onCallbackUrl("?error=access_denied&error_description=User%20said%20no");
 
-    await expect(
-      completeBrowserLogin({ clientId: "c", redirectUri: "https://app.example.com/callback" }),
-    ).rejects.toThrow(/access_denied/);
+    // Typed rather than only described: a caller has to be able to recognise a
+    // declined consent screen without matching on the message.
+    const failure = await completeBrowserLogin({
+      clientId: "c",
+      redirectUri: "https://app.example.com/callback",
+    }).catch((err: unknown) => err);
+
+    expect(failure).toBeInstanceOf(OAuthError);
+    expect(isOAuthDenied(failure)).toBe(true);
+    expect((failure as OAuthError).description).toBe("User said no");
   });
 
   it("exchanges the code identically whether or not an orgId is passed", async () => {
