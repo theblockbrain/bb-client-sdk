@@ -84,8 +84,12 @@ into a product flow. **`src/auth/login.ts` is the one wired call site** (PDEV-68
 attributed to that user + tenant instead of an anonymous device id. `login()`'s signature and
 success/error behaviour are unchanged; the original error is always re-thrown.
 Because `identify`/`group` bind **process-wide**, a multi-tenant server adapter (Slack) must omit
-them and rely on per-event identity — both sink helpers then no-op. Still unwired:
-`session_token_*`, `message_*`, `stream_*`, and `api_error` (via `trackApiError`).
+them and rely on per-event identity — both sink helpers then no-op.
+
+`session_token_*` (`src/auth/refresh-singleton.ts`), `message_*` (`src/api/messages.ts`) and
+`stream_*` (`src/api/stream-result.ts`) are wired too. **`api_error` via `trackApiError` is the
+one group still unwired** — `throwIfNotOk` in `src/api/_send.ts` is the intended single emit
+point (PDEV-7009).
 
 > **One vocabulary (0.20.0).** `AnalyticsEventMap` is now an alias of `CoreEventMap`
 > (`./telemetry`) and the old `auth_*` / camelCase names are gone —

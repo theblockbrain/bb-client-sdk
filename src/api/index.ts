@@ -55,7 +55,11 @@ export { getMessageList, invalidateConvoDetailCache, sendMessage } from "./messa
 export type { MutationAckResponse } from "./mutation-ack.js";
 export type { CreateNoteParams, NoteResult } from "./notes.js";
 export { createNote } from "./notes.js";
-export type { MessageStream } from "./stream-result.js";
+// `StreamTelemetry` is exported because it is the type of a PUBLIC parameter on
+// both functions below. Leaving it internal makes that parameter unnameable: a
+// consumer can pass an object literal but cannot declare a variable for it, and
+// the contract snapshot cannot see it either.
+export type { MessageStream, StreamTelemetry } from "./stream-result.js";
 export { createMessageStream, wrapStringAsStream } from "./stream-result.js";
 export type {
   ListTenantsOptions,

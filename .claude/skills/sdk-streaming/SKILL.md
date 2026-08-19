@@ -79,7 +79,7 @@ Any change must keep every row true for **both** parsers and **all three transpo
 
 ## Phase 4 — Telemetry hooks (hard release gate)
 
-Streaming is where the health-telemetry invariant (`/sdk`, invariant **E**) is most measurable. The **AnalyticsAdapter** seam is **on `main`** (**WS9** — a peer of `StorageAdapter`/`IdentityAdapter`; PDEV-6854/6855): emit through `trackEvent(...)` from `@theblockbrain/bb-client-sdk/analytics`. The `stream_*` events are **not auto-emitted by the core** — they are wired incrementally at their call sites — so when you add or move streaming logic, wire these events (or leave a clearly-marked seam for them). Every name below is a key of `CoreEventMap` (`./telemetry`; `AnalyticsEventMap` is a `@deprecated` alias from `0.20.0`), defined in the telemetry reference — emit them **verbatim** (no shorthand); the seam's types reject anything else:
+Streaming is where the health-telemetry invariant (`/sdk`, invariant **E**) is most measurable. The **AnalyticsAdapter** seam is **on `main`** (**WS9** — a peer of `StorageAdapter`/`IdentityAdapter`; PDEV-6854/6855): emit through `trackEvent(...)` from `@theblockbrain/bb-client-sdk/analytics`. As of `0.20.0` the `stream_*` and `message_*` events **are** emitted by the core, from `src/api/stream-result.ts` and `src/api/messages.ts` — so when you add or move streaming logic, keep them emitting rather than re-wiring them, and add to `src/api/stream-result.test.ts`, which asserts the order and the props. Every name below is a key of `CoreEventMap` (`./telemetry`; `AnalyticsEventMap` is a `@deprecated` alias from `0.20.0`), defined in the telemetry reference — emit them **verbatim** (no shorthand); the seam's types reject anything else:
 
 | Event | Emit at | Notes |
 | --- | --- | --- |
