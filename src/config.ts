@@ -28,6 +28,15 @@ export const AUTH_SCOPES = [
 
 export const TOKEN_ENDPOINT = `${AUTH_AUTHORITY}/oauth/v2/token`;
 export const AUTHORIZE_ENDPOINT = `${AUTH_AUTHORITY}/oauth/v2/authorize`;
+/**
+ * RFC 7009 token revocation.
+ *
+ * Added with `logout()`, which is the first thing in the SDK to end a session at the
+ * IdP rather than only in local storage. Without it a sign-out left the
+ * `offline_access` refresh token valid for its full lifetime, so a user signing out
+ * on a shared or stolen device had ended nothing.
+ */
+export const REVOKE_ENDPOINT = `${AUTH_AUTHORITY}/oauth/v2/revoke`;
 
 /**
  * Base URL for the Agentic API.

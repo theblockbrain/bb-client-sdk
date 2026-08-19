@@ -16,8 +16,9 @@ export {
 export type { LoginOptions, LoginResult } from "./login.js";
 
 export { login } from "./login.js";
+export type { LogoutOptions, LogoutResult } from "./logout.js";
+export { logout } from "./logout.js";
 export { generateChallenge, generateStateNonce, generateVerifier } from "./pkce.js";
-
 export { createRefreshGuard } from "./refresh-singleton.js";
 export type { TokenResult } from "./tokens.js";
 export {
