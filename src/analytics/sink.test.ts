@@ -39,7 +39,7 @@ afterEach(() => resetAnalyticsAdapter());
 describe("analytics sink", () => {
   it("no-ops (and never throws) when no adapter is registered", () => {
     expect(getAnalyticsAdapter()).toBeNull();
-    expect(() => trackEvent("auth_started", { mode: "oauth" })).not.toThrow();
+    expect(() => trackEvent("sign_in_started", { method: "oidc" })).not.toThrow();
     expect(() => captureError(new Error("x"))).not.toThrow();
     expect(() => trackApiError({ statusCode: 500, endpoint: "/x" })).not.toThrow();
   });
@@ -49,15 +49,15 @@ describe("analytics sink", () => {
     setAnalyticsAdapter(adapter);
 
     trackEvent(
-      "auth_success",
-      { mode: "oauth", latencyMs: 42 },
+      "sign_in_completed",
+      { method: "oidc", latency_ms: 42 },
       { distinctId: "sub-1", orgId: "org-1" },
     );
 
     expect(events).toEqual([
       {
-        event: "auth_success",
-        props: { mode: "oauth", latencyMs: 42 },
+        event: "sign_in_completed",
+        props: { method: "oidc", latency_ms: 42 },
         identity: { distinctId: "sub-1", orgId: "org-1" },
       },
     ]);
@@ -73,7 +73,9 @@ describe("analytics sink", () => {
       },
     });
 
-    expect(() => trackEvent("message_send", { streaming: true })).not.toThrow();
+    expect(() =>
+      trackEvent("message_sent", { conversation_id: "c-1", message_id: "m-1", route: "chat" }),
+    ).not.toThrow();
     expect(() => captureError(new Error("boom"))).not.toThrow();
   });
 
@@ -92,7 +94,7 @@ describe("analytics sink", () => {
     expect(events).toHaveLength(1);
     expect(events[0].event).toBe("api_error");
     expect(events[0].props).toEqual({
-      statusCode: 503,
+      status_code: 503,
       endpoint: "/cortex/completions/v2/user-input",
     });
     expect(JSON.stringify(events[0])).not.toContain("token-abc-should-never-leak");

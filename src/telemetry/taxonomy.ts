@@ -258,6 +258,18 @@ export interface PeopleProperties {
  * Enforced at the seam rather than by reviewer vigilance. The `$`-prefixed names
  * are Mixpanel's own reserved profile properties; sending them would attach real
  * identity to a deliberately pseudonymous `distinct_id`.
+ *
+ * This is the ONE list every sink inherits, via `stripDeniedProperties` →
+ * `scrubProps` in `../analytics/scrub.ts`. A leaf that keeps its own copy is a
+ * leaf whose copy drifts, so add a name here rather than there.
+ *
+ * The OIDC/Zitadel claim spellings (`mail`, `user_email`, `username`,
+ * `preferred_username`, `given_name`, `family_name`) earn their place because the
+ * bag this guard exists to catch is a profile or ID-token claims object spread
+ * into props — and those are the names such an object actually uses. Folding
+ * (see {@link foldPropertyKey}) means each entry also covers its camelCase and
+ * `Title_Case` spellings, so `userEmail` and `givenName` need no entry of their
+ * own; `$first_name`/`$last_name` likewise already cover bare `first_name`.
  */
 export const DENIED_PROPERTY_KEYS = [
   "$email",
@@ -266,12 +278,22 @@ export const DENIED_PROPERTY_KEYS = [
   "$last_name",
   "$phone",
   "email",
+  "mail",
+  "user_email",
   "name",
+  "username",
+  "preferred_username",
+  "given_name",
+  "family_name",
   "display_name",
   "full_name",
   "phone",
   "subject",
   "body",
+  // Free text under a generic key. `message_text` is the taxonomy's own spelling,
+  // but `message` is what an `Error` and most API payloads call it, so it is the
+  // shape a dynamically-built bag arrives in.
+  "message",
   "message_text",
   "prompt",
   "query",

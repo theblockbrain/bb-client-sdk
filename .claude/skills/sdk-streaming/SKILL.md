@@ -79,18 +79,27 @@ Any change must keep every row true for **both** parsers and **all three transpo
 
 ## Phase 4 — Telemetry hooks (hard release gate)
 
-Streaming is where the health-telemetry invariant (`/sdk`, invariant **E**) is most measurable. The **AnalyticsAdapter** seam is **on `main`** (**WS9** — a peer of `StorageAdapter`/`IdentityAdapter`; PDEV-6854/6855): emit through `trackEvent(...)` from `@theblockbrain/bb-client-sdk/analytics`. The `stream_*` events are **not auto-emitted by the core** — they are wired incrementally at their call sites — so when you add or move streaming logic, wire these events (or leave a clearly-marked seam for them). Every name below is a key of the typed `AnalyticsEventMap` defined in the telemetry reference — emit them **verbatim** (no shorthand); the seam's types reject anything else:
+Streaming is where the health-telemetry invariant (`/sdk`, invariant **E**) is most measurable. The **AnalyticsAdapter** seam is **on `main`** (**WS9** — a peer of `StorageAdapter`/`IdentityAdapter`; PDEV-6854/6855): emit through `trackEvent(...)` from `@theblockbrain/bb-client-sdk/analytics`. The `stream_*` events are **not auto-emitted by the core** — they are wired incrementally at their call sites — so when you add or move streaming logic, wire these events (or leave a clearly-marked seam for them). Every name below is a key of `CoreEventMap` (`./telemetry`; `AnalyticsEventMap` is a `@deprecated` alias from `0.20.0`), defined in the telemetry reference — emit them **verbatim** (no shorthand); the seam's types reject anything else:
 
 | Event | Emit at | Notes |
 | --- | --- | --- |
-| `stream_start` | send accepted, before first byte | one per turn |
-| `stream_first_token` | first delta yielded from either parser | this IS the first-token-latency SLO signal |
-| `stream_complete` | terminal sentinel seen + `final` resolved | carries assembled length |
-| `stream_dropped` | reader closed before sentinel | requires the "saw terminal?" flag from Phase 3 |
+| `stream_started` | send accepted, before first byte | one per turn; props `{route, request_id?, conversation_id?}` |
+| `message_first_token` | first delta yielded from either parser | this IS the first-token-latency SLO signal; carries `ttft_ms`. Do **not** emit it on the non-SSE JSON path (`wrapStringAsStream`) — the only TTFT it could report is a fabricated `0` feeding the same p95 |
+| `message_completed` | terminal sentinel seen + `final` resolved | the turn's terminal event, not the transport's, so a non-streaming send closes the same funnel. Requires `outcome` |
+| `stream_dropped` | reader closed before sentinel | requires the "saw terminal?" flag from Phase 3. Emit **alongside** `message_completed{outcome:"error"}` — the drop is transport health, the completion is the funnel, and emitting only the drop leaves failed turns with no denominator |
+| `stream_stalled` | no delta for longer than the stall budget | props `{route, request_id?, stall_ms}` |
 | `stream_reconnect` | on a retry attempt (if/when added) | idempotency required |
-| `api_error` | on `BBApiError` from a send path | props `{statusCode, endpoint}`; scrub `responseBody` — never log tokens |
+| `api_error` | on `BBApiError` from a send path | event prop is `status_code` (the error field is `statusCode`); scrub `responseBody` — never log tokens |
 
-Do **not** invent a per-surface analytics call inside the core; emit through the adapter seam (`trackEvent`) so Slack/Lit/RN/add-ins each wire it to Mixpanel + Sentry + Faro. Wiring these on a surface is a **release-gate checklist item** — nothing ships without both product analytics and health telemetry. Full taxonomy, the typed `AnalyticsEventMap`, the identity model (Zitadel `sub` as distinct id, org as group, no PII), and the gate checklist: **[../sdk/references/telemetry-release-gate.md](../sdk/references/telemetry-release-gate.md)**.
+**Classify `stream_dropped.reason` from `BBApiError.kind`, not from `statusCode`.**
+`kind` maps almost 1:1 onto the closed `StreamDropReason` (`aborted`→`client_abort`,
+`network`→`network`, `timeout`→`timeout`, `parse`→`parse_error`, `http` 5xx→
+`server_error`). The transport turns a caller abort into
+`BBApiError{name:"BBApiError", statusCode:0, kind:"aborted"}` — so a check for
+`error.name === "AbortError"` never fires, and `statusCode` is `0` for every kind
+except `http`, which collapses abort, network and timeout into one bucket.
+
+Do **not** invent a per-surface analytics call inside the core; emit through the adapter seam (`trackEvent`) so Slack/Lit/RN/add-ins each wire it to Mixpanel + Sentry + Faro. Wiring these on a surface is a **release-gate checklist item** — nothing ships without both product analytics and health telemetry. Full taxonomy, the typed `CoreEventMap`, the identity model (Zitadel `sub` as distinct id, org as group, no PII), and the gate checklist: **[../sdk/references/telemetry-release-gate.md](../sdk/references/telemetry-release-gate.md)**.
 
 ---
 

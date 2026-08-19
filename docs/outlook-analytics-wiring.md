@@ -2,7 +2,7 @@
 
 Copy-paste-ready plan for the **Outlook pilot** (spec §9 Phase 2 · PDEV-7010). This is
 the *thin surface* side: the add-in inits Mixpanel, sets identity, and adds the ~4 events
-the SDK cannot see. The SDK's own catalog (`auth_*`, `message_send`, `stream_*`,
+the SDK cannot see. The SDK's own catalog (`sign_in_*`, `message_*`, `stream_*`,
 `api_error`) is the *intended* division of labour — see the second blocker below.
 
 > **Blocker 1 — the subpath.** The add-in must consume an SDK build that exports
@@ -16,7 +16,7 @@ the SDK cannot see. The SDK's own catalog (`auth_*`, `message_send`, `stream_*`,
 > (PDEV-6855) ships in `0.18.0`: `grep -rn "trackEvent(" src/` matches `src/analytics/` plus
 > `src/auth/login.ts`, which also binds identity/group on success — so registering an adapter
 > today gives you the auth funnel *and* correct user/tenant attribution for the four surface
-> events below. ⚠️ Still missing: `token_refresh`, `message_send` / `stream_*`, and `api_error`,
+> events below. ⚠️ Still missing: `session_token_*`, `message_*` / `stream_*`, and `api_error`,
 > which are unwired at their call sites. The min-event-set in §4 and the DoD in §5 cannot be
 > fully satisfied until those land — sequence that work before this pilot, or scope the pilot to
 > the auth funnel + surface events.
@@ -92,7 +92,7 @@ export function initAnalytics(consentGranted: boolean): void {
 
 /**
  * Bind identity for a session RESTORED from storage. After `login()` this is
- * unnecessary — the SDK binds it itself on `auth_success` (PDEV-6855). Both SDK
+ * unnecessary — the SDK binds it itself on `sign_in_completed` (PDEV-6855). Both SDK
  * helpers are guarded no-ops when no adapter is registered.
  */
 export function bindRestoredSession(profile: { sub: string; orgId?: string | null }): void {
@@ -135,7 +135,7 @@ onInsertClick(kind  => trackSurface({ name: "draft_inserted",  props: { kind } }
 onSettingToggle(setting => trackSurface({ name: "settings_changed", props: { setting } }));
 ```
 
-Everything else — the auth funnel, `message_send`/`stream_*` (TTFT), `api_error` — is designed
+Everything else — the auth funnel, `message_sent`/`stream_*` (TTFT), `api_error` — is designed
 to flow from the SDK with no add-in code, but **none of it is wired yet** (blocker 2 above).
 Registering the adapter is a prerequisite for it, not a trigger.
 
@@ -144,8 +144,8 @@ Registering the adapter is a prerequisite for it, not a trigger.
 | Requirement | Satisfied by |
 | --- | --- |
 | **Retention** — `identify` + ≥1 event/session | `identifyUser` + `taskpane_opened` |
-| **Activation** — first successful value | `draft_inserted` (SDK `stream_complete` as fallback) |
-| **Funnel** | `taskpane_opened` → `draft_requested` → SDK `message_send`/`stream_complete` → `draft_inserted` |
+| **Activation** — first successful value | `draft_inserted` (SDK `message_completed` as fallback) |
+| **Funnel** | `taskpane_opened` → `draft_requested` → SDK `message_sent`/`message_completed` → `draft_inserted` |
 
 ## 5. Definition of Done (release gate — O2)
 

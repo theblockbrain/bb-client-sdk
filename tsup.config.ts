@@ -19,6 +19,7 @@ export default defineConfig({
     "src/react/index.ts",
     "src/analytics/index.ts",
     "src/analytics/mixpanel.ts",
+    "src/analytics/faro.ts",
     "src/telemetry/index.ts",
     "src/telemetry/cookiebot.ts",
     // Node-only dev tooling. A LEAF: nothing under src/ imports it, and the `.`

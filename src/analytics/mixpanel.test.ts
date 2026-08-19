@@ -54,17 +54,17 @@ describe("createMixpanelAdapter", () => {
     setAnalyticsAdapter(createMixpanelAdapter(client, { superProps: { ...superProps } }));
 
     trackEvent(
-      "auth_success",
-      { mode: "oauth", latencyMs: 42 },
+      "sign_in_completed",
+      { method: "oidc", latency_ms: 42 },
       { distinctId: "sub-1", orgId: "org-1" },
     );
 
     expect(tracked).toEqual([
       {
-        event: "auth_success",
+        event: "sign_in_completed",
         props: {
-          mode: "oauth",
-          latencyMs: 42,
+          method: "oidc",
+          latency_ms: 42,
           // Per-event identity must ride along, so one process-wide adapter is
           // safe for a multi-tenant Node backend serving many orgs.
           distinct_id: "sub-1",
@@ -74,18 +74,18 @@ describe("createMixpanelAdapter", () => {
     ]);
   });
 
-  it("keeps statusCode and error_name — the denylist must not over-match", () => {
+  it("keeps status_code and error_name — the denylist must not over-match", () => {
     const { client, tracked } = makeMixpanelDouble();
     const adapter = createMixpanelAdapter(client, { superProps: { ...superProps } });
     setAnalyticsAdapter(adapter);
 
-    // Regression guard: `statusCode` normalizes to "statuscode" and `error_name` to
+    // Regression guard: `status_code` normalizes to "statuscode" and `error_name` to
     // "errorname". A substring rule against "code"/"name" would silently delete both
     // and gut these payloads.
-    trackEvent("api_error", { statusCode: 500, endpoint: "/x", method: "POST" });
+    trackEvent("api_error", { status_code: 500, endpoint: "/x", method: "POST" });
     adapter.captureError(new RangeError("boom"));
 
-    expect(tracked[0].props).toEqual({ statusCode: 500, endpoint: "/x", method: "POST" });
+    expect(tracked[0].props).toEqual({ status_code: 500, endpoint: "/x", method: "POST" });
     expect(tracked[1].props).toEqual({ error_name: "RangeError" });
   });
 
@@ -166,10 +166,10 @@ describe("createMixpanelAdapter", () => {
       groupKey: "org_id",
     });
 
-    adapter.track("stream_start", { backend: "agentic" }, { orgId: "org-9" });
+    adapter.track("stream_started", { route: "agent" }, { orgId: "org-9" });
     adapter.group?.("org-9");
 
-    expect(tracked[0].props).toEqual({ backend: "agentic", org_id: "org-9" });
+    expect(tracked[0].props).toEqual({ route: "agent", org_id: "org-9" });
     expect(groups).toEqual([["org_id", "org-9"]]);
   });
 
@@ -177,16 +177,21 @@ describe("createMixpanelAdapter", () => {
     const { client, tracked } = makeMixpanelDouble();
     setAnalyticsAdapter(createMixpanelAdapter(client, { superProps: { ...superProps } }));
 
-    trackEvent("stream_complete", { backend: undefined, durationMs: 120 });
+    trackEvent("message_completed", {
+      route: "chat",
+      request_id: undefined,
+      duration_ms: 120,
+      outcome: "success",
+    });
 
-    expect(tracked[0].props).toEqual({ durationMs: 120 });
+    expect(tracked[0].props).toEqual({ route: "chat", duration_ms: 120, outcome: "success" });
   });
 
   it("never forwards a response body or any other denylisted field", () => {
     const { client, tracked } = makeMixpanelDouble();
     setAnalyticsAdapter(createMixpanelAdapter(client, { superProps: { ...superProps } }));
 
-    // The sink already scrubs api_error down to statusCode + endpoint; the
+    // The sink already scrubs api_error down to status_code + endpoint; the
     // adapter's denylist is the second line of defence.
     trackApiError({
       name: "BBApiError",
@@ -197,7 +202,7 @@ describe("createMixpanelAdapter", () => {
 
     expect(tracked).toHaveLength(1);
     expect(tracked[0].props).toEqual({
-      statusCode: 503,
+      status_code: 503,
       endpoint: "/cortex/completions/v2/user-input",
     });
     expect(JSON.stringify(tracked)).not.toContain("token-abc-should-never-leak");
@@ -263,7 +268,11 @@ describe("createMixpanelAdapter", () => {
       superProps: { ...superProps },
     });
 
-    adapter.track("message_send", { streaming: true }, { orgId: "org-1" });
+    adapter.track(
+      "message_sent",
+      { conversation_id: "c-1", message_id: "m-1", route: "chat" },
+      { orgId: "org-1" },
+    );
     adapter.captureError(new Error("boom"));
     adapter.identify?.("sub-3");
     adapter.group?.("org-3");
@@ -300,6 +309,8 @@ describe("createMixpanelAdapter", () => {
     });
     setAnalyticsAdapter(createMixpanelAdapter(client, { superProps: { ...superProps } }));
 
-    expect(() => trackEvent("message_send", { streaming: true })).not.toThrow();
+    expect(() =>
+      trackEvent("message_sent", { conversation_id: "c-1", message_id: "m-1", route: "chat" }),
+    ).not.toThrow();
   });
 });

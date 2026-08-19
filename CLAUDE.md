@@ -11,7 +11,7 @@ a change that breaks any one adapter is a defect.
 
 Before doing **any** work in this repo, load the base skill:
 [`.claude/skills/sdk/SKILL.md`](.claude/skills/sdk/SKILL.md). It is the authoritative
-entry point: the layer map (19 entry points today), the five prime invariants, the adapter
+entry point: the layer map (21 entry points today), the five prime invariants, the adapter
 matrix, and the per-change verification loop. Then load the task sub-skill:
 
 - [`sdk-auth`](.claude/skills/sdk-auth/SKILL.md) — PKCE / tokens / refresh / `AuthContext` (security-critical)
@@ -78,18 +78,34 @@ setAnalyticsAdapter(analytics);
 
 The sink is safe by construction: it **no-ops when no adapter is registered and never throws**
 into a product flow. **`src/auth/login.ts` is the one wired call site** (PDEV-6855): it emits
-`auth_started` / `auth_success{latencyMs}` / `auth_failed{stage}` — `stage` a coarse
+`sign_in_started` / `sign_in_completed{latency_ms}` / `sign_in_failed{stage}` — `stage` a coarse
 `launch|parse|exchange` label, never error detail — and binds the analytics identity on success via
 `identifyUser(profile.sub)` + `setAnalyticsGroup(profile.orgId)`, so every *later* event is
 attributed to that user + tenant instead of an anonymous device id. `login()`'s signature and
 success/error behaviour are unchanged; the original error is always re-thrown.
 Because `identify`/`group` bind **process-wide**, a multi-tenant server adapter (Slack) must omit
 them and rely on per-event identity — both sink helpers then no-op. Still unwired:
-`token_refresh`, `message_send`, `stream_*`, and `api_error` (via `trackApiError`).
+`session_token_*`, `message_*`, `stream_*`, and `api_error` (via `trackApiError`).
 
-A ready-made Mixpanel implementation ships as an **opt-in leaf** at `./analytics/mixpanel`
-(`createMixpanelAdapter`) — typed structurally against `mixpanel-browser`, so the SDK still has
-no analytics dependency and the core still tree-shakes clean. See
+> **One vocabulary (0.20.0).** `AnalyticsEventMap` is now an alias of `CoreEventMap`
+> (`./telemetry`) and the old `auth_*` / camelCase names are gone —
+> `auth_success{latencyMs}` → `sign_in_completed{latency_ms}`, `message_send` →
+> `message_sent`, `stream_complete` → `message_completed`, `api_error.statusCode` →
+> `status_code`. Property names are snake_case because they double as Prometheus
+> label names. `LEGACY_EVENT_RENAMES` is the machine-readable old→new map; the
+> migration table is in [`CHANGELOG.md`](CHANGELOG.md). **Prefer `CoreEventMap`** —
+> the alias exists only so `0.19.0` type references keep resolving.
+
+Two ready-made implementations ship as **opt-in leaves**, both typed structurally so the
+SDK still declares no analytics dependency and the core still tree-shakes clean:
+`./analytics/mixpanel` (`createMixpanelAdapter`, the product-analytics half) and
+`./analytics/faro` (`createFaroAdapter`, the browser-RUM half). `setAnalyticsAdapter`
+takes one adapter and the release gate wants both, so `createCompositeAdapter`
+(from `./analytics`) fans one event out to several sinks with each child guarded
+individually — one throwing sink cannot silence the others. ⚠️ The composite declares
+`identify`/`group` when **any** child implements them, so composing a child that has
+them with one that deliberately omits them re-arms the process-wide binding; for Slack,
+compose only sinks that omit it. See
 [`references/telemetry-release-gate.md`](.claude/skills/sdk/references/telemetry-release-gate.md).
 
 ## Verify loop (run before every commit)
@@ -127,7 +143,7 @@ src/public-api.contract.test.ts`) and choose the version bump per
   hoisting static values and pure helpers, magic numbers as named constants, modern idioms,
   and the mandatory build in the verification checklist. **Ignore** its Tailwind v4 section
   (this package ships one CSS file and consumes no Tailwind), its React component-ordering and
-  `useState`-generic rules (only 2 of 18 entry points touch React), and its lodash import
+  `useState`-generic rules (of 21 entry points, only `./react` and `./ui*` touch React), and its lodash import
   rules (`marked` is the only runtime dependency). Where the two disagree, the repo-specific
   rules in [`.github/copilot-instructions.md`](.github/copilot-instructions.md) win — a
   library's public `.d.ts` has constraints an app's internals do not.

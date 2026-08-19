@@ -32,6 +32,9 @@ export type {
   AnalyticsIdentity,
 } from "../adapters/analytics.js";
 
+export type { CompositeChild } from "./composite.js";
+export { createCompositeAdapter } from "./composite.js";
+
 let current: AnalyticsAdapter | null = null;
 
 /**
@@ -140,7 +143,9 @@ export function trackApiError(error: unknown, identity?: AnalyticsIdentity): voi
   const statusCode = typeof e?.statusCode === "number" ? e.statusCode : undefined;
   if (statusCode === undefined) return;
   const endpoint = typeof e?.endpoint === "string" ? e.endpoint : undefined;
-  trackEvent("api_error", { statusCode, endpoint }, identity);
+  // `status_code`, not `statusCode`: the taxonomy's property names double as
+  // Prometheus label names downstream — see the note on `AnalyticsEventMap`.
+  trackEvent("api_error", { status_code: statusCode, endpoint }, identity);
 }
 
 /**

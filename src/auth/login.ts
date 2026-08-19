@@ -1,6 +1,7 @@
 import type { IdentityAdapter } from "../adapters/identity.js";
 import { identifyUser, setAnalyticsGroup, trackEvent } from "../analytics/index.js";
 import { AUTH_SCOPES, AUTHORIZE_ENDPOINT, TOKEN_ENDPOINT } from "../config.js";
+import type { SignInMethod, SignInStage } from "../telemetry/taxonomy.js";
 import type { Profile } from "./jwt-claims.js";
 import { extractProfile } from "./jwt-claims.js";
 // Shared with `beginBrowserLogin`. Two copies of a tenant-routing rule is a
@@ -10,6 +11,14 @@ import { withOrgScope } from "./org-scope.js";
 import { generateChallenge, generateStateNonce, generateVerifier } from "./pkce.js";
 import type { TokenResult } from "./tokens.js";
 import { computeExpiration, exchangeCode } from "./tokens.js";
+
+/**
+ * How this module signs a user in, in the taxonomy's closed vocabulary.
+ *
+ * Hoisted so the three `sign_in_*` events cannot drift apart: a funnel whose
+ * `started` and `completed` legs disagree on `method` silently reports 0%.
+ */
+const SIGN_IN_METHOD: SignInMethod = "oidc";
 
 export interface LoginResult extends TokenResult {
   /** Unix timestamp (ms) when access_token expires. */
@@ -71,9 +80,12 @@ export async function login(
   options: LoginOptions,
 ): Promise<LoginResult> {
   const startedAt = Date.now();
-  trackEvent("auth_started", { mode: "oauth" });
+  // `oidc`, not `oauth`: `method` is the taxonomy's closed {@link SignInMethod}
+  // vocabulary (password | sso | oidc | api_key), and this function is the
+  // OIDC/PKCE authorization-code path specifically.
+  trackEvent("sign_in_started", { method: SIGN_IN_METHOD });
   // Coarse failure phase for telemetry only — never carries error detail (no PII/secrets).
-  let stage: "launch" | "parse" | "exchange" = "launch";
+  let stage: SignInStage = "launch";
   try {
     const {
       clientId,
@@ -136,8 +148,8 @@ export async function login(
     if (profile.orgId) setAnalyticsGroup(profile.orgId);
 
     trackEvent(
-      "auth_success",
-      { mode: "oauth", latencyMs: Date.now() - startedAt },
+      "sign_in_completed",
+      { method: SIGN_IN_METHOD, latency_ms: Date.now() - startedAt },
       { distinctId: profile.sub, orgId: profile.orgId ?? undefined },
     );
 
@@ -149,7 +161,7 @@ export async function login(
     };
   } catch (err) {
     // Fire-and-forget health signal; the original error is re-thrown unchanged.
-    trackEvent("auth_failed", { mode: "oauth", stage });
+    trackEvent("sign_in_failed", { method: SIGN_IN_METHOD, stage });
     throw err;
   }
 }

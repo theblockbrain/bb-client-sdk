@@ -54,6 +54,7 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "BrowserRedirectOptions",
   "CapabilitySwitch",
   "CapabilitySwitchesResponse",
+  "CompositeChild",
   "ConnectIntegrationData",
   "ConnectIntegrationFrame",
   "ConversationDetail",
@@ -144,6 +145,7 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "collectTextFromStream",
   "completeBrowserLogin",
   "computeExpiration",
+  "createCompositeAdapter",
   "createConversation",
   "createFetchTransport",
   "createIntlFormatter",
@@ -372,7 +374,9 @@ exports[`public API surface > exports of "./analytics" are stable 1`] = `
   "AnalyticsEventName",
   "AnalyticsEventProps",
   "AnalyticsIdentity",
+  "CompositeChild",
   "captureError",
+  "createCompositeAdapter",
   "flushAnalytics",
   "getAnalyticsAdapter",
   "identifyUser",
@@ -381,6 +385,15 @@ exports[`public API surface > exports of "./analytics" are stable 1`] = `
   "setAnalyticsGroup",
   "trackApiError",
   "trackEvent",
+]
+`;
+
+exports[`public API surface > exports of "./analytics/faro" are stable 1`] = `
+[
+  "FaroAdapterConfig",
+  "FaroLike",
+  "FaroUser",
+  "createFaroAdapter",
 ]
 `;
 

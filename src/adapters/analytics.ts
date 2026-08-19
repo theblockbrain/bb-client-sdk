@@ -17,6 +17,8 @@
  *   names, or raw `BBApiError.responseBody`.
  */
 
+import type { CoreEventMap, CoreEventName, CoreEventProps } from "../telemetry/taxonomy.js";
+
 /** Stable, pseudonymous identity attached to events. Never PII. */
 export interface AnalyticsIdentity {
   /** Zitadel `sub` claim — a stable pseudonymous user id (never an email/name). */
@@ -26,28 +28,33 @@ export interface AnalyticsIdentity {
 }
 
 /**
- * The standard SDK event taxonomy. Keys are event names; values are the
- * (PII-free) property shape for that event. Extend deliberately — every surface
- * and dashboard depends on these names staying stable.
+ * The standard SDK event taxonomy — **one** vocabulary, defined in
+ * {@link CoreEventMap} (`./telemetry`).
+ *
+ * This used to be a second, independently-declared map (`auth_success`,
+ * `message_send`, `stream_start`, camelCase props). Two vocabularies for the same
+ * concepts is a dashboard-breaking trap: whichever a surface happens to emit
+ * becomes the query keys of every panel and burn-rate rule built on it, and the
+ * two cannot both be right. `CoreEventMap` wins for three concrete reasons:
+ *
+ * 1. **Its property names are legal, conventional Prometheus labels.** Metric and
+ *    label names match `[a-zA-Z_][a-zA-Z0-9_]*`, so `status_code` / `ttft_ms` /
+ *    `latency_ms` sit beside the platform's existing series while `statusCode` /
+ *    `latencyMs` read as foreign in every PromQL query written against them.
+ * 2. **It carries `route`** (the shared client/backend vocabulary) rather than a
+ *    SDK-private `backend: "blocky" | "agentic"`, so a panel can slice the same
+ *    way the retrieval dashboards already do.
+ * 3. **It cannot silently drift** — {@link CORE_EVENT_NAMES} is proved exhaustive
+ *    against the map at compile time, and it ships with the consent gate and PII
+ *    denylist that the release gate assumes.
+ *
+ * @deprecated Prefer `CoreEventMap` from `@theblockbrain/bb-client-sdk/telemetry`.
+ * Retained as an alias so type references written against `0.18.0` keep resolving.
  */
-export interface AnalyticsEventMap {
-  auth_started: { mode: "oauth" | "api-key" };
-  auth_success: { mode: "oauth" | "api-key"; latencyMs?: number };
-  /** `stage` is a coarse phase label — never error detail. */
-  auth_failed: { mode: "oauth" | "api-key"; stage?: "launch" | "parse" | "exchange" };
-  token_refresh: { ok: boolean; latencyMs?: number };
-  message_send: { conversationId?: string; backend?: "blocky" | "agentic"; streaming: boolean };
-  stream_start: { backend?: "blocky" | "agentic" };
-  stream_first_token: { backend?: "blocky" | "agentic"; latencyMs?: number };
-  stream_complete: { backend?: "blocky" | "agentic"; durationMs?: number };
-  stream_dropped: { backend?: "blocky" | "agentic"; reason?: string };
-  stream_reconnect: { backend?: "blocky" | "agentic"; attempt: number };
-  /** HTTP failure. NEVER include the response body — scrub to status + endpoint. */
-  api_error: { statusCode: number; endpoint?: string; method?: string };
-}
+export type AnalyticsEventMap = CoreEventMap;
 
-export type AnalyticsEventName = keyof AnalyticsEventMap;
-export type AnalyticsEventProps<K extends AnalyticsEventName> = AnalyticsEventMap[K];
+export type AnalyticsEventName = CoreEventName;
+export type AnalyticsEventProps<K extends AnalyticsEventName> = CoreEventProps<K>;
 
 /**
  * Extra context for `captureError`. Keep it PII/secret-free. Values are

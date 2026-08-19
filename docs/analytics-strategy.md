@@ -47,9 +47,11 @@ The SDK already wraps auth, the API client, streaming, and error typing — so i
 To be emitted from SDK internals, identical across surfaces. The typed names live in
 `AnalyticsEventMap` (which *is* on `main`); only the auth call site is wired:
 
-- **Auth funnel** — `auth_started` → `auth_success` / `auth_failed` (coarse `stage`, never error detail) — **wired in `src/auth/login.ts`** (PDEV-6855), which also binds identity/group on success. `token_refresh` not yet wired.
-- **AI funnel** — `message_send` → `stream_start` → `stream_first_token` (TTFT) → `stream_complete`; `stream_dropped` / `stream_reconnect`.
-- **Errors** — `api_error` (scrubbed to `statusCode` + `endpoint`; **never** `responseBody`).
+- **Auth funnel** — `sign_in_started` → `sign_in_completed` / `sign_in_failed` (coarse `stage`, never error detail) — **wired in `src/auth/login.ts`** (PDEV-6855), which also binds identity/group on success. `session_token_refreshed` / `session_token_refresh_failed` not yet wired.
+- **AI funnel** — `message_sent` → `stream_started` → `message_first_token` (TTFT, `ttft_ms`) → `message_completed{outcome}`; `stream_dropped` / `stream_stalled` / `stream_reconnect`.
+- **Errors** — `api_error` (scrubbed to `status_code` + `endpoint`; **never** `responseBody`) and `error_raised`.
+
+> Renamed in `0.20.0` — the old `auth_*` / camelCase names are retired. See `LEGACY_EVENT_RENAMES` and the CHANGELOG migration table.
 
 > Note: the taxonomy in `src/adapters/analytics.ts` (WS9 seam, PDEV-6854 — on `main`) uses these SDK-internal names. The Confluence spec's catalog uses product-funnel names (`conversation_started`, `message_completed`, …); mapping/aligning the two is the KR 2.1 standardization work (PDEV-7011). The adapter is the place to translate if the dashboard needs the spec's names.
 
@@ -106,6 +108,6 @@ if (profile.orgId) setAnalyticsGroup(profile.orgId);
 
 The intent is that the SDK emits the core catalog (auth, chat/streaming, api_error) with the
 surface adding only its own thin events. ⚠️ **Only the auth third is wired today** —
-`src/auth/login.ts` emits `auth_started`/`auth_success`/`auth_failed` and binds identity
-(PDEV-6855). `token_refresh`, `message_send`/`stream_*` and `api_error` are unwired, so §4 still
+`src/auth/login.ts` emits `sign_in_started`/`sign_in_completed`/`sign_in_failed` and binds identity
+(PDEV-6855). `session_token_*`, `message_*`/`stream_*` and `api_error` are unwired, so §4 still
 describes a target catalog rather than shipped behaviour for those.
