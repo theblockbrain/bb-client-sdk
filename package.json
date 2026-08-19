@@ -155,7 +155,8 @@
     "prepack": "npm run build",
     "prepublishOnly": "npm run build",
     "check:cleanroom": "node scripts/clean-room-check.mjs",
-    "release:status": "node scripts/release-status.mjs"
+    "release:status": "node scripts/release-status.mjs",
+    "verify:published": "node scripts/verify-published.mjs"
   },
   "engines": {
     "node": ">=24"
