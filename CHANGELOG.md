@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.21.0 — email-first sign-in, and a guard for a server-side relay bug
+
+Cut from `main` after PR #55. Purely **additive**: nine new names, no rename, no
+signature change, no behaviour change to an existing export. The contract snapshot
+diff is additions only, which is why this is a minor rather than the migration-note
+kind of minor 0.20.0 was.
+
+### ✉️ Email-first sign-in
+
+`loginEmailFirst` (from `./auth`) orchestrates the whole flow: resolve the address
+to its tenants, let the surface pick when the answer is ambiguous, then run the
+ordinary PKCE login pinned to whatever came out. `discoverTenants` is the resolve
+step on its own, and `OAuthError` / `isOAuthDenied` / `readOAuthError` turn the
+provider's error response into something a caller can branch on instead of matching
+message text.
+
+**The ordering is the security property**, and it is why this lives here rather than
+in each surface: resolve before you pin, pin before you authorize, and never let a
+tenant the user was not offered reach the authorize request. The picker is a callback
+because that ordering has to be identical everywhere while the rendering has nothing
+in common between a phone and a 320px task pane.
+
+`login()` gains `loginHint`, `prompt` and `requireNonce`. `prompt` is the shared-device
+one: `login_hint` is only a hint, so with a live provider session an authorize call can
+complete silently as whoever signed in last. Send `"login"` when the address differs
+from the last one used and the second person at a shared machine no longer lands in the
+first person's account.
+
+`requireNonce` defaults to `false` on purpose. A nonce *mismatch* always fails either
+way; the flag governs only the *absent* case, which has not been exercised against our
+deployed Zitadel. Turn it on per surface once the provider is confirmed.
+
+**The endpoint behind `discoverTenants` is guarded by a shared static key**, not an
+auth boundary, and an unmatched domain discloses the shared workspaces. The
+per-address enumeration oracle it used to have was closed in botticelli#6296 before
+this shipped. Neither remaining property is introduced here, but a surface turning
+this on should know both.
+
+### 🛑 A turn stops instead of reporting work it did not do
+
+`callAgenticStream` now fails with `AgenticStreamError` / `multiple-suspends` when two
+client-executed tools suspend in one step, rather than silently answering one of them.
+
+The server hands a single `resumeData` to *every* suspended call, so relaying two tools
+in one step ran one for real and gave the rest its result while the model was told all
+of them had succeeded. Asked to delete a paragraph and a table row together, the row
+went, the paragraph did not, and the reply claimed both.
+
+The server-side fix is botticelli#6497, which puts the relay on Mastra's sequential
+path so one suspend arrives per pass. This is the guard for a regression of that
+guarantee, not the fix itself.
+
 ## 0.20.0 — one telemetry vocabulary, the wired funnel, and a real sign-out
 
 Cut from `main` after PRs #51, #52, #53 and #54. Four things a consumer will notice:
