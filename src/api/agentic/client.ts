@@ -581,6 +581,12 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
 
     let approvalData: { runId?: string; toolCallId?: string; toolName?: string } | null = null;
     let suspendData: SuspendContext | null = null;
+    /**
+     * Suspends seen this pass. Only one can be resumed, because the resume body
+     * carries a single `runId` and `resumeData`, so a second one is a request we
+     * cannot answer and must not pretend to.
+     */
+    let suspendCount = 0;
     let tooLargeToolName: string | null = null;
     let serverError: AgenticStreamErrorData | null = null;
     // Arguments seen this stream, keyed by toolCallId. Preferred over the suspend's
@@ -620,7 +626,12 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
       }
 
       if (isToolCallSuspendedFrame(frame)) {
-        suspendData = frame.data;
+        // Assigning over a previous suspend is what made a two-tool turn lose
+        // one of them: the first was overwritten, never ran, and nothing told
+        // the model, so it reported both as done. Keep the first and count the
+        // rest, so the mismatch is raised below rather than swallowed.
+        suspendCount++;
+        if (suspendData === null) suspendData = frame.data;
         continue;
       }
 
@@ -663,6 +674,20 @@ export async function* callAgenticStream(options: AgenticCallOptions): AsyncIter
           `regenerate the same oversized call. Split the request into smaller steps.`,
         "tool-call-too-large",
         { partial: sawText, toolName: tooLargeToolName },
+      );
+    }
+
+    // Before any resume, for the same reason the fail-fast above comes first:
+    // resuming would run one tool and drop the other, and the turn would read as
+    // a success that did half of what was asked.
+    if (suspendCount > 1) {
+      throw new AgenticStreamError(
+        `Agentic turn stopped: the server suspended on ${suspendCount} tools in one step, and a ` +
+          `resume can answer only one. Continuing would run one tool and hand its result to all ` +
+          `of them, so the model would report every one as done. The host is meant to relay these ` +
+          `one at a time; reaching this means that guarantee has been lost server-side.`,
+        "multiple-suspends",
+        { partial: sawText },
       );
     }
 
