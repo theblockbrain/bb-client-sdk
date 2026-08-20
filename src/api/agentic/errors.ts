@@ -16,11 +16,15 @@ import type { AgenticErrorCode, AgenticErrorCodeValue } from "./types.js";
  *   Resuming regenerates the same oversized call, so the turn stops instead.
  * - `server-error`             — the server emitted a structured `data-error` frame.
  * - `resume-budget-exhausted`  — `maxAutoResumes` resume cycles were used up.
+ * - `multiple-suspends`        — the model suspended on more than one tool in a
+ *   single step. A resume answers exactly one, so continuing would run one tool,
+ *   drop the other, and leave the model reporting both as done.
  */
 export type AgenticStreamErrorReason =
   | "tool-call-too-large"
   | "server-error"
-  | "resume-budget-exhausted";
+  | "resume-budget-exhausted"
+  | "multiple-suspends";
 
 /**
  * An Agentic turn terminated before producing a complete answer.

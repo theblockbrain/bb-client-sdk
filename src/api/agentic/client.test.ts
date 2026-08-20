@@ -287,6 +287,24 @@ describe("callAgenticStream — fail-fast frames (PDEV-7333)", () => {
       expect((err as AgenticStreamError).partial).toBe(true);
     });
 
+    it("refuses two suspends in one step rather than running one and dropping the other", async () => {
+      // A resume answers exactly one suspend. Overwriting the first meant a
+      // two-tool step ran only the second, and nothing told the model, so it
+      // reported both as done: asked to delete a paragraph and a table row, it
+      // deleted the row and said it had proposed the paragraph too.
+      const SECOND = {
+        type: "data-tool-call-suspended",
+        data: { runId: "run-2", toolCallId: "call-3" },
+      };
+      stubSequence([SUSPEND_FRAME, SECOND]);
+
+      const err = await thrownBy(callAgenticStream(DENY));
+
+      expect(isAgenticStreamError(err)).toBe(true);
+      expect((err as AgenticStreamError).reason).toBe("multiple-suspends");
+      expect((err as Error).message).toContain("2 tools");
+    });
+
     it("throws on an exhausted suspend budget too", async () => {
       stubSequence([SUSPEND_FRAME], [SUSPEND_FRAME]);
 
