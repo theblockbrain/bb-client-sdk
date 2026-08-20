@@ -170,8 +170,16 @@ export interface TransportConfig {
    * rotating refresh token nine of them fail and log the user out. The transport
    * does not impose the guard because the guard belongs to the surface's token
    * store, which is where the new token has to be persisted anyway.
+   *
+   * Receives the request so the surface can decline per call rather than per
+   * transport. A 401 from a host the token was not issued for is that host saying
+   * no, and refreshing cannot change it: `b2b-webcomponents` must not sign a user
+   * out of a working chat because they opened a tab whose service their tenant has
+   * not enabled. Host is usually the deciding field, but not always, so the whole
+   * request is passed: b2b opts out of `blocky`'s own `/file-refs/resolve` too.
+   * Return `null` to let the 401 through.
    */
-  readonly onUnauthorized?: () => Promise<string | null>;
+  readonly onUnauthorized?: (req: TransportRequest) => Promise<string | null>;
 }
 
 export interface RetryPolicy {
@@ -236,7 +244,14 @@ export function createFetchTransport(config: TransportConfig = {}): Transporter 
           );
         }
 
-        let res = await attempt(doFetch, url, req, plan, config.retry);
+        // `config.headers` is applied here rather than inside `attempt`, so the 401
+        // replay below inherits it from `sent` instead of restating the merge.
+        // Request headers win on a collision, per the field's contract.
+        const sent: TransportRequest = config.headers
+          ? { ...req, headers: { ...config.headers(), ...req.headers } }
+          : req;
+
+        let res = await attempt(doFetch, url, sent, plan, config.retry);
 
         // ── 401 → refresh → replay once (PDEV-7340) ──────────────────────────
         // Once, never in a loop: if the fresh token also gets a 401 the problem is
@@ -244,11 +259,11 @@ export function createFetchTransport(config: TransportConfig = {}): Transporter 
         // Applies to streamed requests too — an expired token fails a stream just
         // as readily, and re-opening it is exactly what a surface would hand-roll.
         if (res.status === 401 && config.onUnauthorized) {
-          const refreshed = await config.onUnauthorized();
+          const refreshed = await config.onUnauthorized(req);
           if (refreshed) {
             const replay: TransportRequest = {
-              ...req,
-              headers: { ...req.headers, Authorization: `Bearer ${refreshed}` },
+              ...sent,
+              headers: { ...sent.headers, Authorization: `Bearer ${refreshed}` },
             };
             res = await attempt(doFetch, url, replay, plan, config.retry);
           }

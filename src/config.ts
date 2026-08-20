@@ -50,6 +50,17 @@ export const REVOKE_ENDPOINT = `${AUTH_AUTHORITY}/oauth/v2/revoke`;
 export const AGENTIC_BASE_URL = "https://agentic.theblockbrain.ai/api";
 
 /**
+ * The workflow service origin.
+ *
+ * Origin only, no `/api`: botticelli's `csp.test.ts` asserts
+ * `NEXT_PUBLIC_WORKFLOW_SERVICE_API_URL` as `https://workflow.theblockbrain.ai/api`, and the
+ * provider passes it through `toHostRoot()`, so the prefix belongs to the route rather than
+ * the host. `b2b-webcomponents` reaches this service on 25 call sites and had no host to name
+ * it (PDEV-7349).
+ */
+export const WORKFLOW_BASE_URL = "https://workflow.theblockbrain.ai";
+
+/**
  * Origin of the integrations host — the `agents`, `capabilities` and `tenants`
  * routes (see `src/api/_auth-headers.ts`, which documents the different auth
  * pipeline these use).
@@ -84,16 +95,16 @@ export const INTEGRATIONS_BASE_URL = "https://integrations.theblockbrain.ai";
 export const INTEGRATIONS_API_PREFIX = "/api/v1";
 
 /**
- * The three BlockBrain hosts.
+ * The BlockBrain hosts.
  *
- * Proxy mode is a URL rewrite, not a fourth host — b2b rewrites an already-built
- * URL rather than selecting a different origin (PDEV-7335).
+ * Proxy mode is a URL rewrite, not a host — b2b rewrites an already-built URL
+ * rather than selecting a different origin (PDEV-7335).
  *
  * Lives here rather than beside the transport so that `./settings` can type
  * `AuthContext.hosts` without importing from `./api` — `src/api` already depends on
  * `src/settings`, and `src/config` is the leaf both can reach.
  */
-export type BBHost = "blocky" | "integrations" | "agentic" | "auth";
+export type BBHost = "blocky" | "integrations" | "agentic" | "auth" | "workflow";
 
 export type BBHosts = Readonly<Record<BBHost, string>>;
 
@@ -113,4 +124,5 @@ export const DEFAULT_HOSTS: BBHosts = {
   // adapter's timeout, retry and custom headers — covering auth too. Auth is the
   // call you least want on a different code path from everything else.
   auth: AUTH_AUTHORITY,
+  workflow: WORKFLOW_BASE_URL,
 };

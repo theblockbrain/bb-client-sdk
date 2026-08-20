@@ -5,6 +5,7 @@ import {
   AUTH_AUTHORITY,
   INTEGRATIONS_BASE_URL,
   OAUTH_BACKEND_URL,
+  WORKFLOW_BASE_URL,
 } from "../config.js";
 import { isBBApiError, isRetryableStatus } from "./errors.js";
 import {
@@ -91,6 +92,62 @@ const GET: Pick<TransportRequest, "host" | "path" | "method"> = {
 
 // ─── Hosts + URL construction ─────────────────────────────────────────────────
 
+describe("createFetchTransport — per-request extra headers", () => {
+  // This config field was declared and documented for b2b's gateway headers but
+  // never read by the implementation, so every proxy-mode request would have gone
+  // out unauthenticated with nothing to show why.
+  const okRes = () => new Response("{}", { status: 200 });
+
+  it("applies the headers factory to the request", async () => {
+    const doFetch = vi.fn().mockImplementation(async () => okRes());
+    const t = createFetchTransport({ fetch: doFetch, headers: () => ({ "x-gateway": "g1" }) });
+
+    await t.send({ host: "blocky", path: "/bots", method: "GET" });
+
+    expect(doFetch.mock.calls[0][1].headers).toMatchObject({ "x-gateway": "g1" });
+  });
+
+  it("evaluates it per request, not once at construction", async () => {
+    const doFetch = vi.fn().mockImplementation(async () => okRes());
+    let n = 0;
+    const t = createFetchTransport({ fetch: doFetch, headers: () => ({ "x-n": String(++n) }) });
+
+    await t.send({ host: "blocky", path: "/a", method: "GET" });
+    await t.send({ host: "blocky", path: "/b", method: "GET" });
+
+    expect(doFetch.mock.calls[0][1].headers).toMatchObject({ "x-n": "1" });
+    expect(doFetch.mock.calls[1][1].headers).toMatchObject({ "x-n": "2" });
+  });
+
+  it("lets the request's own header win a collision", async () => {
+    const doFetch = vi.fn().mockImplementation(async () => okRes());
+    const t = createFetchTransport({ fetch: doFetch, headers: () => ({ "x-k": "from-config" }) });
+
+    await t.send({ host: "blocky", path: "/a", method: "GET", headers: { "x-k": "from-request" } });
+
+    expect(doFetch.mock.calls[0][1].headers).toMatchObject({ "x-k": "from-request" });
+  });
+
+  it("carries them onto the 401 replay", async () => {
+    const doFetch = vi
+      .fn()
+      .mockImplementationOnce(async () => new Response("{}", { status: 401 }))
+      .mockImplementationOnce(async () => okRes());
+    const t = createFetchTransport({
+      fetch: doFetch,
+      headers: () => ({ "x-gateway": "g1" }),
+      onUnauthorized: () => Promise.resolve("fresh"),
+    });
+
+    await t.send({ host: "blocky", path: "/a", method: "GET" });
+
+    expect(doFetch.mock.calls[1][1].headers).toMatchObject({
+      "x-gateway": "g1",
+      authorization: "Bearer fresh",
+    });
+  });
+});
+
 describe("createFetchTransport — URL construction", () => {
   it("resolves each host from the production defaults", () => {
     expect(DEFAULT_HOSTS).toEqual({
@@ -100,10 +157,12 @@ describe("createFetchTransport — URL construction", () => {
       // PDEV-7339: the Zitadel authority is a host like any other, so token
       // calls get the same proxy rewrite, timeout and retry as everything else.
       auth: AUTH_AUTHORITY,
+      workflow: WORKFLOW_BASE_URL,
     });
   });
 
   it.each([
+    ["workflow", WORKFLOW_BASE_URL],
     ["blocky", OAUTH_BACKEND_URL],
     ["integrations", INTEGRATIONS_BASE_URL],
     ["agentic", AGENTIC_BASE_URL],
@@ -712,6 +771,36 @@ describe("401 refresh (PDEV-7340)", () => {
     expect(doFetch).toHaveBeenCalledTimes(2);
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
     expect(res.status).toBe(401);
+  });
+
+  it("hands the request to the refresh hook so it can decline per call", async () => {
+    // Without this a surface can only opt in or out for the whole transport, and
+    // `b2b-webcomponents` needs to decline for the hosts whose 401 means "your
+    // tenant has not enabled this", not "your session ended".
+    const doFetch = vi.fn().mockResolvedValue(unauthorized());
+    const onUnauthorized = vi.fn().mockResolvedValue(null);
+    const t = createFetchTransport({ fetch: doFetch, onUnauthorized });
+
+    await t.send({ host: "integrations", path: "/agents", method: "GET" });
+
+    expect(onUnauthorized).toHaveBeenCalledWith(
+      expect.objectContaining({ host: "integrations", path: "/agents" }),
+    );
+  });
+
+  it("declines for one host and still recovers for another", async () => {
+    const doFetch = vi.fn().mockImplementation(() => unauthorized());
+    // The shape b2b uses: refresh only where the token was actually issued.
+    const onUnauthorized = vi.fn(async req => (req.host === "blocky" ? "fresh-token" : null));
+    const t = createFetchTransport({ fetch: doFetch, onUnauthorized });
+
+    await t.send({ host: "integrations", path: "/agents", method: "GET" });
+    const declined = doFetch.mock.calls.length;
+    await t.send({ host: "blocky", path: "/bots", method: "GET" });
+
+    expect(declined).toBe(1);
+    // The blocky call replayed once with the fresh token; the integrations one did not.
+    expect(doFetch).toHaveBeenCalledTimes(3);
   });
 
   it("lets the 401 through when refresh returns null", async () => {
