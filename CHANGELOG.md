@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.22.0 — the transport, from `b2b-webcomponents`' side
+
+Cut from `main` after PR #57. Three changes to `./api`'s transport and `./config`,
+all of them things `b2b-webcomponents` needs before it can drop its hand-rolled
+fetch layer (PDEV-7349). Two are additive; one is a **behaviour change to a field
+that was already documented**, so read that section before upgrading.
+
+### 🌐 A `workflow` host
+
+`WORKFLOW_BASE_URL` (new, on `.` and `./config`) names the workflow service origin,
+and `BBHost` / `DEFAULT_HOSTS` gain the matching `workflow` member. `b2b` reaches
+this service on 25 call sites and until now had no host to route them through.
+
+The constant is the **origin only, no `/api`**: botticelli's `csp.test.ts` asserts
+`NEXT_PUBLIC_WORKFLOW_SERVICE_API_URL` with the prefix and its provider passes that
+through `toHostRoot()`, so the prefix belongs to the route rather than the host.
+
+Everything a consumer *passes in* is `Partial<BBHosts>` (`TransportConfig.hosts`,
+`AuthContext.hosts`), so the wider union costs an existing surface nothing. The one
+place it can surface is a `UrlRewrite` that `switch`es exhaustively on `host` with a
+`never` check — that now needs a `workflow` arm.
+
+### 📮 `config.headers` is actually sent
+
+`TransportConfig.headers` was declared and documented for `b2b`'s gateway headers,
+but **no code path ever called it** — every proxy-mode request went out without them
+and nothing in the source said why. `send()` now merges it, with request headers
+still winning a collision exactly as the field's contract says.
+
+This is a fix, but it is a fix that changes what goes on the wire: a surface that
+set `headers` and shipped around the omission will start sending them on the next
+build. The merge lives in `send()` rather than `attempt()` so the 401 replay inherits
+it instead of restating it.
+
+### 🔑 `onUnauthorized` receives the request
+
+`TransportConfig.onUnauthorized` is now `(req: TransportRequest) => Promise<string | null>`.
+A zero-argument hook stays assignable in TypeScript, so **existing implementations
+compile and behave unchanged** — the parameter only widens what a surface can decide.
+
+Without it a surface can only opt in or out for the whole transport, and a 401 from a
+host the token was not issued for is that host saying no — refreshing cannot change it.
+`b2b` must not sign a user out of a working chat because they opened a tab whose
+service their tenant has not enabled. Host is usually the deciding field but not
+always, so the whole request is passed; return `null` to let the 401 through.
+
+### 🔒 Also
+
+`package-lock.json`'s own version field was still on `0.20.0` — the `0.21.0` release
+bumped `package.json` alone. Both read `0.22.0` now.
+
 ## 0.21.0 — email-first sign-in, and a guard for a server-side relay bug
 
 Cut from `main` after PR #55. Purely **additive**: nine new names, no rename, no
