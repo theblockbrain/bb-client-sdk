@@ -139,6 +139,7 @@ exports[`public API surface > exports of "." are stable 1`] = `
   "UpdateConversationPatch",
   "UploadAttachmentOptions",
   "UrlRewrite",
+  "WORKFLOW_BASE_URL",
   "WebSearchConfig",
   "WebSearchProvider",
   "WebSearchProviderStatus",
@@ -623,6 +624,7 @@ exports[`public API surface > exports of "./config" are stable 1`] = `
   "OAUTH_BACKEND_URL",
   "REVOKE_ENDPOINT",
   "TOKEN_ENDPOINT",
+  "WORKFLOW_BASE_URL",
 ]
 `;
 
